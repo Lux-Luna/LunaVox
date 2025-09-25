@@ -1,0 +1,57 @@
+# pyproject.toml
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lunavox-tts"
+version = "1.0.3"
+authors = [
+    { name = "Lux_Luna", email = "525236052@qq.com" },
+]
+description = "GPT-SoVITS ONNX Inference Engine & Model Converter"
+# readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+classifiers = [
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+dependencies = [
+    "onnx",
+    "onnxruntime",
+    "numpy",
+    "pyopenjtalk",
+    "soundfile",
+    "soxr",
+    "pyyaml",
+    "rich",
+    "pyaudio",
+    "huggingface_hub[hf_xet]",
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+]
+
+[project.urls]
+Homepage = "https://github.com/Lux-Luna/LunaVox"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"lunavox_tts" = [
+    "Data/v2/Models/*",
+    "Data/v2/Keys/*",
+]

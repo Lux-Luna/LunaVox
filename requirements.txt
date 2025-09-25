@@ -1,0 +1,13 @@
+onnx
+onnxruntime
+numpy
+pyopenjtalk
+soundfile
+soxr
+pyyaml
+rich
+pyaudio
+huggingface_hub[hf_xet]
+fastapi
+uvicorn[standard]
+pydantic

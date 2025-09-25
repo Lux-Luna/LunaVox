@@ -1,0 +1,2 @@
+BERT_FEATURE_DIM = 1024
+PACKAGE_NAME = "lunavox_tts"
