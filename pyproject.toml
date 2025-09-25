@@ -11,7 +11,7 @@ authors = [
     { name = "Lux_Luna", email = "525236052@qq.com" },
 ]
 description = "GPT-SoVITS ONNX Inference Engine & Model Converter"
-# readme = "README.md"
+readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 license-files = ["LICENSE"]

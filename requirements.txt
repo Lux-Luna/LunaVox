@@ -11,3 +11,6 @@ huggingface_hub[hf_xet]
 fastapi
 uvicorn[standard]
 pydantic
+g2p_en
+wordsegment
+nltk

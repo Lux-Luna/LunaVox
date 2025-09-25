@@ -106,7 +106,7 @@ def ensure_character_loaded(character_name: str) -> Tuple[str, List[Tuple[str, s
         return f"角色 {character_name} 模型已加载。", []
 
 
-def set_reference(character_name: str, audio_path: str, audio_text: str) -> str:
+def set_reference(character_name: str, audio_path: str, audio_text: str, audio_lang: str = "ja") -> str:
     if not audio_path:
         return "请先上传参考音频。"
     if not audio_text:
@@ -130,11 +130,11 @@ def set_reference(character_name: str, audio_path: str, audio_text: str) -> str:
         try:
             shutil.copy2(audio_path, temp_audio_path)
             # 使用临时文件路径设置参考音频
-            lunavox.set_reference_audio(character_name, str(temp_audio_path), audio_text)
+            lunavox.set_reference_audio(character_name, str(temp_audio_path), audio_text, audio_lang)
             return "参考音频设置成功。"
         except PermissionError:
             # 如果复制失败，直接使用原文件路径
-            lunavox.set_reference_audio(character_name, audio_path, audio_text)
+            lunavox.set_reference_audio(character_name, audio_path, audio_text, audio_lang)
             return "参考音频设置成功（使用原始文件）。"
             
     except Exception as e:
@@ -218,7 +218,8 @@ def build_ui() -> gr.Blocks:
                 ref_text = gr.Textbox(label="参考音频文本", lines=2, placeholder="请输入与参考音频匹配的日文文本")
 
                 gr.Markdown("### 文本合成")
-                input_text = gr.Textbox(label="输入日文文本", lines=4, placeholder="请输入要合成的日文文本")
+                lang_dd = gr.Dropdown(choices=["ja", "en"], value="ja", label="语言 / Language", interactive=True)
+                input_text = gr.Textbox(label="输入文本", lines=4, placeholder="请输入要合成的文本（ja/en）")
                 btn_tts = gr.Button("开始合成")
                 out_audio = gr.Audio(label="合成结果试听", type="filepath")
                 out_msg = gr.Markdown()
@@ -258,7 +259,7 @@ def build_ui() -> gr.Blocks:
         )
         
         # 处理参考音频下拉选择器选择
-        def on_ref_audio_dropdown_change(character: str, selected_audio: Optional[str]):
+        def on_ref_audio_dropdown_change(character: str, selected_audio: Optional[str], lang: str):
             if not character or not selected_audio:
                 return "请选择角色和参考音频。", character, "", "", gr.update(value=None), gr.update(value="")
             
@@ -267,19 +268,19 @@ def build_ui() -> gr.Blocks:
             display_name = Path(file_path).stem
             
             try:
-                msg = set_reference(character, file_path, display_name)
+                msg = set_reference(character, file_path, display_name, lang)
                 return msg, character, file_path, display_name, gr.update(value=file_path), gr.update(value=display_name)
             except Exception as e:
                 return f"设置参考音频时出错: {e}", character, "", "", gr.update(value=None), gr.update(value="")
         
         ref_audio_dropdown.change(
             on_ref_audio_dropdown_change,
-            inputs=[st_character, ref_audio_dropdown],
+            inputs=[st_character, ref_audio_dropdown, lang_dd],
             outputs=[status, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio, ref_text],
         )
 
         # Auto set reference when audio or text changes (set only when both present)
-        def on_ref_audio_change(character: str, audio_fp: Optional[str], audio_tx: str, auto_filename_enabled: bool):
+        def on_ref_audio_change(character: str, audio_fp: Optional[str], audio_tx: str, auto_filename_enabled: bool, lang: str):
             if not character:
                 return "请选择角色。", character, audio_fp or "", audio_tx or "", audio_tx or ""
             
@@ -294,7 +295,7 @@ def build_ui() -> gr.Blocks:
             
             if audio_fp and (audio_tx or "").strip():
                 try:
-                    msg = set_reference(character, audio_fp, (audio_tx or "").strip())
+                    msg = set_reference(character, audio_fp, (audio_tx or "").strip(), lang)
                 except Exception as e:
                     msg = f"设置参考音频时出错: {e}"
             else:
@@ -308,15 +309,15 @@ def build_ui() -> gr.Blocks:
 
         ref_audio.change(
             on_ref_audio_change,
-            inputs=[st_character, ref_audio, ref_text, auto_filename],
+            inputs=[st_character, ref_audio, ref_text, auto_filename, lang_dd],
             outputs=[status, st_character, st_ref_audio_path, st_ref_audio_text, ref_text],
         )
 
-        def on_ref_text_change(character: str, audio_fp: Optional[str], audio_tx: str):
+        def on_ref_text_change(character: str, audio_fp: Optional[str], audio_tx: str, lang: str):
             if not character:
                 return "请选择角色。", character, audio_fp or "", audio_tx or ""
             if (audio_tx or "").strip() and audio_fp:
-                msg = set_reference(character, audio_fp, (audio_tx or "").strip())
+                msg = set_reference(character, audio_fp, (audio_tx or "").strip(), lang)
             else:
                 if (audio_tx or "").strip() and not audio_fp:
                     msg = "已填写参考文本，请上传参考音频以完成设置。"
@@ -328,19 +329,26 @@ def build_ui() -> gr.Blocks:
 
         ref_text.change(
             on_ref_text_change,
-            inputs=[st_character, ref_audio, ref_text],
+            inputs=[st_character, ref_audio, ref_text, lang_dd],
             outputs=[status, st_character, st_ref_audio_path, st_ref_audio_text],
         )
 
-        def on_tts(character: str, text_val: str):
+        def on_tts(character: str, text_val: str, lang: str):
             if not character:
                 return None, "请选择角色。"
+            try:
+                import lunavox_tts as lv
+                # set current language
+                from lunavox_tts.Utils.Shared import context
+                context.current_language = lang if lang in ["ja", "en"] else "ja"
+            except Exception:
+                pass
             audio_path, msg = synthesize(character, text_val)
             return audio_path, msg
 
         btn_tts.click(
             on_tts,
-            inputs=[st_character, input_text],
+            inputs=[st_character, input_text, lang_dd],
             outputs=[out_audio, out_msg],
         )
 

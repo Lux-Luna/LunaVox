@@ -74,6 +74,7 @@ def set_reference_audio(
         character_name: str,
         audio_path: Union[str, PathLike],
         audio_text: str,
+        audio_language: Optional[str] = None,
 ) -> None:
     """
     Sets the reference audio for a character to be used for voice cloning.
@@ -98,10 +99,12 @@ def set_reference_audio(
     _reference_audios[character_name] = {
         'audio_path': audio_path,
         'audio_text': audio_text,
+        'audio_lang': audio_language,
     }
     context.current_prompt_audio = ReferenceAudio(
         prompt_wav=audio_path,
         prompt_text=audio_text,
+        language=audio_language or 'auto',
     )
 
 
@@ -154,6 +157,7 @@ async def tts_async(
     context.current_prompt_audio = ReferenceAudio(
         prompt_wav=_reference_audios[character_name]['audio_path'],
         prompt_text=_reference_audios[character_name]['audio_text'],
+        language=_reference_audios[character_name].get('audio_lang') or 'auto',
     )
 
     # 3. 使用新的回调接口启动 TTS 会话
@@ -182,6 +186,7 @@ def tts(
         play: bool = False,
         split_sentence: bool = True,
         save_path: Union[str, PathLike, None] = None,
+        language: str = "ja",
 ) -> None:
     """
     Synchronously generates speech from text.
@@ -207,6 +212,7 @@ def tts(
             os.makedirs(parent_dir, exist_ok=True)
 
     context.current_speaker = character_name
+    context.current_language = language if language in ["ja", "en"] else "ja"
     context.current_prompt_audio = ReferenceAudio(
         prompt_wav=_reference_audios[character_name]['audio_path'],
         prompt_text=_reference_audios[character_name]['audio_text'],
