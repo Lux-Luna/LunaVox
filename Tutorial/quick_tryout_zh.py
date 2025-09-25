@@ -10,7 +10,6 @@ REPO_SRC = REPO_ROOT / "src"
 if str(REPO_SRC) not in sys.path:
     sys.path.insert(0, str(REPO_SRC))
     
-    
 # Import and run data_setup to ensure all required files are present
 import data_setup
 data_setup.ensure_data_from_hf()
@@ -30,12 +29,12 @@ lunavox.load_character('yuzuki_yukari', model_dir)
 audio_path = str(REPO_ROOT / 'Data' / 'audio_resources' / 'yuzuki_yukari' / "ありがとうございます。おひさしぶりです。.wav")
 lunavox.set_reference_audio('yuzuki_yukari', audio_path, "ありがとうございます。おひさしぶりです。", audio_language='ja')
 
-# 合成英文
+# 合成中文
 lunavox.tts(
     character_name='yuzuki_yukari',
-    text='Hello, this is LunaVox speaking English.',
+    text='你好，我正在用中文说话。',
     play=True,
-    language='en',  # 输出目标语言：英语
+    language='zh',  # 输出目标语言：中文
 )
 
 time.sleep(10)

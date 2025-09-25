@@ -212,10 +212,13 @@ def tts(
             os.makedirs(parent_dir, exist_ok=True)
 
     context.current_speaker = character_name
-    context.current_language = language if language in ["ja", "en"] else "ja"
+    normalized_language = language if language in ["ja", "en", "zh"] else "ja"
+    context.current_language = normalized_language
+    ref_info = _reference_audios[character_name]
     context.current_prompt_audio = ReferenceAudio(
-        prompt_wav=_reference_audios[character_name]['audio_path'],
-        prompt_text=_reference_audios[character_name]['audio_text'],
+        prompt_wav=ref_info['audio_path'],
+        prompt_text=ref_info['audio_text'],
+        language=ref_info.get('audio_lang') or 'auto',
     )
 
     tts_player.start_session(

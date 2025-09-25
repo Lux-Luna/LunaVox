@@ -14,6 +14,7 @@ AUDIO_DIR = DATA_DIR / "audio_resources"
 
 REQUIRED_CN_HUBERT = DATA_DIR / "chinese-hubert-base.onnx"
 REQUIRED_OPENJTALK_DIR = DATA_DIR / "open_jtalk_dic_utf_8-1.11"
+REQUIRED_CHINESE_ROBERTA_DIR = DATA_DIR / "chinese-roberta-wwm-ext-large"
 
 CHAR_REQUIRED_FILES = [
     "t2s_encoder_fp32.onnx",
@@ -53,6 +54,8 @@ def need_download() -> Tuple[bool, List[Tuple[str, List[str]]]]:
         base_missing.append(str(REQUIRED_CN_HUBERT.relative_to(REPO_ROOT)))
     if not REQUIRED_OPENJTALK_DIR.exists():
         base_missing.append(str(REQUIRED_OPENJTALK_DIR.relative_to(REPO_ROOT)) + "/")
+    if not REQUIRED_CHINESE_ROBERTA_DIR.exists():
+        base_missing.append(str(REQUIRED_CHINESE_ROBERTA_DIR.relative_to(REPO_ROOT)) + "/")
     if base_missing:
         missing_summary.append(("base", base_missing))
 
@@ -105,6 +108,16 @@ def ensure_data_from_hf() -> None:
                 dst = REQUIRED_OPENJTALK_DIR / path.relative_to(src_dict)
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 dst.write_bytes(path.read_bytes())
+
+    # Download Chinese RoBERTa model if missing
+    if not REQUIRED_CHINESE_ROBERTA_DIR.exists():
+        print("Downloading Chinese RoBERTa model from hfl/chinese-roberta-wwm-ext-large...")
+        roberta_local_dir = snapshot_download(
+            repo_id="hfl/chinese-roberta-wwm-ext-large",
+            local_dir=str(REQUIRED_CHINESE_ROBERTA_DIR),
+            local_dir_use_symlinks=False
+        )
+        print(f"Chinese RoBERTa model downloaded to: {roberta_local_dir}")
 
     char_src_root = hf_root / "Data" / "character_model"
     if char_src_root.exists():
@@ -159,6 +172,7 @@ __all__ = [
     "AUDIO_DIR",
     "REQUIRED_CN_HUBERT",
     "REQUIRED_OPENJTALK_DIR",
+    "REQUIRED_CHINESE_ROBERTA_DIR",
     "CHAR_REQUIRED_FILES",
     "list_existing_characters",
     "list_existing_audio_characters",

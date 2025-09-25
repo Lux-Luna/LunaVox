@@ -194,7 +194,7 @@ def build_ui() -> gr.Blocks:
             with gr.Column(scale=2):
                 gr.Markdown("### 参考音频")
                 ref_lang_dd = gr.Dropdown(
-                    choices=["auto", "ja", "en"],
+                    choices=["auto", "ja", "en", "zh"],
                     value="ja",
                     label="参考音频语言 / Prompt Language",
                     interactive=True,
@@ -225,7 +225,7 @@ def build_ui() -> gr.Blocks:
                 ref_text = gr.Textbox(label="参考音频文本", lines=2, placeholder="请输入与参考音频匹配的日文文本")
 
                 gr.Markdown("### 文本合成")
-                lang_dd = gr.Dropdown(choices=["ja", "en"], value="ja", label="输出语言 / Output Language", interactive=True)
+                lang_dd = gr.Dropdown(choices=["ja", "en", "zh"], value="ja", label="输出语言 / Output Language", interactive=True)
                 input_text = gr.Textbox(label="输入文本", lines=4, placeholder="请输入要合成的文本（ja/en）")
                 btn_tts = gr.Button("开始合成")
                 out_audio = gr.Audio(label="合成结果试听", type="filepath")
@@ -347,7 +347,7 @@ def build_ui() -> gr.Blocks:
                 import lunavox_tts as lv
                 # set current language
                 from lunavox_tts.Utils.Shared import context
-                context.current_language = lang if lang in ["ja", "en"] else "ja"
+                context.current_language = lang if lang in ["ja", "en", "zh"] else "ja"
             except Exception:
                 pass
             audio_path, msg = synthesize(character, text_val, lang)

@@ -14,3 +14,9 @@ pydantic
 g2p_en
 wordsegment
 nltk
+pypinyin
+opencc-python-reimplemented
+cn2an
+jieba_fast
+transformers
+torch

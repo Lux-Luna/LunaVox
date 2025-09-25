@@ -6,6 +6,8 @@ import threading
 from ..Audio.ReferenceAudio import ReferenceAudio
 from ..Japanese.JapaneseG2P import japanese_to_phones
 from ..English.EnglishG2P import english_to_phones
+from ..Chinese.ChineseG2P import chinese_clean_g2p_and_norm
+from ..Chinese.ZhBert import compute_bert_phone_features
 from ..Utils.Constants import BERT_FEATURE_DIM
 
 
@@ -27,12 +29,28 @@ class LunaVoxEngine:
             ids = english_to_phones(text)
             text_seq: np.ndarray = np.array([ids], dtype=np.int64)
             text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
+        elif language == "zh":
+            ids, word2ph, norm_text = chinese_clean_g2p_and_norm(text)
+            text_seq: np.ndarray = np.array([ids], dtype=np.int64)
+            # Full zh-BERT parity: compute 1024-d features and align to phones
+            bert_phone = compute_bert_phone_features(norm_text, word2ph)  # (len_phones, 1024)
+            if bert_phone.shape[0] != text_seq.shape[1]:
+                text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
+            else:
+                text_bert = bert_phone
         else:
             text_seq: np.ndarray = np.array([japanese_to_phones(text)], dtype=np.int64)
             text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
+        ref_seq = prompt_audio.phonemes_seq
+        if ref_seq is None:
+            return None
+        ref_bert = prompt_audio.text_bert
+        if ref_bert is None or ref_bert.shape[0] != ref_seq.shape[1]:
+            ref_bert = np.zeros((ref_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
+
         semantic_tokens: np.ndarray = self.t2s_cpu(
-            ref_seq=prompt_audio.phonemes_seq,
-            ref_bert=prompt_audio.text_bert,
+            ref_seq=ref_seq,
+            ref_bert=ref_bert,
             text_seq=text_seq,
             text_bert=text_bert,
             ssl_content=prompt_audio.ssl_content,

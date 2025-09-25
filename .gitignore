@@ -130,3 +130,6 @@ temp/
 tmp/
 *.tmp
 *.temp
+
+# Documentation folder
+description/
