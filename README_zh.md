@@ -27,7 +27,7 @@
 TTS 推理、ONNX 模型转换、API Server 等核心功能，旨在提供更极致的性能与更便捷的体验。
 
 - **✅ 支持模型版本:** GPT-SoVITS V2
-- **✅ 支持语言:** 日语 (Japanese)
+- **✅ 支持语言:** 日语 (Japanese)，中文（Chinese），英语（English）
 
 ---
 
@@ -72,7 +72,7 @@ pip install lunavox-tts
 为了让您能够轻松上手，LunaVox 内置了预设的说话人角色。无需任何模型文件，只需运行下面的脚本，即可立即听到效果：
 
 ```bash
-python Tutorial/quick_tryout.py
+python Tutorial/quick_tryout_zh.py
 ```
 
 该脚本会自动下载所需的依赖文件并播放示例音频。
@@ -89,7 +89,7 @@ python Tutorial/quick_tryout.py
 
 ### 🎤 语音合成最佳实践
 
-下面是一个简单的 TTS 推理示例：
+多语言 TTS 推理示例：
 
 ```python
 import os
@@ -113,6 +113,7 @@ lunavox.set_reference_audio(
     character_name='<CHARACTER_NAME>',  # 确保与加载的角色名称一致
     audio_path=r"<PATH_TO_REFERENCE_AUDIO>",  # 替换为你的参考音频文件路径
     audio_text="<REFERENCE_AUDIO_TEXT>",  # 替换为参考音频对应的文本
+    audio_language='ja'  # ja 表示日语，zh 表示中文，en 表示英语
 )
 
 # 步骤 3: 执行 TTS 推理并生成音频
@@ -121,6 +122,7 @@ lunavox.tts(
     text="<TEXT_TO_SYNTHESIZE>",  # 替换为你想要合成的文本
     play=True,  # 设置为 True 可直接播放生成的音频
     save_path="<OUTPUT_AUDIO_PATH>",  # 替换为期望的音频保存路径
+    language='ja'  # 目标语言：ja 表示日语，zh 表示中文，en 表示英语
 )
 
 print("🎉 音频生成完毕!")
@@ -214,10 +216,16 @@ lunavox.launch_command_line_client()
 ## 📝 未来计划 (Roadmap)
 
 - [ ] **🌐 语言扩展**
-    - [ ] 增加对 **中文**、**英文** 的支持。
+    - [x] 增加对 **中文** 的支持。
+    - [x] 增加对 **英文** 的支持。
 
 - [ ] **🚀 模型兼容性**
-    - [ ] 增加对 `V2Proplus`模型版本的支持。
+    - [ ] 增加对 **V2 Pro** 模型版本的支持。
+    - [ ] 增加对 **V2 Pro Plus** 模型版本的支持。
+
+- [ ] **⚡️ 性能优化**
+    - [ ] 发布 **GPU 版本**，进一步提升推理速度。
+    - [ ] 实现 **文本切分功能**，优化长文本处理。
 
 - [ ] **📦 便捷部署**
     - [ ] 发布 **Docker 镜像**。

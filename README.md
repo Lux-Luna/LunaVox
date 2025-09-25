@@ -28,7 +28,7 @@ project [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS). It integrates TTS 
 server, and other core features, aiming to provide ultimate performance and convenience.
 
 * **✅ Supported Model Version:** GPT-SoVITS V2
-* **✅ Supported Language:** Japanese
+* **✅ Supported Language:** Japanese, Chinese, English
 * **✅ Supported Python Version:** >= 3.9
 
 ---
@@ -78,15 +78,16 @@ LunaVox includes predefined speaker characters for immediate use without any mod
 files. Run the script below to hear it in action:
 
 ```bash
-python Tutorial/quick_tryout.py
+python Tutorial/_quick_tryout_en.py
 ```
 
 This script will automatically download required dependencies and play a sample audio.
 
 ### 🎤 TTS Best Practices
 
-A simple TTS inference example:
+Multi-language TTS inference examples:
 
+**Japanese TTS:**
 ```python
 import lunavox_tts as lunavox
 
@@ -101,6 +102,7 @@ lunavox.set_reference_audio(
     character_name='<CHARACTER_NAME>',  # Must match loaded character name
     audio_path=r"<PATH_TO_REFERENCE_AUDIO>",  # Path to reference audio
     audio_text="<REFERENCE_AUDIO_TEXT>",  # Corresponding text
+    audio_language='ja' # ja for Japanese, zh for Chinese, en for English
 )
 
 # Step 3: Run TTS inference and generate audio
@@ -109,6 +111,7 @@ lunavox.tts(
     text="<TEXT_TO_SYNTHESIZE>",  # Text to synthesize
     play=True,  # Play audio directly
     save_path="<OUTPUT_AUDIO_PATH>",  # Output audio file path
+    language='ja'  # Target language: Japanese
 )
 
 print("🎉 Audio generation complete!")
@@ -176,11 +179,18 @@ lunavox.launch_command_line_client()
 
 * [ ] **🌐 Language Expansion**
 
-    * [ ] Add support for **Chinese** and **English**.
+    * [x] Add support for **Chinese**.
+    * [x] Add support for **English**.
 
 * [ ] **🚀 Model Compatibility**
 
-    * [ ] Support for `V2Proplus`, `V3`, `V4`, and more.
+    * [ ] Support for **V2 Pro** model version.
+    * [ ] Support for **V2 Pro Plus** model version.
+
+* [ ] **⚡️ Performance Optimization**
+
+    * [ ] Release **GPU version** for enhanced inference speed.
+    * [ ] Implement **text segmentation** functionality for long text processing.
 
 * [ ] **📦 Easy Deployment**
 
