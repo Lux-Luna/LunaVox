@@ -31,7 +31,7 @@ lunavox.set_reference_audio('yuzuki_yukari', audio_path, "ありがとうござ�
 
 lunavox.tts(
     character_name='yuzuki_yukari',
-    text='私は天使なんかじゃないわ、生徒会長です。',
+    text='こんにちは、ルナヴォックスです。日本語でお話しします。',
     play=True,  # Play the generated audio directly
     language='ja',  # 输出目标语言：日语
 )

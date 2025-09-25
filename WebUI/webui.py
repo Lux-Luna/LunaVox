@@ -141,9 +141,9 @@ def set_reference(character_name: str, audio_path: str, audio_text: str, audio_l
         return f"设置参考音频时出错: {str(e)}"
 
 
-def synthesize(character_name: str, text: str) -> Tuple[Optional[str], str]:
+def synthesize(character_name: str, text: str, language: str) -> Tuple[Optional[str], str]:
     if not text or not text.strip():
-        return None, "请输入要合成的日文文本。"
+        return None, "请输入要合成的文本。"
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     save_path = OUTPUT_DIR / f"{character_name}_{timestamp}.wav"
@@ -155,6 +155,7 @@ def synthesize(character_name: str, text: str) -> Tuple[Optional[str], str]:
         play=False,
         split_sentence=True,
         save_path=str(save_path),
+        language=language,
     )
     if save_path.exists():
         return str(save_path), f"合成完成：{save_path}"
@@ -192,6 +193,12 @@ def build_ui() -> gr.Blocks:
 
             with gr.Column(scale=2):
                 gr.Markdown("### 参考音频")
+                ref_lang_dd = gr.Dropdown(
+                    choices=["auto", "ja", "en"],
+                    value="ja",
+                    label="参考音频语言 / Prompt Language",
+                    interactive=True,
+                )
                 
                 # 参考音频资源下拉选择器
                 ref_audio_dropdown = gr.Dropdown(
@@ -218,7 +225,7 @@ def build_ui() -> gr.Blocks:
                 ref_text = gr.Textbox(label="参考音频文本", lines=2, placeholder="请输入与参考音频匹配的日文文本")
 
                 gr.Markdown("### 文本合成")
-                lang_dd = gr.Dropdown(choices=["ja", "en"], value="ja", label="语言 / Language", interactive=True)
+                lang_dd = gr.Dropdown(choices=["ja", "en"], value="ja", label="输出语言 / Output Language", interactive=True)
                 input_text = gr.Textbox(label="输入文本", lines=4, placeholder="请输入要合成的文本（ja/en）")
                 btn_tts = gr.Button("开始合成")
                 out_audio = gr.Audio(label="合成结果试听", type="filepath")
@@ -259,7 +266,7 @@ def build_ui() -> gr.Blocks:
         )
         
         # 处理参考音频下拉选择器选择
-        def on_ref_audio_dropdown_change(character: str, selected_audio: Optional[str], lang: str):
+        def on_ref_audio_dropdown_change(character: str, selected_audio: Optional[str], ref_lang: str):
             if not character or not selected_audio:
                 return "请选择角色和参考音频。", character, "", "", gr.update(value=None), gr.update(value="")
             
@@ -268,19 +275,19 @@ def build_ui() -> gr.Blocks:
             display_name = Path(file_path).stem
             
             try:
-                msg = set_reference(character, file_path, display_name, lang)
+                msg = set_reference(character, file_path, display_name, ref_lang)
                 return msg, character, file_path, display_name, gr.update(value=file_path), gr.update(value=display_name)
             except Exception as e:
                 return f"设置参考音频时出错: {e}", character, "", "", gr.update(value=None), gr.update(value="")
         
         ref_audio_dropdown.change(
             on_ref_audio_dropdown_change,
-            inputs=[st_character, ref_audio_dropdown, lang_dd],
+            inputs=[st_character, ref_audio_dropdown, ref_lang_dd],
             outputs=[status, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio, ref_text],
         )
 
         # Auto set reference when audio or text changes (set only when both present)
-        def on_ref_audio_change(character: str, audio_fp: Optional[str], audio_tx: str, auto_filename_enabled: bool, lang: str):
+        def on_ref_audio_change(character: str, audio_fp: Optional[str], audio_tx: str, auto_filename_enabled: bool, ref_lang: str):
             if not character:
                 return "请选择角色。", character, audio_fp or "", audio_tx or "", audio_tx or ""
             
@@ -295,7 +302,7 @@ def build_ui() -> gr.Blocks:
             
             if audio_fp and (audio_tx or "").strip():
                 try:
-                    msg = set_reference(character, audio_fp, (audio_tx or "").strip(), lang)
+                    msg = set_reference(character, audio_fp, (audio_tx or "").strip(), ref_lang)
                 except Exception as e:
                     msg = f"设置参考音频时出错: {e}"
             else:
@@ -309,15 +316,15 @@ def build_ui() -> gr.Blocks:
 
         ref_audio.change(
             on_ref_audio_change,
-            inputs=[st_character, ref_audio, ref_text, auto_filename, lang_dd],
+            inputs=[st_character, ref_audio, ref_text, auto_filename, ref_lang_dd],
             outputs=[status, st_character, st_ref_audio_path, st_ref_audio_text, ref_text],
         )
 
-        def on_ref_text_change(character: str, audio_fp: Optional[str], audio_tx: str, lang: str):
+        def on_ref_text_change(character: str, audio_fp: Optional[str], audio_tx: str, ref_lang: str):
             if not character:
                 return "请选择角色。", character, audio_fp or "", audio_tx or ""
             if (audio_tx or "").strip() and audio_fp:
-                msg = set_reference(character, audio_fp, (audio_tx or "").strip(), lang)
+                msg = set_reference(character, audio_fp, (audio_tx or "").strip(), ref_lang)
             else:
                 if (audio_tx or "").strip() and not audio_fp:
                     msg = "已填写参考文本，请上传参考音频以完成设置。"
@@ -329,7 +336,7 @@ def build_ui() -> gr.Blocks:
 
         ref_text.change(
             on_ref_text_change,
-            inputs=[st_character, ref_audio, ref_text, lang_dd],
+            inputs=[st_character, ref_audio, ref_text, ref_lang_dd],
             outputs=[status, st_character, st_ref_audio_path, st_ref_audio_text],
         )
 
@@ -343,7 +350,7 @@ def build_ui() -> gr.Blocks:
                 context.current_language = lang if lang in ["ja", "en"] else "ja"
             except Exception:
                 pass
-            audio_path, msg = synthesize(character, text_val)
+            audio_path, msg = synthesize(character, text_val, lang)
             return audio_path, msg
 
         btn_tts.click(
