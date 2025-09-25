@@ -201,7 +201,10 @@ class TTSPlayer:
                 self._start_time = time.time()
 
             if self._split:
-                sentences = split_japanese_text(text_chunk.strip())
+                if context.current_language == 'en':
+                    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text_chunk.strip()) if s.strip()]
+                else:
+                    sentences = split_japanese_text(text_chunk.strip())
                 for sentence in sentences:
                     self._text_queue.put(sentence)
             else:

@@ -2,6 +2,7 @@ from ..Utils.Utils import LRUCacheDict
 from ..Japanese.JapaneseG2P import japanese_to_phones
 from ..English.EnglishG2P import english_to_phones
 from ..Utils.Constants import BERT_FEATURE_DIM
+from ..Utils.Shared import context
 from ..Audio.Audio import load_audio
 from ..ModelManager import model_manager
 
@@ -35,6 +36,9 @@ class ReferenceAudio:
         self.phonemes_seq: Optional[np.ndarray] = None
         self.text_bert: Optional[np.ndarray] = None
         self.set_text(prompt_text, language)
+        # Update global context language hint for downstream inference
+        if language in ['ja', 'en']:
+            context.current_language = language
 
         # 音频相关。
         self.audio_32k: Optional[np.ndarray] = load_audio(
