@@ -20,3 +20,4 @@ cn2an
 jieba_fast
 transformers
 torch
+Gradio

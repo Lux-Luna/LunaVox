@@ -5,6 +5,7 @@ from g2p_en import G2p
 from .en_normalization import normalize
 from nltk.tokenize import TweetTokenizer
 from nltk import pos_tag
+from ..Utils.NltkResources import ensure_nltk_data
 
 # Reuse symbols_v2 from Japanese module for now (it already includes ARPAbet)
 from ..Japanese.SymbolsV2 import symbols_v2, symbol_to_id_v2
@@ -40,6 +41,8 @@ def text_normalize(text: str) -> str:
 
 class _EN_G2P:
     def __init__(self):
+        # Ensure NLTK data is available before tokenizer/tagger usage
+        ensure_nltk_data()
         self._g2p = G2p()
 
     def __call__(self, text: str) -> List[str]:

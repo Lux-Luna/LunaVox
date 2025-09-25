@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lunavox-tts"
-version = "1.0.3"
+version = "1.0.4"
 authors = [
     { name = "Lux_Luna", email = "525236052@qq.com" },
 ]
@@ -39,6 +39,17 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "pydantic",
+    "g2p_en",
+    "wordsegment",
+    "nltk",
+    "pypinyin",
+    "opencc-python-reimplemented",
+    "cn2an",
+    "jieba_fast",
+    "transformers",
+    "torch",
+    "gradio",
+    "inflect",
 ]
 
 [project.urls]
