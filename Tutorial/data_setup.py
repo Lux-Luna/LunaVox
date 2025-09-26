@@ -1,8 +1,12 @@
 import os
+import zipfile
+import io
+import shutil
 from pathlib import Path
 from typing import List, Tuple
 
 from huggingface_hub import snapshot_download
+import requests
 
 
 REPO_ID = "wkwong/LunaVox"
@@ -11,6 +15,7 @@ REPO_ROOT = Path(__file__).parent.parent  # Go up one level from Tutorial to rep
 DATA_DIR = REPO_ROOT / "Data"
 CHAR_DIR = DATA_DIR / "character_model"
 AUDIO_DIR = DATA_DIR / "audio_resources"
+TEXT_DIR = REPO_ROOT / "src" / "text"
 
 REQUIRED_CN_HUBERT = DATA_DIR / "chinese-hubert-base.onnx"
 REQUIRED_OPENJTALK_DIR = DATA_DIR / "open_jtalk_dic_utf_8-1.11"
@@ -77,8 +82,61 @@ def need_download() -> Tuple[bool, List[Tuple[str, List[str]]]]:
     return (len(missing_summary) > 0), missing_summary
 
 
+def ensure_g2pw_model() -> None:
+    """Ensure LunaVox/src/text/G2PWModel exists; if missing, download from ModelScope and unzip.
+
+    This mirrors the runtime logic found in GPT-SoVITS text.g2pw.onnx_api but targets LunaVox/src/text.
+    """
+    target_dir = TEXT_DIR / "G2PWModel"
+    if target_dir.exists():
+        return
+
+    parent_directory = target_dir.parent
+    parent_directory.mkdir(parents=True, exist_ok=True)
+
+    # Prefer local copy from GPT-SoVITS if available
+    local_source_dir = REPO_ROOT / "GPT-SoVITS" / "GPT_SoVITS" / "text" / "G2PWModel"
+    if local_source_dir.exists():
+        try:
+            print(f"Copying G2PWModel from {local_source_dir} ...")
+            shutil.copytree(str(local_source_dir), str(target_dir))
+            print(f"G2PWModel ready at: {target_dir}")
+            return
+        except Exception as e:
+            print(f"Copy G2PWModel failed, fallback to download. Reason: {e}")
+
+    # Fallback to download from ModelScope (no zip saved to disk)
+    extract_dir = parent_directory / "G2PWModel_1.1"
+    final_dir = parent_directory / "G2PWModel"
+    url = "https://www.modelscope.cn/models/kamiorinn/g2pw/resolve/master/G2PWModel_1.1.zip"
+
+    try:
+        print("G2PWModel not found locally. Downloading from ModelScope ...")
+        buf = io.BytesIO()
+        with requests.get(url, stream=True, timeout=60) as r:  # type: ignore[arg-type]
+            r.raise_for_status()
+            for chunk in r.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    buf.write(chunk)
+        buf.seek(0)
+
+        print("Extracting G2PWModel ...")
+        with zipfile.ZipFile(buf, "r") as zf:
+            zf.extractall(parent_directory)
+
+        if not final_dir.exists() and extract_dir.exists():
+            os.rename(str(extract_dir), str(final_dir))
+
+        print(f"G2PWModel ready at: {final_dir}")
+    except Exception as e:
+        print(f"Failed to ensure G2PWModel: {e}")
+
+
 def ensure_data_from_hf() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Always ensure G2PWModel in src/text regardless of other dependencies
+    ensure_g2pw_model()
 
     is_missing, items = need_download()
     if not is_missing:
@@ -179,6 +237,7 @@ __all__ = [
     "character_missing_files",
     "need_download",
     "ensure_data_from_hf",
+    "ensure_g2pw_model",
 ]
 
 

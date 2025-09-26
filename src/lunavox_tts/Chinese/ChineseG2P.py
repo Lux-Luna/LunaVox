@@ -19,6 +19,15 @@ def _load_cleaner():
         original_download = onnx_api.download_and_decompress
 
         def _download_and_decompress(model_dir: str = "G2PWModel/") -> str:
+            # Prefer LunaVox local text path if available
+            this_file = Path(__file__).resolve()
+            src_root = this_file.parents[2]  # .../src
+            local_text = src_root / "text"
+            local_g2pw = local_text / "G2PWModel"
+            if local_g2pw.exists():
+                return str(local_g2pw)
+
+            # Fallback: resolve under GPT-SoVITS repo
             candidate = Path(model_dir)
             if not candidate.is_absolute():
                 repo_root = find_repo_root()
