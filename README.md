@@ -78,7 +78,7 @@ LunaVox includes predefined speaker characters for immediate use without any mod
 files. Run the script below to hear it in action:
 
 ```bash
-python Tutorial/_quick_tryout_en.py
+python Tutorial/quick_tryout_en.py
 ```
 
 This script will automatically download required dependencies and play a sample audio.

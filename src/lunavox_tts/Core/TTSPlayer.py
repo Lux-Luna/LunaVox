@@ -9,7 +9,10 @@ import time
 import numpy as np
 import wave
 from typing import Optional, List, Callable
-import pyaudio
+try:
+    import pyaudio
+except Exception:  # optional dependency for playback
+    pyaudio = None
 import logging
 
 from ..Japanese.Split import split_japanese_text
@@ -119,19 +122,21 @@ class TTSPlayer:
         p = None
         stream = None
         try:
-            p = pyaudio.PyAudio()
+            if pyaudio is not None:
+                p = pyaudio.PyAudio()
             while not self._stop_event.is_set():
                 try:
                     audio_chunk = self._audio_queue.get(timeout=1)
                     if audio_chunk is None:
                         break
-                    if stream is None:
+                    if stream is None and p is not None:
                         stream = p.open(format=p.get_format_from_width(self.bytes_per_sample),
                                         channels=self.channels,
                                         rate=self.sample_rate,
                                         output=True)
                     audio_data = self._preprocess_for_playback(audio_chunk)
-                    stream.write(audio_data)
+                    if stream is not None:
+                        stream.write(audio_data)
                 except queue.Empty:
                     if stream is not None:
                         stream.stop_stream()
