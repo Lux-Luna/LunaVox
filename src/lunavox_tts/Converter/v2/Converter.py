@@ -10,6 +10,7 @@ import shutil
 import traceback
 import importlib.resources
 import contextlib
+from pathlib import Path
 
 logger = logging.getLogger()
 
@@ -20,6 +21,48 @@ _FIRST_STAGE_DECODER_RESOURCE_PATH = "Data/v2/Models/t2s_first_stage_decoder_fp3
 _VITS_RESOURCE_PATH = "Data/v2/Models/vits_fp32.onnx"
 _T2S_KEYS_RESOURCE_PATH = "Data/v2/Keys/t2s_onnx_keys.txt"
 _VITS_KEYS_RESOURCE_PATH = "Data/v2/Keys/vits_onnx_keys.txt"
+
+
+def _ensure_v2_resources_installed() -> None:
+    """Verify base ONNX templates and key lists exist inside LunaVox package data.
+
+    This function only validates resources within `src/lunavox_tts/Data/v2/...` and
+    does not copy from any external repositories or backups.
+    """
+    try:
+        pkg_root = Path(__file__).resolve().parents[2]  # .../src/lunavox_tts
+        models_dir = pkg_root / "Data" / "v2" / "Models"
+        keys_dir = pkg_root / "Data" / "v2" / "Keys"
+
+        required_models = [
+            "t2s_encoder_fp32.onnx",
+            "t2s_stage_decoder_fp32.onnx",
+            "t2s_first_stage_decoder_fp32.onnx",
+            "vits_fp32.onnx",
+        ]
+        required_keys = [
+            "t2s_onnx_keys.txt",
+            "vits_onnx_keys.txt",
+        ]
+
+        missing: list[str] = []
+        for name in required_models:
+            if not (models_dir / name).exists():
+                missing.append(os.fspath(models_dir / name))
+        for name in required_keys:
+            if not (keys_dir / name).exists():
+                missing.append(os.fspath(keys_dir / name))
+
+        if missing:
+            raise FileNotFoundError(
+                "Missing required LunaVox base resources: "
+                + "; ".join(missing)
+                + ". Ensure these files exist under 'src/lunavox_tts/Data/v2' or reinstall LunaVox."
+            )
+
+    except Exception as e:
+        logger.error(f"Failed to verify v2 resources: {e}")
+        raise
 
 
 def find_ckpt_and_pth(directory: str) -> Tuple[Optional[str], Optional[str]]:
@@ -56,6 +99,8 @@ def convert(torch_ckpt_path: str,
         logger.warning(f"The output directory {output_dir} is not empty!")
 
     try:
+        # Ensure required resources are present inside the package before resolving them
+        _ensure_v2_resources_installed()
         with contextlib.ExitStack() as stack:
             files = importlib.resources.files(PACKAGE_NAME)
 

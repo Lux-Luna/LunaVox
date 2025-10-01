@@ -1,4 +1,4 @@
-import os
+﻿import os
 import json
 import time
 from pathlib import Path
@@ -13,7 +13,7 @@ if str(REPO_SRC) not in sys.path:
     sys.path.insert(0, str(REPO_SRC))
 import lunavox_tts as lunavox
 import gradio as gr
-
+from converter import render_converter_ui
 
 # ------------------------------
 # Paths and environment setup
@@ -34,10 +34,34 @@ os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 # ------------------------------
 # Utilities
 # ------------------------------
+def _is_valid_character_dir(path: Path) -> bool:
+    required_onnx = {
+        't2s_encoder_fp32.onnx',
+        't2s_first_stage_decoder_fp32.onnx',
+        't2s_stage_decoder_fp32.onnx',
+        'vits_fp32.onnx',
+    }
+    # 需要 fp16 权重来生成 fp32（加载前会自动生成）
+    required_fp16_bin = {
+        't2s_shared_fp16.bin',
+        'vits_fp16.bin',
+    }
+
+    if not path.is_dir():
+        return False
+
+    names = {p.name for p in path.iterdir() if p.is_file()}
+    if not required_onnx.issubset(names):
+        return False
+    if not required_fp16_bin.issubset(names):
+        return False
+    return True
+
+
 def list_character_folders() -> List[str]:
     if not CHAR_MODEL_DIR.exists():
         return []
-    folders = [p.name for p in CHAR_MODEL_DIR.iterdir() if p.is_dir()]
+    folders = [p.name for p in CHAR_MODEL_DIR.iterdir() if _is_valid_character_dir(p)]
     folders.sort()
     return folders
 
@@ -358,6 +382,9 @@ def build_ui() -> gr.Blocks:
             inputs=[st_character, input_text, lang_dd],
             outputs=[out_audio, out_msg],
         )
+
+        # Add converter UI at the bottom as an optional panel
+        render_converter_ui()
 
     return demo
 
