@@ -31,10 +31,21 @@ CHAR_REQUIRED_FILES = [
 ]
 
 
+def _is_valid_character_dir(path: Path) -> bool:
+    if not path.is_dir():
+        return False
+    names = {p.name for p in path.iterdir() if p.is_file()}
+    # A valid character folder must contain all required files
+    return all(name in names for name in CHAR_REQUIRED_FILES)
+
+
 def list_existing_characters() -> List[Path]:
     if not CHAR_DIR.exists():
         return []
-    return [p for p in CHAR_DIR.iterdir() if p.is_dir()]
+    # Only include folders that have a complete set of required files
+    candidates = [p for p in CHAR_DIR.iterdir() if _is_valid_character_dir(p)]
+    candidates.sort(key=lambda p: p.name)
+    return candidates
 
 
 def list_existing_audio_characters() -> List[Path]:
@@ -64,15 +75,10 @@ def need_download() -> Tuple[bool, List[Tuple[str, List[str]]]]:
     if base_missing:
         missing_summary.append(("base", base_missing))
 
-    # Check character models
+    # Check character models (consider satisfied if any complete character exists)
     existing_chars = list_existing_characters()
     if not existing_chars:
         missing_summary.append(("character_any", CHAR_REQUIRED_FILES.copy()))
-    else:
-        first_char = existing_chars[0]
-        m = character_missing_files(first_char)
-        if m:
-            missing_summary.append((first_char.name, m))
 
     # Check audio resources
     existing_audio_chars = list_existing_audio_characters()
@@ -180,10 +186,16 @@ def ensure_data_from_hf() -> None:
     char_src_root = hf_root / "Data" / "character_model"
     if char_src_root.exists():
         CHAR_DIR.mkdir(parents=True, exist_ok=True)
-        candidates = [p for p in char_src_root.iterdir() if p.is_dir()]
-        candidates.sort(key=lambda p: p.name)
-        if candidates:
-            chosen = candidates[0]
+        # Prefer only valid character folders (with all required files)
+        valid_candidates: List[Path] = []
+        for p in char_src_root.iterdir():
+            if p.is_dir():
+                names = {f.name for f in p.iterdir() if f.is_file()}
+                if all(name in names for name in CHAR_REQUIRED_FILES):
+                    valid_candidates.append(p)
+        valid_candidates.sort(key=lambda p: p.name)
+        if valid_candidates:
+            chosen = valid_candidates[0]
             dst_char = CHAR_DIR / chosen.name
             if not dst_char.exists():
                 dst_char.mkdir(parents=True, exist_ok=True)
