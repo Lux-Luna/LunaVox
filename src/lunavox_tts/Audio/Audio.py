@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 MIN_DURATION_S = 3
 MAX_DURATION_S = 10
 # 在音频末尾追加的静音时长 (秒)
-SILENCE_TO_APPEND_S = 0.3
+SILENCE_TO_APPEND_S = 0.1  # 减少停顿时长（从0.3改为0.1）
 # 模型期望的目标采样率
 TARGET_SAMPLING_RATE = 16000
 

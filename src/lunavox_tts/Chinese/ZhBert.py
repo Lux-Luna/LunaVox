@@ -6,7 +6,7 @@ from typing import List, Optional
 
 import numpy as np
 import torch
-from transformers import AutoModelForMaskedLM, AutoTokenizer
+from transformers import AutoTokenizer, BertForMaskedLM
 
 from ..Utils.GPTSoVITS import ensure_default_bert_env, find_repo_root
 
@@ -22,7 +22,7 @@ os.environ.setdefault("TRANSFORMERS_NO_TORCHVISION", "1")
 os.environ.setdefault("DISABLE_TRANSFORMERS_IMAGE_TRANSFORMS", "1")
 
 _tokenizer: Optional[AutoTokenizer] = None
-_model: Optional[AutoModelForMaskedLM] = None
+_model: Optional[BertForMaskedLM] = None
 
 
 def _resolve_bert_base_path() -> Optional[str]:
@@ -74,14 +74,14 @@ def _load_model() -> None:
 
     if base_path:
         _tokenizer = AutoTokenizer.from_pretrained(base_path)
-        _model = AutoModelForMaskedLM.from_pretrained(base_path)
+        _model = BertForMaskedLM.from_pretrained(base_path)
     else:
         repo_root = Path(__file__).resolve().parents[3]
         base_dir = repo_root / "Data" / "chinese-roberta-wwm-ext-large"
         base_dir.mkdir(parents=True, exist_ok=True)
         model_id = "hfl/chinese-roberta-wwm-ext-large"
         _tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=str(base_dir))
-        _model = AutoModelForMaskedLM.from_pretrained(model_id, cache_dir=str(base_dir))
+        _model = BertForMaskedLM.from_pretrained(model_id, cache_dir=str(base_dir))
         _tokenizer.save_pretrained(str(base_dir))
         _model.save_pretrained(str(base_dir))
 
@@ -96,7 +96,11 @@ def compute_bert_phone_features(norm_text: str, word2ph: List[int]) -> np.ndarra
 
     try:
         _load_model()
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to load BERT model: {e}")
+        import traceback
+        traceback.print_exc()
         return np.zeros((sum(word2ph), 1024), dtype=np.float32)
 
     assert _tokenizer is not None and _model is not None

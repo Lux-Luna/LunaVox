@@ -88,6 +88,7 @@ class ModelManager:
         self.character_to_model: dict[str, dict[str, InferenceSession]] = LRUCacheDict(
             capacity=int(capacity_str))
         self.character_model_paths: dict[str, str] = {}  # 创建一个持久化字典来存储角色模型路径
+        self.character_versions: dict[str, str] = {}  # 存储每个角色的模型版本
         self.providers = ["CPUExecutionProvider"]
 
         self.cn_hubert: Optional[InferenceSession] = None
@@ -145,6 +146,21 @@ class ModelManager:
             return True
 
         convert_bins_to_fp32(model_dir)
+        
+        # Load model version metadata
+        model_version = 'v2'  # Default
+        model_info_path = os.path.join(model_dir, 'model_info.json')
+        if os.path.exists(model_info_path):
+            try:
+                import json
+                with open(model_info_path, 'r', encoding='utf-8') as f:
+                    model_info = json.load(f)
+                    model_version = model_info.get('version', 'v2')
+                logger.info(f"Loaded model version metadata: {model_version}")
+            except Exception as e:
+                logger.warning(f"Failed to load model metadata, defaulting to v2: {e}")
+        else:
+            logger.info(f"No model_info.json found, assuming v2")
 
         model_dict: dict[str, InferenceSession] = {}
         model_filename: list[str] = [_GSVModelFile.T2S_ENCODER,
@@ -169,18 +185,26 @@ class ModelManager:
 
         self.character_to_model[character_name] = model_dict
         self.character_model_paths[character_name] = model_dir
+        self.character_versions[character_name] = model_version
 
         if not context.current_speaker:
             context.current_speaker = character_name
 
         return True
 
+    def get_character_version(self, character_name: str) -> str:
+        """Get the model version for a character (v2, v2Pro, v2ProPlus)."""
+        character_name = character_name.lower()
+        return self.character_versions.get(character_name, 'v2')
+
     def remove_character(self, character_name: str) -> None:
         character_name = character_name.lower()
         if character_name in self.character_to_model:
             del self.character_to_model[character_name]
-            gc.collect()
-            logger.info(f"Character {character_name.capitalize()} removed successfully.")
+        if character_name in self.character_versions:
+            del self.character_versions[character_name]
+        gc.collect()
+        logger.info(f"Character {character_name.capitalize()} removed successfully.")
 
     def clean_cache(self) -> None:
         temp_weights: list[str] = [_GSVModelFile.T2S_DECODER_WEIGHT_FP32, _GSVModelFile.VITS_WEIGHT_FP32]

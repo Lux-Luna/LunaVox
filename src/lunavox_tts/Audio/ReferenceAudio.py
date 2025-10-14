@@ -14,17 +14,25 @@ from ..Utils.Constants import BERT_FEATURE_DIM
 from ..Utils.Shared import context
 from ..Utils.Utils import LRUCacheDict
 
+# Import SV extraction for v2Pro/v2ProPlus
+try:
+    from .SpeakerVector import extract_sv_embedding
+    _SV_AVAILABLE = True
+except ImportError:
+    _SV_AVAILABLE = False
+
 
 class ReferenceAudio:
-    _prompt_cache: dict[tuple[str, str], "ReferenceAudio"] = LRUCacheDict(
+    _prompt_cache: dict[tuple[str, str, str], "ReferenceAudio"] = LRUCacheDict(
         capacity=int(os.getenv("Max_Cached_Reference_Audio", "10"))
     )
 
-    def __new__(cls, prompt_wav: str, prompt_text: str, language: str = "auto"):
-        key = (prompt_wav, (language or "auto"))
+    def __new__(cls, prompt_wav: str, prompt_text: str, language: str = "auto", model_version: str = 'v2'):
+        # Cache key includes model_version to avoid conflicts
+        key = (prompt_wav, (language or "auto"), model_version)
         if key in cls._prompt_cache:
             instance = cls._prompt_cache[key]
-            if instance.text != prompt_text or instance.language != key[1]:
+            if instance.text != prompt_text or instance.language != language:
                 instance.set_text(prompt_text, language)
             return instance
 
@@ -32,14 +40,16 @@ class ReferenceAudio:
         cls._prompt_cache[key] = instance
         return instance
 
-    def __init__(self, prompt_wav: str, prompt_text: str, language: str = "auto"):
+    def __init__(self, prompt_wav: str, prompt_text: str, language: str = "auto", model_version: str = 'v2'):
         if hasattr(self, "_initialized"):
             return
 
         self.text: str = prompt_text
         self.language: str = language or "auto"
+        self.model_version: str = model_version
         self.phonemes_seq: Optional[np.ndarray] = None
         self.text_bert: Optional[np.ndarray] = None
+        self.sv_emb: Optional[np.ndarray] = None
         self.set_text(prompt_text, language)
 
         self.audio_32k: Optional[np.ndarray] = load_audio(
@@ -47,13 +57,43 @@ class ReferenceAudio:
             target_sampling_rate=32000,
         )
         audio_16k: np.ndarray = soxr.resample(self.audio_32k, 32000, 16000, quality="hq")
-        audio_16k = np.expand_dims(audio_16k, axis=0)
-
+        
+        # Extract SSL content (always needed)
+        audio_16k_batch = np.expand_dims(audio_16k, axis=0)
         if not model_manager.cn_hubert:
             model_manager.load_cn_hubert()
         self.ssl_content: Optional[np.ndarray] = model_manager.cn_hubert.run(
-            None, {"input_values": audio_16k}
+            None, {"input_values": audio_16k_batch}
         )[0]
+        
+        # Extract speaker vector for v2Pro/v2ProPlus
+        if model_version in ['v2Pro', 'v2ProPlus']:
+            if _SV_AVAILABLE:
+                self.sv_emb = extract_sv_embedding(audio_16k)  # Pass 1D array
+                if self.sv_emb is None:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        f"Failed to extract speaker embedding for {model_version}. "
+                        f"Inference may not work correctly."
+                    )
+                else:
+                    # Validate SV embedding shape
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    if self.sv_emb.shape != (1, 20480):
+                        logger.error(
+                            f"Invalid speaker embedding shape: {self.sv_emb.shape}, expected (1, 20480). "
+                            f"Please check ERes2NetV2 model compatibility."
+                        )
+                        raise ValueError(f"Speaker embedding shape mismatch: {self.sv_emb.shape} != (1, 20480)")
+                    logger.debug(f"✓ Speaker embedding extracted: shape={self.sv_emb.shape}, "
+                               f"range=[{self.sv_emb.min():.3f}, {self.sv_emb.max():.3f}]")
+            else:
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Speaker vector extraction not available for {model_version}. "
+                    f"Please ensure torchaudio is installed."
+                )
 
         self._initialized = True
 

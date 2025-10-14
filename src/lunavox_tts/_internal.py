@@ -33,6 +33,13 @@ from .Utils.Shared import context
 from .Client import Client
 from .PredefinedCharacter import download_predefined_character_model
 
+# Import for multi-reference SV averaging
+try:
+    from .Audio.SpeakerVector import average_sv_embeddings
+    _SV_AVERAGING_AVAILABLE = True
+except ImportError:
+    _SV_AVERAGING_AVAILABLE = False
+
 # A module-level private dictionary to store reference audio configurations.
 _reference_audios: dict[str, dict] = {}
 SUPPORTED_AUDIO_EXTS = {'.wav', '.flac', '.ogg', '.aiff', '.aif'}
@@ -85,6 +92,7 @@ def set_reference_audio(
         character_name (str): The name of the character.
         audio_path (str | PathLike): The file path to the reference audio (e.g., a WAV file).
         audio_text (str): The transcript of the reference audio.
+        audio_language (str, optional): Language of the reference audio.
     """
     audio_path: str = os.fspath(audio_path)
 
@@ -96,15 +104,20 @@ def set_reference_audio(
         )
         return
 
+    # Get model version for the character
+    model_version = model_manager.get_character_version(character_name)
+
     _reference_audios[character_name] = {
         'audio_path': audio_path,
         'audio_text': audio_text,
         'audio_lang': audio_language,
+        'model_version': model_version,
     }
     context.current_prompt_audio = ReferenceAudio(
         prompt_wav=audio_path,
         prompt_text=audio_text,
         language=audio_language or 'auto',
+        model_version=model_version,
     )
 
 
@@ -154,10 +167,13 @@ async def tts_async(
 
     # 设置 TTS 上下文
     context.current_speaker = character_name
+    ref_info = _reference_audios[character_name]
+    model_version = ref_info.get('model_version', model_manager.get_character_version(character_name))
     context.current_prompt_audio = ReferenceAudio(
-        prompt_wav=_reference_audios[character_name]['audio_path'],
-        prompt_text=_reference_audios[character_name]['audio_text'],
-        language=_reference_audios[character_name].get('audio_lang') or 'auto',
+        prompt_wav=ref_info['audio_path'],
+        prompt_text=ref_info['audio_text'],
+        language=ref_info.get('audio_lang') or 'auto',
+        model_version=model_version,
     )
 
     # 3. 使用新的回调接口启动 TTS 会话
@@ -215,10 +231,12 @@ def tts(
     normalized_language = language if language in ["ja", "en", "zh"] else "ja"
     context.current_language = normalized_language
     ref_info = _reference_audios[character_name]
+    model_version = ref_info.get('model_version', model_manager.get_character_version(character_name))
     context.current_prompt_audio = ReferenceAudio(
         prompt_wav=ref_info['audio_path'],
         prompt_text=ref_info['audio_text'],
         language=ref_info.get('audio_lang') or 'auto',
+        model_version=model_version,
     )
 
     tts_player.start_session(

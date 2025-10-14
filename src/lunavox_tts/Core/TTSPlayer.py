@@ -157,7 +157,10 @@ class TTSPlayer:
 
     def _save_session_audio(self):
         try:
-            full_audio = np.concatenate(self._session_audio_chunks, axis=0)
+            # Flatten each chunk before concatenating (handles variable-length chunks from dynamic ONNX)
+            flattened_chunks = [chunk.flatten() if chunk.ndim > 1 else chunk 
+                              for chunk in self._session_audio_chunks]
+            full_audio = np.concatenate(flattened_chunks, axis=0)
             with wave.open(self._current_save_path, 'wb') as wf:
                 wf.setnchannels(self.channels)
                 wf.setsampwidth(self.bytes_per_sample)

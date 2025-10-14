@@ -12,6 +12,7 @@ REPO_SRC = REPO_ROOT / "src"
 if str(REPO_SRC) not in sys.path:
     sys.path.insert(0, str(REPO_SRC))
 import lunavox_tts as lunavox
+from lunavox_tts import unload_character
 import gradio as gr
 from converter import render_converter_ui
 
@@ -20,6 +21,7 @@ from converter import render_converter_ui
 # ------------------------------
 DATA_DIR = REPO_ROOT / "Data"
 CHAR_MODEL_DIR = DATA_DIR / "character_model"
+CHAR_MODEL_DIR_V2_PRO_PLUS = CHAR_MODEL_DIR / "v2_pro_plus"
 AUDIO_RESOURCES_DIR = DATA_DIR / "audio_resources"
 OUTPUT_DIR = REPO_ROOT / "Output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -34,40 +36,93 @@ os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 # ------------------------------
 # Utilities
 # ------------------------------
-def _is_valid_character_dir(path: Path) -> bool:
-    required_onnx = {
-        't2s_encoder_fp32.onnx',
-        't2s_first_stage_decoder_fp32.onnx',
-        't2s_stage_decoder_fp32.onnx',
-        'vits_fp32.onnx',
-    }
-    # 需要 fp16 权重来生成 fp32（加载前会自动生成）
-    required_fp16_bin = {
-        't2s_shared_fp16.bin',
-        'vits_fp16.bin',
-    }
-
+def _is_valid_character_dir(path: Path, version: str = "v2") -> bool:
+    """验证角色模型目录是否有效
+    
+    Args:
+        path: 模型目录路径
+        version: 模型版本 ("v2" 或 "v2_pro_plus")
+    """
     if not path.is_dir():
         return False
-
+    
     names = {p.name for p in path.iterdir() if p.is_file()}
-    if not required_onnx.issubset(names):
-        return False
-    if not required_fp16_bin.issubset(names):
-        return False
-    return True
+    
+    if version == "v2":
+        required_onnx = {
+            't2s_encoder_fp32.onnx',
+            't2s_first_stage_decoder_fp32.onnx',
+            't2s_stage_decoder_fp32.onnx',
+            'vits_fp32.onnx',
+        }
+        # 需要 fp16 权重来生成 fp32（加载前会自动生成）
+        required_fp16_bin = {
+            't2s_shared_fp16.bin',
+            'vits_fp16.bin',
+        }
+        
+        if not required_onnx.issubset(names):
+            return False
+        if not required_fp16_bin.issubset(names):
+            return False
+        return True
+    
+    elif version == "v2_pro_plus":
+        # v2 pro plus 使用相同的文件结构
+        required_onnx = {
+            't2s_encoder_fp32.onnx',
+            't2s_first_stage_decoder_fp32.onnx',
+            't2s_stage_decoder_fp32.onnx',
+            'vits_fp32.onnx',
+        }
+        required_fp16_bin = {
+            't2s_shared_fp16.bin',
+            'vits_fp16.bin',
+        }
+        
+        if not required_onnx.issubset(names):
+            return False
+        if not required_fp16_bin.issubset(names):
+            return False
+        return True
+    
+    return False
 
 
-def list_character_folders() -> List[str]:
-    if not CHAR_MODEL_DIR.exists():
+def list_character_folders(version: str = "v2") -> List[str]:
+    """列出指定版本的角色模型文件夹
+    
+    Args:
+        version: 模型版本 ("v2" 或 "v2_pro_plus")
+    """
+    if version == "v2":
+        base_dir = CHAR_MODEL_DIR
+    elif version == "v2_pro_plus":
+        base_dir = CHAR_MODEL_DIR_V2_PRO_PLUS
+    else:
         return []
-    folders = [p.name for p in CHAR_MODEL_DIR.iterdir() if _is_valid_character_dir(p)]
+    
+    if not base_dir.exists():
+        return []
+    
+    folders = [p.name for p in base_dir.iterdir() if _is_valid_character_dir(p, version)]
     folders.sort()
     return folders
 
 
-def get_model_dir(character_name: str) -> Path:
-    return CHAR_MODEL_DIR / character_name
+def get_model_dir(character_name: str, version: str = "v2") -> Path:
+    """获取角色模型目录路径
+    
+    Args:
+        character_name: 角色名称
+        version: 模型版本 ("v2" 或 "v2_pro_plus")
+    """
+    if version == "v2":
+        return CHAR_MODEL_DIR / character_name
+    elif version == "v2_pro_plus":
+        return CHAR_MODEL_DIR_V2_PRO_PLUS / character_name
+    else:
+        return CHAR_MODEL_DIR / character_name
 
 
 def list_reference_audio_resources(character_name: str) -> List[Tuple[str, str]]:
@@ -117,17 +172,43 @@ def load_default_prompt(character_name: str) -> Tuple[Optional[str], Optional[st
     return None, None, ""
 
 
-def ensure_character_loaded(character_name: str) -> Tuple[str, List[Tuple[str, str]]]:
-    model_dir = get_model_dir(character_name)
-    lunavox.load_character(character_name, str(model_dir))
+def ensure_character_loaded(character_name: str, version: str = "v2") -> Tuple[str, List[Tuple[str, str]]]:
+    """加载角色模型
     
-    # 同时搜索参考音频资源
-    audio_resources = list_reference_audio_resources(character_name)
-    
-    if audio_resources:
-        return f"角色 {character_name} 模型已加载，找到 {len(audio_resources)} 个参考音频资源。", audio_resources
-    else:
-        return f"角色 {character_name} 模型已加载。", []
+    Args:
+        character_name: 角色名称
+        version: 模型版本 ("v2" 或 "v2_pro_plus")
+    """
+    try:
+        model_dir = get_model_dir(character_name, version)
+        
+        # 检查模型目录是否存在
+        if not model_dir.exists():
+            version_display = "v2 Pro Plus" if version == "v2_pro_plus" else "v2"
+            return f"错误：角色 {character_name} 的 {version_display} 模型目录不存在：{model_dir}", []
+        
+        # 先卸载同名角色（如果存在）以避免冲突
+        try:
+            lunavox.unload_character(character_name)
+        except Exception as e:
+            # 卸载失败是正常的，可能角色本来就不存在
+            print(f"卸载角色时出错（可忽略）: {e}")
+        
+        # 加载新模型
+        lunavox.load_character(character_name, str(model_dir))
+        
+        # 同时搜索参考音频资源
+        audio_resources = list_reference_audio_resources(character_name)
+        
+        version_display = "v2 Pro Plus" if version == "v2_pro_plus" else "v2"
+        if audio_resources:
+            return f"角色 {character_name} ({version_display}) 模型已加载，找到 {len(audio_resources)} 个参考音频资源。", audio_resources
+        else:
+            return f"角色 {character_name} ({version_display}) 模型已加载。", []
+            
+    except Exception as e:
+        version_display = "v2 Pro Plus" if version == "v2_pro_plus" else "v2"
+        return f"加载角色 {character_name} ({version_display}) 模型时出错：{str(e)}", []
 
 
 def set_reference(character_name: str, audio_path: str, audio_text: str, audio_lang: str = "ja") -> str:
@@ -193,25 +274,36 @@ def build_ui() -> gr.Blocks:
     with gr.Blocks(css="footer {visibility: hidden}") as demo:
         gr.Markdown("""
         **LunaVox 本地 WebUI**  
-        - 自动扫描 `Data/character_model` 下的角色模型  
-        - 上传参考音频与文本，一键合成日文语音  
+        - 支持 v2 和 v2 Pro Plus 模型版本
+        - 自动扫描对应版本目录下的角色模型  
+        - 上传参考音频与文本，一键合成语音  
         - 生成音频保存在 `Output` 目录下，并可在线试听
         """)
 
         with gr.Row():
             with gr.Column(scale=1):
-                character_list = list_character_folders()
-                default_character = character_list[0] if character_list else ""
-                dd_character = gr.Dropdown(
-                    choices=character_list,
-                    value=default_character,
-                    label="角色选择",
+                # 版本选择
+                dd_version = gr.Dropdown(
+                    choices=["v2", "v2_pro_plus"],
+                    value="v2",
+                    label="模型版本 / Model Version",
                     interactive=True,
                 )
+                
+                character_list = list_character_folders("v2")
+                dd_character = gr.Dropdown(
+                    choices=character_list,
+                    value=None,
+                    label="角色选择",
+                    interactive=True,
+                    info="请选择一个角色进行加载"
+                )
+                btn_load_character = gr.Button("加载角色", variant="primary")
                 status = gr.Markdown("准备就绪。")
 
                 # States
-                st_character = gr.State(default_character)
+                st_version = gr.State("v2")
+                st_character = gr.State("")
                 st_ref_audio_path = gr.State("")
                 st_ref_audio_text = gr.State("")
 
@@ -259,22 +351,77 @@ def build_ui() -> gr.Blocks:
         # Event handlers
         # ------------------------------
         def on_app_load() -> tuple:
-            characters = list_character_folders()
+            version = "v2"
+            characters = list_character_folders(version)
             if not characters:
-                return "未找到任何角色模型，请将模型放入 Data/character_model 下。", "", "", "", gr.update(choices=[])
+                return "未找到任何角色模型，请将模型放入 Data/character_model 下。", version, "", "", "", gr.update(choices=[])
 
-            character = characters[0]
-            msg_load, audio_resources = ensure_character_loaded(character)
-            return (msg_load, character, "", "", gr.update(choices=audio_resources))
+            # 不自动加载模型，让用户手动选择
+            return ("请选择要加载的角色模型。", version, "", "", "", gr.update(choices=characters))
 
-        demo.load(on_app_load, outputs=[status, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown])
+        demo.load(on_app_load, outputs=[status, st_version, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown])
 
-        def on_character_change(new_char: str):
+        def on_version_change(current_character: str, new_version: str):
+            """处理版本切换"""
+            if not new_version:
+                return "请选择版本。", new_version, gr.update(choices=[]), "", "", "", gr.update(choices=[])
+            
+            # 如果有当前角色，先卸载以确保重新加载（即使新版本有同名角色）
+            if current_character:
+                try:
+                    lunavox.unload_character(current_character)
+                except Exception as e:
+                    # 即使卸载失败也继续，可能角色本来就不存在
+                    print(f"卸载角色时出错（可忽略）: {e}")
+            
+            characters = list_character_folders(new_version)
+            if not characters:
+                version_dir = "Data/character_model/v2_pro_plus" if new_version == "v2_pro_plus" else "Data/character_model"
+                return f"未找到任何 {new_version} 角色模型，请将模型放入 {version_dir} 下。", new_version, gr.update(choices=[]), "", "", "", gr.update(choices=[])
+            
+            # 不自动加载第一个角色，让用户手动选择
+            version_display = "v2 Pro Plus" if new_version == "v2_pro_plus" else "v2"
+            return (
+                f"已切换到 {version_display} 版本，请选择要加载的角色。",
+                new_version,
+                gr.update(choices=characters, value=None),
+                "",
+                "",
+                "",
+                gr.update(choices=[]),
+            )
+
+        dd_version.change(
+            on_version_change,
+            inputs=[st_character, dd_version],
+            outputs=[status, st_version, dd_character, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown],
+        )
+
+        def on_load_character_click(version: str, character: str):
+            """处理加载角色按钮点击"""
+            if not character:
+                return "请先选择一个角色。", "", "", "", gr.update(choices=[])
+            
+            msg, audio_resources = ensure_character_loaded(character, version)
+            return msg, character, "", "", gr.update(choices=audio_resources)
+
+        btn_load_character.click(
+            on_load_character_click,
+            inputs=[st_version, dd_character],
+            outputs=[status, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown],
+        )
+
+        def on_character_change(current_character: str, version: str, new_char: str):
+            """处理角色选择变更（仅更新状态，不自动加载）"""
             if not new_char:
                 return "请选择角色。", gr.update(), gr.update(), new_char, "", "", gr.update(choices=[])
-            msg, audio_resources = ensure_character_loaded(new_char)
+            
+            # 仅更新状态，不自动加载模型
+            # 搜索参考音频资源用于显示
+            audio_resources = list_reference_audio_resources(new_char)
+            
             return (
-                msg,
+                f"已选择角色 {new_char}，点击'加载角色'按钮进行加载。",
                 gr.update(value=None),
                 gr.update(value=""),
                 new_char,
@@ -285,7 +432,7 @@ def build_ui() -> gr.Blocks:
 
         dd_character.change(
             on_character_change,
-            inputs=[dd_character],
+            inputs=[st_character, st_version, dd_character],
             outputs=[status, ref_audio, ref_text, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown],
         )
         

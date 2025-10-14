@@ -134,5 +134,5 @@ tmp/
 # Documentation folder - ignore description folder
 description/
 
-# Ensure src/lunavox_tts/Data is tracked (override Data/ ignore)
-!src/lunavox_tts/Data/
+# Ignore src/lunavox_tts/Data (tracked on Hugging Face instead)
+src/lunavox_tts/Data/

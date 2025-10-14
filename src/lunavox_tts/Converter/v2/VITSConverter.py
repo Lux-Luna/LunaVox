@@ -14,6 +14,8 @@ class VITSConverter:
     1. 一个用于分发的半精度 (fp16) .bin 权重文件。
     2. 一个与全精度 (fp32) 布局兼容的 ONNX 模型。
     3. 一个可以将 fp16 .bin 文件还原为 fp32 .bin 的工具函数。
+    
+    支持 v2, v2Pro, v2ProPlus 三个版本。
     """
 
     def __init__(self,
@@ -22,12 +24,14 @@ class VITSConverter:
                  key_list_file: str,
                  output_dir: str,
                  cache_dir: str,
+                 model_version: str = 'v2',
                  ):
         self.torch_pth_path: str = torch_pth_path
         self.vits_onnx_path: str = vits_onnx_path
         self.key_list_file: str = key_list_file
         self.output_dir: str = output_dir
         self.cache_dir: str = cache_dir
+        self.model_version: str = model_version
         # 定义输出文件路径
         self.fp16_bin_path: str = os.path.join(self.output_dir, "vits_fp16.bin")
         self.index_table_path: str = os.path.join(self.cache_dir, "vits_weights_index_fp32.json")
@@ -46,9 +50,9 @@ class VITSConverter:
         (1) 创建一个半精度 (fp16) 的 .bin 文件，但生成一个
             描述全精度 (fp32) 布局的索引表。
         """
-        # 加载 key 列表
+        # 加载 key 列表（过滤空行）
         with open(self.key_list_file, 'r') as f:
-            onnx_keys = [line.strip() for line in f.readlines()]
+            onnx_keys = [line.strip() for line in f.readlines() if line.strip()]
 
         # 加载 PyTorch 模型权重
         torch_state_dict = load_sovits_model(self.torch_pth_path)['weight']

@@ -66,12 +66,149 @@ class LunaVoxEngine:
             first_eos_index = eos_indices[-1][0]
             semantic_tokens = semantic_tokens[..., :first_eos_index]
 
-        audio_32k = np.expand_dims(prompt_audio.audio_32k, axis=0)  # 增加 Batch_Size 维度
-        return vocoder.run(None, {
+        # Ensure semantic_tokens has correct shape (1, 1, N) for VITS
+        if semantic_tokens.ndim == 2:
+            semantic_tokens = np.expand_dims(semantic_tokens, axis=1)  # (1, M) -> (1, 1, M)
+        
+        # Prepare ref_audio based on model version
+        # v2: uses raw audio (2D)
+        # v2Pro/v2ProPlus: uses STFT spectrogram (3D)
+        model_version = prompt_audio.model_version if hasattr(prompt_audio, 'model_version') else 'v2'
+        
+        if model_version in ['v2Pro', 'v2ProPlus']:
+            # Extract STFT spectrogram for v2Pro/v2ProPlus (matches GPT-SoVITS get_spepc)
+            try:
+                from ..Audio.SpectrogramExtractor import extract_stft_spectrogram
+                ref_audio_features = extract_stft_spectrogram(
+                    prompt_audio.audio_32k,
+                    n_fft=2048,  # filter_length → 1025 bins (2048//2+1)
+                    hop_length=640,
+                    win_length=2048,
+                    center=False
+                )
+            except Exception as e:
+                # Fallback: try mel-spectrogram
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"STFT spectrogram extraction failed ({e}), trying mel-spectrogram fallback"
+                )
+                try:
+                    from ..Audio.MelExtractor import extract_mel_spectrogram
+                    ref_audio_features = extract_mel_spectrogram(prompt_audio.audio_32k, n_mels=704)
+                except:
+                    # Last resort: use SSL features
+                    logging.getLogger(__name__).warning(
+                        "All feature extraction failed, using SSL features (may cause issues)"
+                    )
+                    ref_audio_features = prompt_audio.ssl_content
+                    if ref_audio_features.ndim == 3:
+                        ref_audio_features = np.transpose(ref_audio_features, (0, 2, 1))
+        else:
+            # v2: use raw audio (2D: batch, samples)
+            ref_audio_features = np.expand_dims(prompt_audio.audio_32k, axis=0)
+        
+        # Build vocoder inputs
+        vocoder_inputs = {
             "text_seq": text_seq,
             "pred_semantic": semantic_tokens,
-            "ref_audio": audio_32k
-        })[0]
+            "ref_audio": ref_audio_features
+        }
+        
+        # Add speaker vector for v2Pro/v2ProPlus
+        if prompt_audio.sv_emb is not None:
+            vocoder_inputs["sv_emb"] = prompt_audio.sv_emb
+        
+        # Validate inputs before calling vocoder
+        self._validate_vocoder_inputs(vocoder, vocoder_inputs)
+        
+        # Run VITS
+        vits_output = vocoder.run(None, vocoder_inputs)[0]
+        
+        # Debug: check output range
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"VITS output: shape={vits_output.shape}, "
+                    f"range=[{vits_output.min():.6f}, {vits_output.max():.6f}], "
+                    f"RMS={np.sqrt(np.mean(vits_output**2)):.6f}")
+        
+        return vits_output
+    
+    def _validate_vocoder_inputs(self, vocoder: ort.InferenceSession, 
+                                 inputs: dict) -> None:
+        """
+        Validate vocoder input shapes and types before inference.
+        Provides actionable error messages if validation fails.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Get expected inputs from ONNX model
+        expected_inputs = {inp.name: inp for inp in vocoder.get_inputs()}
+        
+        # Check all required inputs are provided
+        for name in expected_inputs:
+            if name not in inputs:
+                if name == 'sv_emb':
+                    logger.error(
+                        f"Missing 'sv_emb' input for vocoder. "
+                        f"This model requires v2Pro/v2ProPlus with speaker vector. "
+                        f"Please ensure the model was converted with correct version detection."
+                    )
+                else:
+                    logger.error(f"Missing required input: {name}")
+                raise ValueError(f"Missing required input: {name}")
+        
+        # Validate shapes and types
+        for name, value in inputs.items():
+            if name not in expected_inputs:
+                continue  # Skip extra inputs
+            
+            expected = expected_inputs[name]
+            actual_shape = value.shape
+            actual_dtype = value.dtype
+            
+            # Validate dtype
+            if expected.type == 'tensor(int64)' and actual_dtype != np.int64:
+                logger.error(
+                    f"Input '{name}' has wrong dtype: {actual_dtype}, expected int64"
+                )
+                raise TypeError(f"Input '{name}' dtype mismatch: {actual_dtype} != int64")
+            elif expected.type == 'tensor(float)' and actual_dtype != np.float32:
+                logger.error(
+                    f"Input '{name}' has wrong dtype: {actual_dtype}, expected float32"
+                )
+                raise TypeError(f"Input '{name}' dtype mismatch: {actual_dtype} != float32")
+            
+            # Validate specific shapes
+            if name == 'sv_emb':
+                if actual_shape != (1, 20480):
+                    logger.error(
+                        f"Speaker embedding has wrong shape: {actual_shape}, expected (1, 20480). "
+                        f"Please check ERes2NetV2 model output."
+                    )
+                    raise ValueError(f"Speaker embedding shape mismatch: {actual_shape} != (1, 20480)")
+            elif name == 'text_seq':
+                if len(actual_shape) != 2 or actual_shape[0] != 1:
+                    logger.error(
+                        f"Text sequence has wrong shape: {actual_shape}, expected (1, N)"
+                    )
+                    raise ValueError(f"Text sequence shape invalid: {actual_shape}")
+            elif name == 'pred_semantic':
+                # Semantic tokens can be (1, M) or (1, 1, M)
+                if len(actual_shape) not in [2, 3] or actual_shape[0] != 1:
+                    logger.error(
+                        f"Semantic tokens have wrong shape: {actual_shape}, expected (1, M) or (1, 1, M)"
+                    )
+                    raise ValueError(f"Semantic tokens shape invalid: {actual_shape}")
+            elif name == 'ref_audio':
+                # Reference audio can be (1, samples) for raw audio or (1, H, W) for features
+                if len(actual_shape) not in [2, 3] or actual_shape[0] != 1:
+                    logger.error(
+                        f"Reference audio has wrong shape: {actual_shape}, expected (1, N) or (1, H, W)"
+                    )
+                    raise ValueError(f"Reference audio shape invalid: {actual_shape}")
+        
+        logger.debug(f"✓ Vocoder input validation passed")
 
     def t2s_cpu(
             self,

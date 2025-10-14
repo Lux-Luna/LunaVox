@@ -16,6 +16,7 @@ DATA_DIR = REPO_ROOT / "Data"
 CHAR_DIR = DATA_DIR / "character_model"
 AUDIO_DIR = DATA_DIR / "audio_resources"
 TEXT_DIR = REPO_ROOT / "src" / "text"
+TTS_DATA_DIR = REPO_ROOT / "src" / "lunavox_tts" / "Data"
 
 REQUIRED_CN_HUBERT = DATA_DIR / "chinese-hubert-base.onnx"
 REQUIRED_OPENJTALK_DIR = DATA_DIR / "open_jtalk_dic_utf_8-1.11"
@@ -28,6 +29,14 @@ CHAR_REQUIRED_FILES = [
     "t2s_shared_fp16.bin",
     "vits_fp32.onnx",
     "vits_fp16.bin",
+]
+
+# Minimal required files within LunaVox/src/lunavox_tts/Data to consider TTS models present
+TTS_REQUIRED_PATHS = [
+    TTS_DATA_DIR / "sv" / "eres2netv2.onnx",
+    TTS_DATA_DIR / "v2" / "Models" / "vits_fp32.onnx",
+    TTS_DATA_DIR / "v2Pro" / "Models" / "vits_fp32.onnx",
+    TTS_DATA_DIR / "v2ProPlus" / "Models" / "vits_fp32.onnx",
 ]
 
 
@@ -84,6 +93,14 @@ def need_download() -> Tuple[bool, List[Tuple[str, List[str]]]]:
     existing_audio_chars = list_existing_audio_characters()
     if not existing_audio_chars:
         missing_summary.append(("audio_resources", ["audio_resources directory with character folders"]))
+
+    # Check TTS (src/lunavox_tts/Data)
+    tts_missing: List[str] = []
+    for p in TTS_REQUIRED_PATHS:
+        if not p.exists():
+            tts_missing.append(str(p.relative_to(REPO_ROOT)))
+    if tts_missing:
+        missing_summary.append(("tts_models", tts_missing))
 
     return (len(missing_summary) > 0), missing_summary
 
@@ -228,6 +245,19 @@ def ensure_data_from_hf() -> None:
                     if not dst.exists():
                         dst.write_bytes(path.read_bytes())
 
+    # Download TTS models under src/lunavox_tts/Data
+    tts_src_root = hf_root / "src" / "lunavox_tts" / "Data"
+    if tts_src_root.exists():
+        TTS_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        for path in tts_src_root.rglob("*"):
+            if path.is_dir():
+                (TTS_DATA_DIR / path.relative_to(tts_src_root)).mkdir(parents=True, exist_ok=True)
+            else:
+                dst = TTS_DATA_DIR / path.relative_to(tts_src_root)
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                if not dst.exists():
+                    dst.write_bytes(path.read_bytes())
+
     print("Data setup completed.")
 
 
@@ -240,10 +270,12 @@ __all__ = [
     "DATA_DIR",
     "CHAR_DIR",
     "AUDIO_DIR",
+    "TTS_DATA_DIR",
     "REQUIRED_CN_HUBERT",
     "REQUIRED_OPENJTALK_DIR",
     "REQUIRED_CHINESE_ROBERTA_DIR",
     "CHAR_REQUIRED_FILES",
+    "TTS_REQUIRED_PATHS",
     "list_existing_characters",
     "list_existing_audio_characters",
     "character_missing_files",
