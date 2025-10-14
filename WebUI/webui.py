@@ -89,6 +89,20 @@ def _is_valid_character_dir(path: Path, version: str = "v2") -> bool:
     return False
 
 
+def _to_lang_code(display: str) -> str:
+    """将下拉显示文本映射为语言代码。"""
+    mapping = {
+        "中文": "zh",
+        "英语": "en",
+        "日语": "ja",
+        # 容错：若直接传入代码
+        "zh": "zh",
+        "en": "en",
+        "ja": "ja",
+    }
+    return mapping.get((display or "").strip(), "ja")
+
+
 def list_character_folders(version: str = "v2") -> List[str]:
     """列出指定版本的角色模型文件夹
     
@@ -271,7 +285,7 @@ def synthesize(character_name: str, text: str, language: str) -> Tuple[Optional[
 # Gradio UI
 # ------------------------------
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(css="footer {visibility: hidden}") as demo:
+    with gr.Blocks(css="footer {visibility: hidden} .boxed {border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px; margin-bottom: 8px;}") as demo:
         gr.Markdown("""
         **LunaVox 本地 WebUI**  
         - 支持 v2 和 v2 Pro Plus 模型版本
@@ -280,72 +294,88 @@ def build_ui() -> gr.Blocks:
         - 生成音频保存在 `Output` 目录下，并可在线试听
         """)
 
-        with gr.Row():
-            with gr.Column(scale=1):
-                # 版本选择
-                dd_version = gr.Dropdown(
-                    choices=["v2", "v2_pro_plus"],
-                    value="v2",
-                    label="模型版本 / Model Version",
-                    interactive=True,
-                )
-                
-                character_list = list_character_folders("v2")
-                dd_character = gr.Dropdown(
-                    choices=character_list,
-                    value=None,
-                    label="角色选择",
-                    interactive=True,
-                    info="请选择一个角色进行加载"
-                )
-                btn_load_character = gr.Button("加载角色", variant="primary")
-                status = gr.Markdown("准备就绪。")
+        # 使用 Tab 切换模块，默认显示“语音合成”（第一个 Tab）
+        with gr.Tabs():
+            with gr.TabItem("语音合成"):
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        # 版本选择
+                        dd_version = gr.Dropdown(
+                            choices=["v2", "v2_pro_plus"],
+                            value="v2",
+                            label="模型版本 / Model Version",
+                            interactive=True,
+                        )
+                        
+                        character_list = list_character_folders("v2")
+                        dd_character = gr.Dropdown(
+                            choices=character_list,
+                            value=None,
+                            label="角色选择",
+                            interactive=True,
+                            info="请选择一个角色进行加载"
+                        )
+                        btn_load_character = gr.Button("加载角色", variant="primary")
+                        status = gr.Markdown("准备就绪。")
 
-                # States
-                st_version = gr.State("v2")
-                st_character = gr.State("")
-                st_ref_audio_path = gr.State("")
-                st_ref_audio_text = gr.State("")
+                        # States
+                        st_version = gr.State("v2")
+                        st_character = gr.State("")
+                        st_ref_audio_path = gr.State("")
+                        st_ref_audio_text = gr.State("")
 
-            with gr.Column(scale=2):
-                gr.Markdown("### 参考音频")
-                ref_lang_dd = gr.Dropdown(
-                    choices=["auto", "ja", "en", "zh"],
-                    value="ja",
-                    label="参考音频语言 / Prompt Language",
-                    interactive=True,
-                )
-                
-                # 参考音频资源下拉选择器
-                ref_audio_dropdown = gr.Dropdown(
-                    label="预设参考音频",
-                    choices=[],
-                    value=None,
-                    interactive=True,
-                    allow_custom_value=False,
-                    info="从Data/audio_resources中选择预设的参考音频"
-                )
-                
-                gr.Markdown("**或**")
-                
-                ref_audio = gr.Audio(
-                    label="上传参考音频",
-                    sources=["upload"],
-                    type="filepath",
-                )
-                auto_filename = gr.Checkbox(
-                    label="自动使用文件名作为参考文本",
-                    value=True,
-                    info="勾选后，上传音频文件时会自动将文件名（去除后缀）作为参考文本"
-                )
-                ref_text = gr.Textbox(label="参考音频文本", lines=2, placeholder="请输入与参考音频匹配的日文文本")
+                    with gr.Column(scale=2):
+                        gr.Markdown("### 参考音频")
+                        
+                        # 参考音频资源下拉选择器（独立框）
+                        with gr.Group(elem_classes=["boxed"]):
+                            ref_audio_dropdown = gr.Dropdown(
+                                label="预设参考音频（可选）",
+                                choices=[],
+                                value=None,
+                                interactive=True,
+                                allow_custom_value=False,
+                                info="从Data/audio_resources中选择预设的参考音频"
+                            )
 
-                gr.Markdown("### 文本合成")
-                lang_dd = gr.Dropdown(choices=["ja", "en", "zh"], value="ja", label="输出语言 / Output Language", interactive=True)
-                input_text = gr.Textbox(label="输入文本", lines=4, placeholder="请输入要合成的文本（ja/en）")
-                btn_tts = gr.Button("开始合成")
-                out_audio = gr.Audio(label="合成结果试听", type="filepath")
-                out_msg = gr.Markdown()
+                        # 参考音频语言（独立框，位于预设参考音频下方）
+                        with gr.Group(elem_classes=["boxed"]):
+                            ref_lang_dd = gr.Dropdown(
+                                choices=["中文", "英语", "日语"],
+                                value="日语",
+                                label="参考音频语言 / Prompt Language",
+                                interactive=True,
+                            )
+                        
+                        gr.Markdown("**或**")
+                        
+                        ref_audio = gr.Audio(
+                            label="上传参考音频",
+                            sources=["upload"],
+                            type="filepath",
+                        )
+                        auto_filename = gr.Checkbox(
+                            label="自动使用文件名作为参考文本",
+                            value=True,
+                            info="勾选后，上传音频文件时会自动将文件名（去除后缀）作为参考文本"
+                        )
+                        ref_text = gr.Textbox(label="参考音频文本", lines=2, placeholder="请输入与参考音频匹配的日文文本")
+
+                        gr.Markdown("### 文本合成")
+                        lang_dd = gr.Dropdown(
+                            choices=["日语", "英语", "中文"],
+                            value="日语",
+                            label="输出语言 / Output Language",
+                            interactive=True,
+                        )
+                        input_text = gr.Textbox(label="输入文本", lines=4, placeholder="请输入要合成的文本（ja/en）")
+                        btn_tts = gr.Button("开始合成")
+                        out_audio = gr.Audio(label="合成结果试听", type="filepath")
+                        out_msg = gr.Markdown()
+
+            with gr.TabItem("模型转换"):
+                # 将模型转换界面放入独立的标签页
+                render_converter_ui()
 
         # ------------------------------
         # Event handlers
@@ -446,7 +476,7 @@ def build_ui() -> gr.Blocks:
             display_name = Path(file_path).stem
             
             try:
-                msg = set_reference(character, file_path, display_name, ref_lang)
+                msg = set_reference(character, file_path, display_name, _to_lang_code(ref_lang))
                 return msg, character, file_path, display_name, gr.update(value=file_path), gr.update(value=display_name)
             except Exception as e:
                 return f"设置参考音频时出错: {e}", character, "", "", gr.update(value=None), gr.update(value="")
@@ -473,7 +503,7 @@ def build_ui() -> gr.Blocks:
             
             if audio_fp and (audio_tx or "").strip():
                 try:
-                    msg = set_reference(character, audio_fp, (audio_tx or "").strip(), ref_lang)
+                    msg = set_reference(character, audio_fp, (audio_tx or "").strip(), _to_lang_code(ref_lang))
                 except Exception as e:
                     msg = f"设置参考音频时出错: {e}"
             else:
@@ -495,7 +525,7 @@ def build_ui() -> gr.Blocks:
             if not character:
                 return "请选择角色。", character, audio_fp or "", audio_tx or ""
             if (audio_tx or "").strip() and audio_fp:
-                msg = set_reference(character, audio_fp, (audio_tx or "").strip(), ref_lang)
+                msg = set_reference(character, audio_fp, (audio_tx or "").strip(), _to_lang_code(ref_lang))
             else:
                 if (audio_tx or "").strip() and not audio_fp:
                     msg = "已填写参考文本，请上传参考音频以完成设置。"
@@ -518,10 +548,11 @@ def build_ui() -> gr.Blocks:
                 import lunavox_tts as lv
                 # set current language
                 from lunavox_tts.Utils.Shared import context
-                context.current_language = lang if lang in ["ja", "en", "zh"] else "ja"
+                lang_code = _to_lang_code(lang)
+                context.current_language = lang_code
             except Exception:
                 pass
-            audio_path, msg = synthesize(character, text_val, lang)
+            audio_path, msg = synthesize(character, text_val, lang_code)
             return audio_path, msg
 
         btn_tts.click(
@@ -529,9 +560,6 @@ def build_ui() -> gr.Blocks:
             inputs=[st_character, input_text, lang_dd],
             outputs=[out_audio, out_msg],
         )
-
-        # Add converter UI at the bottom as an optional panel
-        render_converter_ui()
 
     return demo
 

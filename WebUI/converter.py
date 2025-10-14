@@ -58,29 +58,28 @@ def _convert_models(ckpt_file, pth_file, out_dir_text: str, version: str = "v2")
 
 
 def render_converter_ui() -> None:
-    with gr.Accordion("GPT-SoVITS 模型转换器", open=False):
-        gr.Markdown(
-            "选择 GPT/T2S 的 .ckpt 与 VITS 的 .pth 文件，设置输出目录，点击转换。\n\n"
-            "支持 v2 和 v2 Pro Plus 版本模型。"
-        )
-        with gr.Row():
-            with gr.Column():
-                # 版本选择
-                conv_version = gr.Dropdown(
-                    choices=["v2", "v2_pro_plus"],
-                    value="v2",
-                    label="模型版本 / Model Version",
-                    interactive=True,
-                    info="选择要转换的模型版本"
-                )
-                in_ckpt = gr.File(label="选择 .ckpt (GPT/T2S)", file_types=[".ckpt"], type="filepath")
-                in_pth = gr.File(label="选择 .pth (VITS)", file_types=[".pth"], type="filepath")
-                out_dir = gr.Textbox(label="输出目录", value=str(REPO_ROOT / "Output" / "converted"))
-                btn_convert = gr.Button("开始转换", variant="primary")
-            with gr.Column():
-                out_title = gr.Markdown("准备就绪。")
-                out_msg = gr.Markdown("")
+    gr.Markdown(
+        "选择 GPT/T2S 的 .ckpt 与 VITS 的 .pth 文件，设置输出目录，点击转换。\n\n"
+        "支持 v2 和 v2 Pro Plus 版本模型。"
+    )
+    with gr.Row():
+        with gr.Column():
+            # 版本选择
+            conv_version = gr.Dropdown(
+                choices=["v2", "v2_pro_plus"],
+                value="v2",
+                label="模型版本 / Model Version",
+                interactive=True,
+                info="选择要转换的模型版本"
+            )
+            in_ckpt = gr.File(label="选择 .ckpt (GPT/T2S)", file_types=[".ckpt"], type="filepath")
+            in_pth = gr.File(label="选择 .pth (VITS)", file_types=[".pth"], type="filepath")
+            out_dir = gr.Textbox(label="输出目录", value=str(REPO_ROOT / "Output" / "converted"))
+            btn_convert = gr.Button("开始转换", variant="primary")
+        with gr.Column():
+            out_title = gr.Markdown("准备就绪。")
+            out_msg = gr.Markdown("")
 
-        btn_convert.click(_convert_models, inputs=[in_ckpt, in_pth, out_dir, conv_version], outputs=[out_title, out_msg])
+    btn_convert.click(_convert_models, inputs=[in_ckpt, in_pth, out_dir, conv_version], outputs=[out_title, out_msg])
 
 

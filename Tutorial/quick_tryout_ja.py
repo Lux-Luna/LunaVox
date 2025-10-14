@@ -22,7 +22,7 @@ os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'Data' / 'chinese-hubert-base.
 os.environ['OPEN_JTALK_DICT_DIR'] = str(REPO_ROOT / 'Data' / 'open_jtalk_dic_utf_8-1.11')
 
 # 使用Data目录下的本地模型文件
-model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'yuzuki_yukari')
+model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2' / 'yuzuki_yukari')
 lunavox.load_character('yuzuki_yukari', model_dir)
 
 # 设置参考音频（参考语言为日语）

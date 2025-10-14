@@ -39,6 +39,9 @@ TTS_REQUIRED_PATHS = [
     TTS_DATA_DIR / "v2ProPlus" / "Models" / "vits_fp32.onnx",
 ]
 
+# Only fetch/select these character_model subfolders from HF
+SELECTED_CHAR_FOLDERS = ["v2", "v2_pro_plus"]
+
 
 def _is_valid_character_dir(path: Path) -> bool:
     if not path.is_dir():
@@ -51,8 +54,11 @@ def _is_valid_character_dir(path: Path) -> bool:
 def list_existing_characters() -> List[Path]:
     if not CHAR_DIR.exists():
         return []
-    # Only include folders that have a complete set of required files
-    candidates = [p for p in CHAR_DIR.iterdir() if _is_valid_character_dir(p)]
+    # Include either selected character folders (v2, v2_pro_plus) or legacy folders that meet full requirements
+    candidates = [
+        p for p in CHAR_DIR.iterdir()
+        if (p.is_dir() and (p.name in SELECTED_CHAR_FOLDERS or _is_valid_character_dir(p)))
+    ]
     candidates.sort(key=lambda p: p.name)
     return candidates
 
@@ -84,10 +90,19 @@ def need_download() -> Tuple[bool, List[Tuple[str, List[str]]]]:
     if base_missing:
         missing_summary.append(("base", base_missing))
 
-    # Check character models (consider satisfied if any complete character exists)
-    existing_chars = list_existing_characters()
-    if not existing_chars:
-        missing_summary.append(("character_any", CHAR_REQUIRED_FILES.copy()))
+    # Check character models: only require specific folders (v2, v2_pro_plus)
+    if not CHAR_DIR.exists():
+        missing_summary.append((
+            "character_selected",
+            [str((CHAR_DIR / name).relative_to(REPO_ROOT)) + "/" for name in SELECTED_CHAR_FOLDERS]
+        ))
+    else:
+        char_missing: List[str] = []
+        for name in SELECTED_CHAR_FOLDERS:
+            if not (CHAR_DIR / name).exists():
+                char_missing.append(str((CHAR_DIR / name).relative_to(REPO_ROOT)) + "/")
+        if char_missing:
+            missing_summary.append(("character_selected", char_missing))
 
     # Check audio resources
     existing_audio_chars = list_existing_audio_characters()
@@ -203,27 +218,29 @@ def ensure_data_from_hf() -> None:
     char_src_root = hf_root / "Data" / "character_model"
     if char_src_root.exists():
         CHAR_DIR.mkdir(parents=True, exist_ok=True)
-        # Prefer only valid character folders (with all required files)
-        valid_candidates: List[Path] = []
-        for p in char_src_root.iterdir():
-            if p.is_dir():
-                names = {f.name for f in p.iterdir() if f.is_file()}
-                if all(name in names for name in CHAR_REQUIRED_FILES):
-                    valid_candidates.append(p)
-        valid_candidates.sort(key=lambda p: p.name)
-        if valid_candidates:
-            chosen = valid_candidates[0]
-            dst_char = CHAR_DIR / chosen.name
-            if not dst_char.exists():
-                dst_char.mkdir(parents=True, exist_ok=True)
-            for path in chosen.rglob("*"):
-                if path.is_dir():
-                    (dst_char / path.relative_to(chosen)).mkdir(parents=True, exist_ok=True)
-                else:
-                    dst = dst_char / path.relative_to(chosen)
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    if not dst.exists():
-                        dst.write_bytes(path.read_bytes())
+        # Only copy selected character folders; do not copy others like 'yuzuki_yukari'
+        for name in SELECTED_CHAR_FOLDERS:
+            src_char = char_src_root / name
+            if src_char.exists() and src_char.is_dir():
+                dst_char = CHAR_DIR / name
+                if dst_char.exists():
+                    try:
+                        shutil.rmtree(dst_char)
+                    except Exception:
+                        # As a fallback, attempt to remove files recursively
+                        for path in sorted(dst_char.rglob("*"), reverse=True):
+                            try:
+                                if path.is_file() or path.is_symlink():
+                                    path.unlink()
+                                else:
+                                    path.rmdir()
+                            except Exception:
+                                pass
+                        try:
+                            dst_char.rmdir()
+                        except Exception:
+                            pass
+                shutil.copytree(src_char, dst_char)
 
     # Download audio resources
     audio_src_root = hf_root / "Data" / "audio_resources"
