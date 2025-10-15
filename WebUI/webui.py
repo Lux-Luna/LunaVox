@@ -15,6 +15,15 @@ import lunavox_tts as lunavox
 from lunavox_tts import unload_character
 import gradio as gr
 from converter import render_converter_ui
+from i18n_texts import (
+    get_guide_markdown,
+    get_supported_language_display,
+    display_to_code,
+    code_to_display,
+    ui_text,
+    get_prompt_language_choices,
+    get_output_language_choices,
+)
 
 # ------------------------------
 # Paths and environment setup
@@ -26,6 +35,10 @@ AUDIO_RESOURCES_DIR = DATA_DIR / "audio_resources"
 OUTPUT_DIR = REPO_ROOT / "Output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# Assets
+ASSETS_DIR = SCRIPT_DIR / "assets"
+LANGUAGE_SVG_PATH = ASSETS_DIR / "language.svg"
+
 # Prefer local dependencies to avoid downloads
 os.environ.setdefault("HUBERT_MODEL_PATH", str(DATA_DIR / "chinese-hubert-base.onnx"))
 os.environ.setdefault("OPEN_JTALK_DICT_DIR", str(DATA_DIR / "open_jtalk_dic_utf_8-1.11"))
@@ -36,6 +49,11 @@ os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 # ------------------------------
 # Utilities
 # ------------------------------
+def _read_text_file(path: Path) -> str:
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except Exception:
+        return ""
 def _is_valid_character_dir(path: Path, version: str = "v2") -> bool:
     """验证角色模型目录是否有效
     
@@ -95,6 +113,10 @@ def _to_lang_code(display: str) -> str:
         "中文": "zh",
         "英语": "en",
         "日语": "ja",
+        # English display
+        "Chinese": "zh",
+        "English": "en",
+        "Japanese": "ja",
         # 容错：若直接传入代码
         "zh": "zh",
         "en": "en",
@@ -294,6 +316,20 @@ def build_ui() -> gr.Blocks:
         - 生成音频保存在 `Output` 目录下，并可在线试听
         """)
 
+        # Global language selector (default English)
+        with gr.Row():
+            svg_html = _read_text_file(LANGUAGE_SVG_PATH)
+            if svg_html:
+                gr.HTML(f"<div style='display:flex;align-items:center;gap:8px'>{svg_html}<span style='font-weight:600'>Language</span></div>")
+            else:
+                gr.Markdown("🌐 Language")
+            ui_lang_dd = gr.Dropdown(
+                choices=["English", "中文"],
+                value="English",
+                label=None,
+                interactive=True,
+            )
+
         # 使用 Tab 切换模块，默认显示“语音合成”（第一个 Tab）
         with gr.Tabs():
             with gr.TabItem("语音合成"):
@@ -303,7 +339,7 @@ def build_ui() -> gr.Blocks:
                         dd_version = gr.Dropdown(
                             choices=["v2", "v2_pro_plus"],
                             value="v2",
-                            label="模型版本 / Model Version",
+                            label=ui_text("en", "webui", "version_label"),
                             interactive=True,
                         )
                         
@@ -311,71 +347,88 @@ def build_ui() -> gr.Blocks:
                         dd_character = gr.Dropdown(
                             choices=character_list,
                             value=None,
-                            label="角色选择",
+                            label=ui_text("en", "webui", "character_label"),
                             interactive=True,
-                            info="请选择一个角色进行加载"
+                            info=ui_text("en", "webui", "character_info"),
                         )
-                        btn_load_character = gr.Button("加载角色", variant="primary")
-                        status = gr.Markdown("准备就绪。")
+                        btn_load_character = gr.Button(ui_text("en", "webui", "btn_load"), variant="primary")
+                        status = gr.Markdown(ui_text("en", "webui", "status_ready"))
 
                         # States
                         st_version = gr.State("v2")
                         st_character = gr.State("")
                         st_ref_audio_path = gr.State("")
                         st_ref_audio_text = gr.State("")
+                        st_ui_lang = gr.State("en")
 
                     with gr.Column(scale=2):
-                        gr.Markdown("### 参考音频")
+                        ref_section_title_md = gr.Markdown(ui_text("en", "webui", "ref_section_title"))
                         
                         # 参考音频资源下拉选择器（独立框）
                         with gr.Group(elem_classes=["boxed"]):
                             ref_audio_dropdown = gr.Dropdown(
-                                label="预设参考音频（可选）",
+                                label=ui_text("en", "webui", "preset_ref_label"),
                                 choices=[],
                                 value=None,
                                 interactive=True,
                                 allow_custom_value=False,
-                                info="从Data/audio_resources中选择预设的参考音频"
+                                info=ui_text("en", "webui", "preset_ref_info"),
                             )
 
                         # 参考音频语言（独立框，位于预设参考音频下方）
                         with gr.Group(elem_classes=["boxed"]):
                             ref_lang_dd = gr.Dropdown(
-                                choices=["中文", "英语", "日语"],
-                                value="日语",
-                                label="参考音频语言 / Prompt Language",
+                                choices=get_prompt_language_choices("en"),
+                                value="Japanese",
+                                label=ui_text("en", "webui", "ref_lang_label"),
                                 interactive=True,
                             )
                         
-                        gr.Markdown("**或**")
+                        or_md = gr.Markdown(ui_text("en", "webui", "or"))
                         
                         ref_audio = gr.Audio(
-                            label="上传参考音频",
+                            label=ui_text("en", "webui", "upload_ref_label"),
                             sources=["upload"],
                             type="filepath",
                         )
                         auto_filename = gr.Checkbox(
-                            label="自动使用文件名作为参考文本",
+                            label=ui_text("en", "webui", "auto_filename_label"),
                             value=True,
-                            info="勾选后，上传音频文件时会自动将文件名（去除后缀）作为参考文本"
+                            info=ui_text("en", "webui", "auto_filename_info"),
                         )
-                        ref_text = gr.Textbox(label="参考音频文本", lines=2, placeholder="请输入与参考音频匹配的日文文本")
+                        ref_text = gr.Textbox(label=ui_text("en", "webui", "ref_text_label"), lines=2, placeholder=ui_text("en", "webui", "ref_text_placeholder"))
 
-                        gr.Markdown("### 文本合成")
+                        synth_section_title_md = gr.Markdown(ui_text("en", "webui", "synth_section_title"))
                         lang_dd = gr.Dropdown(
-                            choices=["日语", "英语", "中文"],
-                            value="日语",
-                            label="输出语言 / Output Language",
+                            choices=get_output_language_choices("en"),
+                            value=get_output_language_choices("en")[0],
+                            label=ui_text("en", "webui", "output_lang_label"),
                             interactive=True,
                         )
-                        input_text = gr.Textbox(label="输入文本", lines=4, placeholder="请输入要合成的文本（ja/en）")
-                        btn_tts = gr.Button("开始合成")
-                        out_audio = gr.Audio(label="合成结果试听", type="filepath")
+                        input_text = gr.Textbox(label=ui_text("en", "webui", "input_text_label"), lines=4, placeholder=ui_text("en", "webui", "input_text_placeholder"))
+                        btn_tts = gr.Button(ui_text("en", "webui", "btn_tts"))
+                        out_audio = gr.Audio(label=ui_text("en", "webui", "out_audio_label"), type="filepath")
                         out_msg = gr.Markdown()
 
             with gr.TabItem("模型转换"):
                 # 将模型转换界面放入独立的标签页
-                render_converter_ui()
+                conv_ui = render_converter_ui()
+
+            with gr.TabItem("使用指引 / Guide"):
+                with gr.Column():
+                    svg_html = _read_text_file(LANGUAGE_SVG_PATH)
+                    if svg_html:
+                        gr.HTML(f"<div style='display:flex;align-items:center;gap:8px'>{svg_html}<span style='font-weight:600'>Guide Language</span></div>")
+                    else:
+                        gr.Markdown("🌐 Guide Language")
+
+                    guide_lang_dd = gr.Dropdown(
+                        choices=get_supported_language_display(),
+                        value=code_to_display("en"),
+                        label="Language",
+                        interactive=True,
+                    )
+                    guide_md = gr.Markdown(value=get_guide_markdown("en"))
 
         # ------------------------------
         # Event handlers
@@ -384,17 +437,17 @@ def build_ui() -> gr.Blocks:
             version = "v2"
             characters = list_character_folders(version)
             if not characters:
-                return "未找到任何角色模型，请将模型放入 Data/character_model 下。", version, "", "", "", gr.update(choices=[])
+                return "No characters found. Please put models under Data/character_model.", version, "", "", "", gr.update(choices=[])
 
             # 不自动加载模型，让用户手动选择
-            return ("请选择要加载的角色模型。", version, "", "", "", gr.update(choices=characters))
+            return (ui_text("en", "webui", "status_ready"), version, "", "", "", gr.update(choices=characters))
 
         demo.load(on_app_load, outputs=[status, st_version, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown])
 
         def on_version_change(current_character: str, new_version: str):
             """处理版本切换"""
             if not new_version:
-                return "请选择版本。", new_version, gr.update(choices=[]), "", "", "", gr.update(choices=[])
+                return "Please select version.", new_version, gr.update(choices=[]), "", "", "", gr.update(choices=[])
             
             # 如果有当前角色，先卸载以确保重新加载（即使新版本有同名角色）
             if current_character:
@@ -407,12 +460,12 @@ def build_ui() -> gr.Blocks:
             characters = list_character_folders(new_version)
             if not characters:
                 version_dir = "Data/character_model/v2_pro_plus" if new_version == "v2_pro_plus" else "Data/character_model"
-                return f"未找到任何 {new_version} 角色模型，请将模型放入 {version_dir} 下。", new_version, gr.update(choices=[]), "", "", "", gr.update(choices=[])
+                return f"No {new_version} characters found. Put models under {version_dir}.", new_version, gr.update(choices=[]), "", "", "", gr.update(choices=[])
             
             # 不自动加载第一个角色，让用户手动选择
             version_display = "v2 Pro Plus" if new_version == "v2_pro_plus" else "v2"
             return (
-                f"已切换到 {version_display} 版本，请选择要加载的角色。",
+                f"Switched to {version_display}. Select a character to load.",
                 new_version,
                 gr.update(choices=characters, value=None),
                 "",
@@ -425,6 +478,16 @@ def build_ui() -> gr.Blocks:
             on_version_change,
             inputs=[st_character, dd_version],
             outputs=[status, st_version, dd_character, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown],
+        )
+
+        def on_guide_lang_change(display_lang: str):
+            code = display_to_code(display_lang)
+            return code, gr.update(value=get_guide_markdown(code))
+
+        guide_lang_dd.change(
+            on_guide_lang_change,
+            inputs=[guide_lang_dd],
+            outputs=[st_ui_lang, guide_md],
         )
 
         def on_load_character_click(version: str, character: str):
@@ -444,14 +507,14 @@ def build_ui() -> gr.Blocks:
         def on_character_change(current_character: str, version: str, new_char: str):
             """处理角色选择变更（仅更新状态，不自动加载）"""
             if not new_char:
-                return "请选择角色。", gr.update(), gr.update(), new_char, "", "", gr.update(choices=[])
+                return "Please select a character.", gr.update(), gr.update(), new_char, "", "", gr.update(choices=[])
             
             # 仅更新状态，不自动加载模型
             # 搜索参考音频资源用于显示
             audio_resources = list_reference_audio_resources(new_char)
             
             return (
-                f"已选择角色 {new_char}，点击'加载角色'按钮进行加载。",
+                f"Selected {new_char}. Click 'Load Character' to proceed.",
                 gr.update(value=None),
                 gr.update(value=""),
                 new_char,
@@ -469,7 +532,7 @@ def build_ui() -> gr.Blocks:
         # 处理参考音频下拉选择器选择
         def on_ref_audio_dropdown_change(character: str, selected_audio: Optional[str], ref_lang: str):
             if not character or not selected_audio:
-                return "请选择角色和参考音频。", character, "", "", gr.update(value=None), gr.update(value="")
+                return "Please select character and reference audio.", character, "", "", gr.update(value=None), gr.update(value="")
             
             # selected_audio 现在直接是文件路径
             file_path = selected_audio
@@ -479,7 +542,7 @@ def build_ui() -> gr.Blocks:
                 msg = set_reference(character, file_path, display_name, _to_lang_code(ref_lang))
                 return msg, character, file_path, display_name, gr.update(value=file_path), gr.update(value=display_name)
             except Exception as e:
-                return f"设置参考音频时出错: {e}", character, "", "", gr.update(value=None), gr.update(value="")
+                return f"Failed to set reference: {e}", character, "", "", gr.update(value=None), gr.update(value="")
         
         ref_audio_dropdown.change(
             on_ref_audio_dropdown_change,
@@ -490,7 +553,7 @@ def build_ui() -> gr.Blocks:
         # Auto set reference when audio or text changes (set only when both present)
         def on_ref_audio_change(character: str, audio_fp: Optional[str], audio_tx: str, auto_filename_enabled: bool, ref_lang: str):
             if not character:
-                return "请选择角色。", character, audio_fp or "", audio_tx or "", audio_tx or ""
+                return "Please select a character.", character, audio_fp or "", audio_tx or "", audio_tx or ""
             
             # 如果启用了自动文件名功能且有音频文件，自动提取文件名作为文本
             if auto_filename_enabled and audio_fp and not (audio_tx or "").strip():
@@ -508,11 +571,11 @@ def build_ui() -> gr.Blocks:
                     msg = f"设置参考音频时出错: {e}"
             else:
                 if audio_fp and not (audio_tx or "").strip():
-                    msg = "已上传参考音频，请填写对应文本以完成设置。"
+                    msg = "Reference audio uploaded. Please enter its transcript."
                 elif (audio_tx or "").strip() and not audio_fp:
-                    msg = "已填写参考文本，请上传参考音频以完成设置。"
+                    msg = "Transcript entered. Please upload reference audio."
                 else:
-                    msg = "请上传参考音频并填写对应文本。"
+                    msg = "Upload reference audio and enter its transcript."
             return msg, character, audio_fp or "", audio_tx or "", audio_tx or ""
 
         ref_audio.change(
@@ -523,16 +586,16 @@ def build_ui() -> gr.Blocks:
 
         def on_ref_text_change(character: str, audio_fp: Optional[str], audio_tx: str, ref_lang: str):
             if not character:
-                return "请选择角色。", character, audio_fp or "", audio_tx or ""
+                return "Please select a character.", character, audio_fp or "", audio_tx or ""
             if (audio_tx or "").strip() and audio_fp:
                 msg = set_reference(character, audio_fp, (audio_tx or "").strip(), _to_lang_code(ref_lang))
             else:
                 if (audio_tx or "").strip() and not audio_fp:
-                    msg = "已填写参考文本，请上传参考音频以完成设置。"
+                    msg = "Transcript entered. Please upload reference audio."
                 elif audio_fp and not (audio_tx or "").strip():
-                    msg = "已上传参考音频，请填写对应文本以完成设置。"
+                    msg = "Reference audio uploaded. Please enter its transcript."
                 else:
-                    msg = "请上传参考音频并填写对应文本。"
+                    msg = "Upload reference audio and enter its transcript."
             return msg, character, audio_fp or "", audio_tx or ""
 
         ref_text.change(
@@ -543,7 +606,7 @@ def build_ui() -> gr.Blocks:
 
         def on_tts(character: str, text_val: str, lang: str):
             if not character:
-                return None, "请选择角色。"
+                return None, "Please select a character."
             try:
                 import lunavox_tts as lv
                 # set current language
@@ -559,6 +622,52 @@ def build_ui() -> gr.Blocks:
             on_tts,
             inputs=[st_character, input_text, lang_dd],
             outputs=[out_audio, out_msg],
+        )
+
+        # i18n: apply language change across the UI (webui + converter)
+        def on_ui_language_change(display_lang: str):
+            code = display_to_code(display_lang)
+            # Update webui labels
+            updates = [
+                gr.update(label=ui_text(code, "webui", "version_label")),
+                gr.update(label=ui_text(code, "webui", "character_label"), info=ui_text(code, "webui", "character_info")),
+                gr.update(value=ui_text(code, "webui", "btn_load")),
+                gr.update(value=ui_text(code, "webui", "status_ready")),
+                gr.update(value=ui_text(code, "webui", "ref_section_title")),
+                gr.update(label=ui_text(code, "webui", "preset_ref_label"), info=ui_text(code, "webui", "preset_ref_info")),
+                gr.update(label=ui_text(code, "webui", "ref_lang_label"), choices=get_prompt_language_choices(code), value=get_prompt_language_choices(code)[-1]),
+                gr.update(value=ui_text(code, "webui", "or")),
+                gr.update(label=ui_text(code, "webui", "upload_ref_label")),
+                gr.update(label=ui_text(code, "webui", "auto_filename_label"), info=ui_text(code, "webui", "auto_filename_info")),
+                gr.update(label=ui_text(code, "webui", "ref_text_label"), placeholder=ui_text(code, "webui", "ref_text_placeholder")),
+                gr.update(value=ui_text(code, "webui", "synth_section_title")),
+                gr.update(label=ui_text(code, "webui", "output_lang_label"), choices=get_output_language_choices(code), value=get_output_language_choices(code)[0]),
+                gr.update(label=ui_text(code, "webui", "input_text_label"), placeholder=ui_text(code, "webui", "input_text_placeholder")),
+                gr.update(value=ui_text(code, "webui", "btn_tts")),
+                gr.update(label=ui_text(code, "webui", "out_audio_label")),
+            ]
+            # Update converter labels
+            updates.extend([
+                gr.update(label=ui_text(code, "converter", "version_label")),
+                gr.update(label=ui_text(code, "converter", "in_ckpt_label")),
+                gr.update(label=ui_text(code, "converter", "in_pth_label")),
+                gr.update(label=ui_text(code, "converter", "out_dir_label")),
+                gr.update(value=ui_text(code, "converter", "btn_convert")),
+                gr.update(value=ui_text(code, "converter", "ready")),
+            ])
+            return updates
+
+        ui_lang_dd.change(
+            on_ui_language_change,
+            inputs=[ui_lang_dd],
+            outputs=[
+                dd_version, dd_character, btn_load_character, status,
+                ref_section_title_md, ref_audio_dropdown, ref_lang_dd, or_md,
+                ref_audio, auto_filename, ref_text, synth_section_title_md,
+                lang_dd, input_text, btn_tts, out_audio,
+                conv_ui["conv_version"], conv_ui["in_ckpt"], conv_ui["in_pth"],
+                conv_ui["out_dir"], conv_ui["btn_convert"], conv_ui["out_title"],
+            ],
         )
 
     return demo

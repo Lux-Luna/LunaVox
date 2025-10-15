@@ -12,6 +12,7 @@ REPO_SRC = REPO_ROOT / "src"
 if str(REPO_SRC) not in sys.path:
     sys.path.insert(0, str(REPO_SRC))
 import lunavox_tts as lunavox
+from i18n_texts import ui_text
 
 
 def _convert_models(ckpt_file, pth_file, out_dir_text: str, version: str = "v2") -> Tuple[str, str]:
@@ -57,29 +58,36 @@ def _convert_models(ckpt_file, pth_file, out_dir_text: str, version: str = "v2")
         return "", f"转换失败：{e}"
 
 
-def render_converter_ui() -> None:
-    gr.Markdown(
-        "选择 GPT/T2S 的 .ckpt 与 VITS 的 .pth 文件，设置输出目录，点击转换。\n\n"
-        "支持 v2 和 v2 Pro Plus 版本模型。"
-    )
+def render_converter_ui():
     with gr.Row():
         with gr.Column():
-            # 版本选择
+            # 版本选择（labels will be updated by i18n from webui)
             conv_version = gr.Dropdown(
                 choices=["v2", "v2_pro_plus"],
                 value="v2",
-                label="模型版本 / Model Version",
+                label=ui_text("en", "converter", "version_label"),
                 interactive=True,
-                info="选择要转换的模型版本"
+                info=""
             )
-            in_ckpt = gr.File(label="选择 .ckpt (GPT/T2S)", file_types=[".ckpt"], type="filepath")
-            in_pth = gr.File(label="选择 .pth (VITS)", file_types=[".pth"], type="filepath")
-            out_dir = gr.Textbox(label="输出目录", value=str(REPO_ROOT / "Output" / "converted"))
-            btn_convert = gr.Button("开始转换", variant="primary")
+            in_ckpt = gr.File(label=ui_text("en", "converter", "in_ckpt_label"), file_types=[".ckpt"], type="filepath")
+            in_pth = gr.File(label=ui_text("en", "converter", "in_pth_label"), file_types=[".pth"], type="filepath")
+            out_dir = gr.Textbox(label=ui_text("en", "converter", "out_dir_label"), value=str(REPO_ROOT / "Output" / "converted"))
+            btn_convert = gr.Button(ui_text("en", "converter", "btn_convert"), variant="primary")
         with gr.Column():
-            out_title = gr.Markdown("准备就绪。")
+            out_title = gr.Markdown(ui_text("en", "converter", "ready"))
             out_msg = gr.Markdown("")
 
     btn_convert.click(_convert_models, inputs=[in_ckpt, in_pth, out_dir, conv_version], outputs=[out_title, out_msg])
+
+    # Return components to allow external i18n updates
+    return {
+        "conv_version": conv_version,
+        "in_ckpt": in_ckpt,
+        "in_pth": in_pth,
+        "out_dir": out_dir,
+        "btn_convert": btn_convert,
+        "out_title": out_title,
+        "out_msg": out_msg,
+    }
 
 
