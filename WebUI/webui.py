@@ -29,8 +29,8 @@ from i18n_texts import (
 # Paths and environment setup
 # ------------------------------
 DATA_DIR = REPO_ROOT / "Data"
-CHAR_MODEL_DIR = DATA_DIR / "character_model"
-CHAR_MODEL_DIR_V2_PRO_PLUS = CHAR_MODEL_DIR / "v2_pro_plus"
+CHAR_MODEL_DIR_V2 = DATA_DIR / "character_model" / "v2"
+CHAR_MODEL_DIR_V2_PRO_PLUS = DATA_DIR / "character_model" / "v2_pro_plus"
 AUDIO_RESOURCES_DIR = DATA_DIR / "audio_resources"
 OUTPUT_DIR = REPO_ROOT / "Output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -132,7 +132,7 @@ def list_character_folders(version: str = "v2") -> List[str]:
         version: 模型版本 ("v2" 或 "v2_pro_plus")
     """
     if version == "v2":
-        base_dir = CHAR_MODEL_DIR
+        base_dir = CHAR_MODEL_DIR_V2
     elif version == "v2_pro_plus":
         base_dir = CHAR_MODEL_DIR_V2_PRO_PLUS
     else:
@@ -154,11 +154,11 @@ def get_model_dir(character_name: str, version: str = "v2") -> Path:
         version: 模型版本 ("v2" 或 "v2_pro_plus")
     """
     if version == "v2":
-        return CHAR_MODEL_DIR / character_name
+        return CHAR_MODEL_DIR_V2 / character_name
     elif version == "v2_pro_plus":
         return CHAR_MODEL_DIR_V2_PRO_PLUS / character_name
     else:
-        return CHAR_MODEL_DIR / character_name
+        return CHAR_MODEL_DIR_V2 / character_name
 
 
 def list_reference_audio_resources(character_name: str) -> List[Tuple[str, str]]:
@@ -437,7 +437,7 @@ def build_ui() -> gr.Blocks:
             version = "v2"
             characters = list_character_folders(version)
             if not characters:
-                return "No characters found. Please put models under Data/character_model.", version, "", "", "", gr.update(choices=[])
+                return "No characters found. Please put models under Data/character_model/v2.", version, "", "", "", gr.update(choices=[])
 
             # 不自动加载模型，让用户手动选择
             return (ui_text("en", "webui", "status_ready"), version, "", "", "", gr.update(choices=characters))
@@ -459,7 +459,7 @@ def build_ui() -> gr.Blocks:
             
             characters = list_character_folders(new_version)
             if not characters:
-                version_dir = "Data/character_model/v2_pro_plus" if new_version == "v2_pro_plus" else "Data/character_model"
+                version_dir = "Data/character_model/v2_pro_plus" if new_version == "v2_pro_plus" else "Data/character_model/v2"
                 return f"No {new_version} characters found. Put models under {version_dir}.", new_version, gr.update(choices=[]), "", "", "", gr.update(choices=[])
             
             # 不自动加载第一个角色，让用户手动选择
