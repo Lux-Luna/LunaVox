@@ -15,8 +15,6 @@ REPO_ROOT = Path(__file__).parent.parent  # Go up one level from Tutorial to rep
 DATA_DIR = REPO_ROOT / "Data"
 CHAR_DIR = DATA_DIR / "character_model"
 AUDIO_DIR = DATA_DIR / "audio_resources"
-TEXT_DIR = REPO_ROOT / "src" / "text"
-TTS_DATA_DIR = REPO_ROOT / "src" / "lunavox_tts" / "Data"
 
 REQUIRED_CN_HUBERT = DATA_DIR / "chinese-hubert-base.onnx"
 REQUIRED_OPENJTALK_DIR = DATA_DIR / "open_jtalk_dic_utf_8-1.11"
@@ -31,34 +29,40 @@ CHAR_REQUIRED_FILES = [
     "vits_fp16.bin",
 ]
 
-# Minimal required files within LunaVox/src/lunavox_tts/Data to consider TTS models present
-TTS_REQUIRED_PATHS = [
-    TTS_DATA_DIR / "sv" / "eres2netv2.onnx",
-    TTS_DATA_DIR / "v2" / "Models" / "vits_fp32.onnx",
-    TTS_DATA_DIR / "v2Pro" / "Models" / "vits_fp32.onnx",
-    TTS_DATA_DIR / "v2ProPlus" / "Models" / "vits_fp32.onnx",
-]
+def _copy_missing(src: Path, dst: Path) -> None:
+    """Recursively copy files/dirs from src to dst, skipping paths that already exist locally."""
+    if not src.exists():
+        return
+    for path in src.rglob("*"):
+        rel = path.relative_to(src)
+        target = dst / rel
+        if path.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+        else:
+            if not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(path.read_bytes())
 
-# Only fetch/select these character_model subfolders from HF
-SELECTED_CHAR_FOLDERS = ["v2", "v2_pro_plus"]
 
-
-def _is_valid_character_dir(path: Path) -> bool:
-    if not path.is_dir():
-        return False
-    names = {p.name for p in path.iterdir() if p.is_file()}
-    # A valid character folder must contain all required files
-    return all(name in names for name in CHAR_REQUIRED_FILES)
+def list_local_model_dirs() -> List[Path]:
+    """Return character model leaf directories, e.g. Data/character_model/v2/pretrained."""
+    results: List[Path] = []
+    if not CHAR_DIR.exists():
+        return results
+    for family_dir in CHAR_DIR.iterdir():
+        if not family_dir.is_dir():
+            continue
+        for model_dir in family_dir.iterdir():
+            if model_dir.is_dir():
+                results.append(model_dir)
+    return sorted(results, key=lambda p: str(p.relative_to(REPO_ROOT)))
 
 
 def list_existing_characters() -> List[Path]:
     if not CHAR_DIR.exists():
         return []
-    # Include either selected character folders (v2, v2_pro_plus) or legacy folders that meet full requirements
-    candidates = [
-        p for p in CHAR_DIR.iterdir()
-        if (p.is_dir() and (p.name in SELECTED_CHAR_FOLDERS or _is_valid_character_dir(p)))
-    ]
+    # Return all immediate subdirectories under character_model as existing characters
+    candidates = [p for p in CHAR_DIR.iterdir() if p.is_dir()]
     candidates.sort(key=lambda p: p.name)
     return candidates
 
@@ -90,91 +94,29 @@ def need_download() -> Tuple[bool, List[Tuple[str, List[str]]]]:
     if base_missing:
         missing_summary.append(("base", base_missing))
 
-    # Check character models: only require specific folders (v2, v2_pro_plus)
-    if not CHAR_DIR.exists():
-        missing_summary.append((
-            "character_selected",
-            [str((CHAR_DIR / name).relative_to(REPO_ROOT)) + "/" for name in SELECTED_CHAR_FOLDERS]
-        ))
+    # Check character models according to local structure
+    if not CHAR_DIR.exists() or not any(p.is_dir() for p in CHAR_DIR.iterdir()):
+        missing_summary.append(("character_model", [str(CHAR_DIR.relative_to(REPO_ROOT)) + "/"]))
     else:
-        char_missing: List[str] = []
-        for name in SELECTED_CHAR_FOLDERS:
-            if not (CHAR_DIR / name).exists():
-                char_missing.append(str((CHAR_DIR / name).relative_to(REPO_ROOT)) + "/")
-        if char_missing:
-            missing_summary.append(("character_selected", char_missing))
+        # Inspect each local model dir and record missing files
+        for model_dir in list_local_model_dirs():
+            missing_files = character_missing_files(model_dir)
+            if missing_files:
+                # Report missing file paths relative to repo root
+                rel_missing = [str((model_dir / name).relative_to(REPO_ROOT)) for name in missing_files]
+                scope = f"character_files:{str(model_dir.relative_to(REPO_ROOT))}"
+                missing_summary.append((scope, rel_missing))
 
     # Check audio resources
     existing_audio_chars = list_existing_audio_characters()
     if not existing_audio_chars:
         missing_summary.append(("audio_resources", ["audio_resources directory with character folders"]))
 
-    # Check TTS (src/lunavox_tts/Data)
-    tts_missing: List[str] = []
-    for p in TTS_REQUIRED_PATHS:
-        if not p.exists():
-            tts_missing.append(str(p.relative_to(REPO_ROOT)))
-    if tts_missing:
-        missing_summary.append(("tts_models", tts_missing))
-
     return (len(missing_summary) > 0), missing_summary
-
-
-def ensure_g2pw_model() -> None:
-    """Ensure LunaVox/src/text/G2PWModel exists; if missing, download from ModelScope and unzip.
-
-    This mirrors the runtime logic found in GPT-SoVITS text.g2pw.onnx_api but targets LunaVox/src/text.
-    """
-    target_dir = TEXT_DIR / "G2PWModel"
-    if target_dir.exists():
-        return
-
-    parent_directory = target_dir.parent
-    parent_directory.mkdir(parents=True, exist_ok=True)
-
-    # Prefer local copy from GPT-SoVITS if available
-    local_source_dir = REPO_ROOT / "GPT-SoVITS" / "GPT_SoVITS" / "text" / "G2PWModel"
-    if local_source_dir.exists():
-        try:
-            print(f"Copying G2PWModel from {local_source_dir} ...")
-            shutil.copytree(str(local_source_dir), str(target_dir))
-            print(f"G2PWModel ready at: {target_dir}")
-            return
-        except Exception as e:
-            print(f"Copy G2PWModel failed, fallback to download. Reason: {e}")
-
-    # Fallback to download from ModelScope (no zip saved to disk)
-    extract_dir = parent_directory / "G2PWModel_1.1"
-    final_dir = parent_directory / "G2PWModel"
-    url = "https://www.modelscope.cn/models/kamiorinn/g2pw/resolve/master/G2PWModel_1.1.zip"
-
-    try:
-        print("G2PWModel not found locally. Downloading from ModelScope ...")
-        buf = io.BytesIO()
-        with requests.get(url, stream=True, timeout=60) as r:  # type: ignore[arg-type]
-            r.raise_for_status()
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                if chunk:
-                    buf.write(chunk)
-        buf.seek(0)
-
-        print("Extracting G2PWModel ...")
-        with zipfile.ZipFile(buf, "r") as zf:
-            zf.extractall(parent_directory)
-
-        if not final_dir.exists() and extract_dir.exists():
-            os.rename(str(extract_dir), str(final_dir))
-
-        print(f"G2PWModel ready at: {final_dir}")
-    except Exception as e:
-        print(f"Failed to ensure G2PWModel: {e}")
 
 
 def ensure_data_from_hf() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Always ensure G2PWModel in src/text regardless of other dependencies
-    ensure_g2pw_model()
 
     is_missing, items = need_download()
     if not is_missing:
@@ -185,8 +127,17 @@ def ensure_data_from_hf() -> None:
     for scope, names in items:
         print(f"- {scope}: {', '.join(names)}")
 
+    # Optional token support for private repos
+    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN")
+
     print(f"Downloading missing assets from Hugging Face repo: {REPO_ID} ...")
-    local_dir = snapshot_download(repo_id=REPO_ID, local_dir=None, local_dir_use_symlinks=False)
+    local_dir = snapshot_download(
+        repo_id=REPO_ID,
+        local_dir=None,
+        local_dir_use_symlinks=False,
+        token=hf_token,
+        allow_patterns=["Data/**"]
+    )
     hf_root = Path(local_dir)
 
     src_cn = hf_root / "Data" / "chinese-hubert-base.onnx"
@@ -211,69 +162,42 @@ def ensure_data_from_hf() -> None:
         roberta_local_dir = snapshot_download(
             repo_id="hfl/chinese-roberta-wwm-ext-large",
             local_dir=str(REQUIRED_CHINESE_ROBERTA_DIR),
-            local_dir_use_symlinks=False
+            local_dir_use_symlinks=False,
+            token=hf_token
         )
         print(f"Chinese RoBERTa model downloaded to: {roberta_local_dir}")
 
     char_src_root = hf_root / "Data" / "character_model"
     if char_src_root.exists():
         CHAR_DIR.mkdir(parents=True, exist_ok=True)
-        # Only copy selected character folders; do not copy others like 'yuzuki_yukari'
-        for name in SELECTED_CHAR_FOLDERS:
-            src_char = char_src_root / name
-            if src_char.exists() and src_char.is_dir():
-                dst_char = CHAR_DIR / name
-                if dst_char.exists():
-                    try:
-                        shutil.rmtree(dst_char)
-                    except Exception:
-                        # As a fallback, attempt to remove files recursively
-                        for path in sorted(dst_char.rglob("*"), reverse=True):
-                            try:
-                                if path.is_file() or path.is_symlink():
-                                    path.unlink()
-                                else:
-                                    path.rmdir()
-                            except Exception:
-                                pass
-                        try:
-                            dst_char.rmdir()
-                        except Exception:
-                            pass
-                shutil.copytree(src_char, dst_char)
+        local_chars = [p for p in CHAR_DIR.iterdir() if p.is_dir()]
+        if not local_chars:
+            # No local characters; copy entire remote character_model
+            _copy_missing(char_src_root, CHAR_DIR)
+        else:
+            # Complement existing local characters only
+            for local_char in local_chars:
+                src_char = char_src_root / local_char.name
+                if src_char.exists() and src_char.is_dir():
+                    _copy_missing(src_char, local_char)
 
-    # Download audio resources
+    # Download/complement audio resources
     audio_src_root = hf_root / "Data" / "audio_resources"
     if audio_src_root.exists():
         AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-        audio_candidates = [p for p in audio_src_root.iterdir() if p.is_dir()]
-        audio_candidates.sort(key=lambda p: p.name)
-        if audio_candidates:
-            chosen_audio = audio_candidates[0]
-            dst_audio_char = AUDIO_DIR / chosen_audio.name
-            if not dst_audio_char.exists():
-                dst_audio_char.mkdir(parents=True, exist_ok=True)
-            for path in chosen_audio.rglob("*"):
-                if path.is_dir():
-                    (dst_audio_char / path.relative_to(chosen_audio)).mkdir(parents=True, exist_ok=True)
-                else:
-                    dst = dst_audio_char / path.relative_to(chosen_audio)
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    if not dst.exists():
-                        dst.write_bytes(path.read_bytes())
-
-    # Download TTS models under src/lunavox_tts/Data
-    tts_src_root = hf_root / "src" / "lunavox_tts" / "Data"
-    if tts_src_root.exists():
-        TTS_DATA_DIR.mkdir(parents=True, exist_ok=True)
-        for path in tts_src_root.rglob("*"):
-            if path.is_dir():
-                (TTS_DATA_DIR / path.relative_to(tts_src_root)).mkdir(parents=True, exist_ok=True)
-            else:
-                dst = TTS_DATA_DIR / path.relative_to(tts_src_root)
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                if not dst.exists():
-                    dst.write_bytes(path.read_bytes())
+        local_audio_chars = [p for p in AUDIO_DIR.iterdir() if p.is_dir()]
+        if not local_audio_chars:
+            # No local audio resources; copy the first available from remote
+            audio_candidates = [p for p in audio_src_root.iterdir() if p.is_dir()]
+            audio_candidates.sort(key=lambda p: p.name)
+            if audio_candidates:
+                _copy_missing(audio_candidates[0], AUDIO_DIR / audio_candidates[0].name)
+        else:
+            # Complement existing local audio folders only
+            for local_audio in local_audio_chars:
+                src_audio = audio_src_root / local_audio.name
+                if src_audio.exists() and src_audio.is_dir():
+                    _copy_missing(src_audio, local_audio)
 
     print("Data setup completed.")
 
@@ -287,18 +211,15 @@ __all__ = [
     "DATA_DIR",
     "CHAR_DIR",
     "AUDIO_DIR",
-    "TTS_DATA_DIR",
     "REQUIRED_CN_HUBERT",
     "REQUIRED_OPENJTALK_DIR",
     "REQUIRED_CHINESE_ROBERTA_DIR",
     "CHAR_REQUIRED_FILES",
-    "TTS_REQUIRED_PATHS",
     "list_existing_characters",
     "list_existing_audio_characters",
     "character_missing_files",
     "need_download",
     "ensure_data_from_hf",
-    "ensure_g2pw_model",
 ]
 
 
