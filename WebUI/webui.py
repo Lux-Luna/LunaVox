@@ -13,6 +13,7 @@ if str(REPO_SRC) not in sys.path:
     sys.path.insert(0, str(REPO_SRC))
 import lunavox_tts as lunavox
 from lunavox_tts import unload_character
+from lunavox_tts.ModelManager import model_manager
 import gradio as gr
 from converter import render_converter_ui
 from i18n_texts import (
@@ -352,11 +353,13 @@ def build_ui() -> gr.Blocks:
                             info=ui_text("en", "webui", "character_info"),
                         )
                         btn_load_character = gr.Button(ui_text("en", "webui", "btn_load"), variant="primary")
+                        btn_unload_character = gr.Button("Unload Character & Cleanup", variant="secondary")
                         status = gr.Markdown(ui_text("en", "webui", "status_ready"))
 
                         # States
                         st_version = gr.State("v2")
                         st_character = gr.State("")
+                        st_loaded_character = gr.State("")
                         st_ref_audio_path = gr.State("")
                         st_ref_audio_text = gr.State("")
                         st_ui_lang = gr.State("en")
@@ -437,30 +440,36 @@ def build_ui() -> gr.Blocks:
             version = "v2"
             characters = list_character_folders(version)
             if not characters:
-                return "No characters found. Please put models under Data/character_model/v2.", version, "", "", "", gr.update(choices=[])
+                return "No characters found. Please put models under Data/character_model/v2.", version, "", "", "", "", gr.update(choices=[])
 
             # 不自动加载模型，让用户手动选择
-            return (ui_text("en", "webui", "status_ready"), version, "", "", "", gr.update(choices=characters))
+            return (ui_text("en", "webui", "status_ready"), version, "", "", "", "", gr.update(choices=characters))
 
-        demo.load(on_app_load, outputs=[status, st_version, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown])
+        demo.load(on_app_load, outputs=[status, st_version, st_character, st_loaded_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown])
 
-        def on_version_change(current_character: str, new_version: str):
+        def on_version_change(current_character: str, loaded_character: str, new_version: str):
             """处理版本切换"""
             if not new_version:
-                return "Please select version.", new_version, gr.update(choices=[]), "", "", "", gr.update(choices=[])
+                return "Please select version.", new_version, gr.update(choices=[]), "", "", "", "", gr.update(choices=[])
             
             # 如果有当前角色，先卸载以确保重新加载（即使新版本有同名角色）
-            if current_character:
+            # 优先使用已加载角色进行卸载和清理
+            target_to_unload = loaded_character or current_character
+            if target_to_unload:
                 try:
-                    lunavox.unload_character(current_character)
+                    lunavox.unload_character(target_to_unload)
                 except Exception as e:
-                    # 即使卸载失败也继续，可能角色本来就不存在
                     print(f"卸载角色时出错（可忽略）: {e}")
+                try:
+                    # 清理临时 fp32 权重文件
+                    model_manager.clean_cache()
+                except Exception as e:
+                    print(f"清理临时权重时出错（可忽略）: {e}")
             
             characters = list_character_folders(new_version)
             if not characters:
                 version_dir = "Data/character_model/v2_pro_plus" if new_version == "v2_pro_plus" else "Data/character_model/v2"
-                return f"No {new_version} characters found. Put models under {version_dir}.", new_version, gr.update(choices=[]), "", "", "", gr.update(choices=[])
+                return f"No {new_version} characters found. Put models under {version_dir}.", new_version, gr.update(choices=[]), "", "", "", "", gr.update(choices=[])
             
             # 不自动加载第一个角色，让用户手动选择
             version_display = "v2 Pro Plus" if new_version == "v2_pro_plus" else "v2"
@@ -471,13 +480,14 @@ def build_ui() -> gr.Blocks:
                 "",
                 "",
                 "",
+                "",
                 gr.update(choices=[]),
             )
 
         dd_version.change(
             on_version_change,
-            inputs=[st_character, dd_version],
-            outputs=[status, st_version, dd_character, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown],
+            inputs=[st_character, st_loaded_character, dd_version],
+            outputs=[status, st_version, dd_character, st_character, st_loaded_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown],
         )
 
         def on_guide_lang_change(display_lang: str):
@@ -490,18 +500,49 @@ def build_ui() -> gr.Blocks:
             outputs=[st_ui_lang, guide_md],
         )
 
-        def on_load_character_click(version: str, character: str):
+        def on_load_character_click(version: str, character: str, loaded_character: str):
             """处理加载角色按钮点击"""
             if not character:
-                return "请先选择一个角色。", "", "", "", gr.update(choices=[])
+                return "请先选择一个角色。", "", "", "", gr.update(choices=[]), loaded_character or ""
+
+            # 如果已加载的角色与将要加载的不同，先卸载并清理
+            if loaded_character and loaded_character != character:
+                try:
+                    lunavox.unload_character(loaded_character)
+                except Exception as e:
+                    print(f"卸载角色时出错（可忽略）: {e}")
+                try:
+                    model_manager.clean_cache()
+                except Exception as e:
+                    print(f"清理临时权重时出错（可忽略）: {e}")
             
             msg, audio_resources = ensure_character_loaded(character, version)
-            return msg, character, "", "", gr.update(choices=audio_resources)
+            return msg, character, "", "", gr.update(choices=audio_resources), character
 
         btn_load_character.click(
             on_load_character_click,
-            inputs=[st_version, dd_character],
-            outputs=[status, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown],
+            inputs=[st_version, dd_character, st_loaded_character],
+            outputs=[status, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown, st_loaded_character],
+        )
+
+        # 卸载当前角色并清理临时文件
+        def on_unload_character_click(loaded_character: str):
+            if not loaded_character:
+                return "No character is currently loaded.", "", "", "", "", gr.update(choices=[])
+            try:
+                lunavox.unload_character(loaded_character)
+            except Exception as e:
+                print(f"卸载角色时出错（可忽略）: {e}")
+            try:
+                model_manager.clean_cache()
+            except Exception as e:
+                print(f"清理临时权重时出错（可忽略）: {e}")
+            return "Character unloaded and temporary weights cleaned.", "", "", "", "", gr.update(choices=[])
+
+        btn_unload_character.click(
+            on_unload_character_click,
+            inputs=[st_loaded_character],
+            outputs=[status, st_character, st_loaded_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown],
         )
 
         def on_character_change(current_character: str, version: str, new_char: str):
