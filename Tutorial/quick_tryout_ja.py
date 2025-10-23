@@ -21,16 +21,27 @@ import lunavox_tts as lunavox
 os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'Data' / 'chinese-hubert-base.onnx')
 os.environ['OPEN_JTALK_DICT_DIR'] = str(REPO_ROOT / 'Data' / 'open_jtalk_dic_utf_8-1.11')
 
-# 使用Data目录下的本地模型文件
-model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2' / 'yuzuki_yukari')
-lunavox.load_character('yuzuki_yukari', model_dir)
+# 使用Data目录下的本地模型文件（使用 Data/character_model/v2/pretrained）
+model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2' / 'pretrained')
+lunavox.load_character('pretrained', model_dir)
 
-# 设置参考音频（参考语言为日语）
-audio_path = str(REPO_ROOT / 'Data' / 'audio_resources' / 'yuzuki_yukari' / "ありがとうございます。おひさしぶりです。.wav")
-lunavox.set_reference_audio('yuzuki_yukari', audio_path, "ありがとうございます。おひさしぶりです。", audio_language='ja')
+# 设置参考音频（使用 Data/audio_resources/pretrained）
+audio_path = str(
+    REPO_ROOT
+    / 'Data'
+    / 'audio_resources'
+    / 'pretrained'
+    / '私は天使なんかじゃないわ。病院なんてないわよ。誰も病まないから。みんな死んでるから。.wav'
+)
+lunavox.set_reference_audio(
+    'pretrained',
+    audio_path,
+    "私は天使なんかじゃないわ。病院なんてないわよ。誰も病まないから。みんな死んでるから。",
+    audio_language='ja'
+)
 
 lunavox.tts(
-    character_name='yuzuki_yukari',
+    character_name='pretrained',
     text='こんにちは、ルナヴォックスです。日本語でお話しします。',
     play=True,  # Play the generated audio directly
     language='ja',  # 输出目标语言：日语

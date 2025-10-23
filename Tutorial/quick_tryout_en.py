@@ -22,18 +22,29 @@ import lunavox_tts as lunavox
 os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'Data' / 'chinese-hubert-base.onnx')
 os.environ['OPEN_JTALK_DICT_DIR'] = str(REPO_ROOT / 'Data' / 'open_jtalk_dic_utf_8-1.11')
 
-# 加载模型
-model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2' / 'yuzuki_yukari')
-lunavox.load_character('yuzuki_yukari', model_dir)
+# 加载模型（使用 Data/character_model/v2/pretrained）
+model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2' / 'pretrained')
+lunavox.load_character('pretrained', model_dir)
 
-# 设置参考音频（参考语言为日语）
-audio_path = str(REPO_ROOT / 'Data' / 'audio_resources' / 'yuzuki_yukari' / "ありがとうございます。おひさしぶりです。.wav")
-lunavox.set_reference_audio('yuzuki_yukari', audio_path, "ありがとうございます。おひさしぶりです。", audio_language='ja')
+# 设置参考音频（使用 Data/audio_resources/pretrained）
+audio_path = str(
+    REPO_ROOT
+    / 'Data'
+    / 'audio_resources'
+    / 'pretrained'
+    / '私は天使なんかじゃないわ。病院なんてないわよ。誰も病まないから。みんな死んでるから。.wav'
+)
+lunavox.set_reference_audio(
+    'pretrained',
+    audio_path,
+    "私は天使なんかじゃないわ。病院なんてないわよ。誰も病まないから。みんな死んでるから。",
+    audio_language='ja'
+)
 
 # 合成英文
 lunavox.tts(
-    character_name='yuzuki_yukari',
-    text='Hello, this is LunaVox speaking English.',
+    character_name='pretrained',
+    text='This is LunaVox speaking English.',
     play=True,
     language='en',  # 输出目标语言：英语
 )
