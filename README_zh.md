@@ -1,17 +1,4 @@
 <div align="center">
-<pre>
- ___       ___  ___  ________   ________  ___      ___ ________     ___    ___ 
-|\  \     |\  \|\  \|\   ___  \|\   __  \|\  \    /  /|\   __  \   |\  \  /  /|
-\ \  \    \ \  \\\  \ \  \\ \  \ \  \|\  \ \  \  /  / | \  \|\  \  \ \  \/  / /
- \ \  \    \ \  \\\  \ \  \\ \  \ \   __  \ \  \/  / / \ \  \\\  \  \ \    / / 
-  \ \  \____\ \  \\\  \ \  \\ \  \ \  \ \  \ \    / /   \ \  \\\  \  /     \/  
-   \ \_______\ \_______\ \__\\ \__\ \__\ \__\ \__/ /     \ \_______\/  /\   \  
-    \|_______|\|_______|\|__| \|__|\|__|\|__|\|__|/       \|_______/__/ /\ __\ 
-                                                                   |__|/ \|__| 
-</pre>
-</div>
-
-<div align="center">
 
 # 🔮 LunaVox: [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) 轻量级推理引擎
 
@@ -26,30 +13,16 @@
 **LunaVox** 是基于开源 TTS 项目 [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) 打造的轻量级推理引擎，集成了
 TTS 推理、ONNX 模型转换、API Server 等核心功能，旨在提供更极致的性能与更便捷的体验。
 
-- **✅ 支持模型版本:** GPT-SoVITS V2
+- **✅ 支持模型版本:** GPT-SoVITS V2， GPT-SoVITS V2 pro plus
 - **✅ 支持语言:** 日语 (Japanese)，中文（Chinese），英语（English）
 
----
+LunaVox 继承 GPT-SoVITS 的核心推理链路：文本经多语言前端（如 Open JTalk）转为音素 → HuBERT 提取参考音频特征 → 三段式
+T2S（Encoder / First-Stage Decoder / Stage Decoder）生成语音 Token → VITS 声码器合成最终波形。仓库内将上述模块（含中文
+HuBERT 与说话人向量模型）拆分为 ONNX 形式，结合缓存机制实现纯 ONNXRuntime 的快速推理。
 
-## 🚀 性能优势
-
-LunaVox 对原版模型进行了高度优化，在 CPU 环境下展现了卓越的性能。
-
-| 特性        |  🔮 LunaVox | 官方 Pytorch 模型 | 官方 onnx 模型 |
-|:----------|:----------:|:-------------:|:----------:|
-| **首包延迟**  | **1.13s**  |     1.35s     |   3.57s    |
-| **运行时大小** | **~200MB** |     ~数 GB     | 与 LunaVox 类似 |
-| **模型大小**  | **~230MB** |  与 LunaVox 类似   |   ~750MB   |
-
-> 📝 **备注:** 由于 GPU 推理的首包延迟与 CPU 相比未拉开显著差距，我们暂时仅发布 CPU 版本，以提供最佳的开箱即用体验。
->
-> 📝 **延迟测试说明:** 所有延迟数据基于一个包含 100 个日语句子的测试集，每句约 20 个字符，取平均值计算。在 CPU i7-13620H
-> 上进行推理测试。
 ---
 
 ## 🏁 快速开始 (QuickStart)
-
-> **⚠️ 重要提示:** 建议在 **管理员模式 (Administrator)** 下运行 LunaVox，以避免潜在的严重性能下降问题。
 
 ### 📦 安装 (Installation)
 
@@ -128,6 +101,19 @@ lunavox.tts(
 print("🎉 音频生成完毕!")
 ```
 
+## 📊 性能基准（Intel Core i9-12900K）
+
+以下数据源自 `benchmark/scripts/tts_benchmark.py` 在 Windows 11、Python 3.12、32 GB 内存与 Intel Core i9-12900K
+环境下对预设角色执行的 3 次预热 + 100 次循环测试（固定文本 “This is LunaVox speaking English.”）。
+
+| 模型版本 | 模型大小 (MB) | 首包延迟 (s) | 全句延迟 (s) | 吞吐 (次/s) | 加载后 RSS 增量 (MB) |
+|---|---|---|---|---|---|
+| v2 | 683.54 | 1.15 | 1.15 | 0.96 | 2151.46 |
+| v2_pro_plus | 1256.14 | 1.38 | 1.38 | 0.76 | 2917.04 |
+
+- 两个模型的实时因子均约 0.54，能够持续快于实时地产生音频。
+- `benchmark/results/v2_results.json` 与 `benchmark/results/v2_pro_plus_results.json` 保存了完整指标与每轮数据。
+
 ## 🔧 模型转换 (Model Conversion)
 
 如果您需要将原始的 GPT-SoVITS 模型转换为 LunaVox 使用的格式，请先确保已安装 `torch`。
@@ -149,6 +135,10 @@ lunavox.convert_to_onnx(
     output_dir=r"<ONNX 模型输出文件夹路径>"  # 指定 ONNX 模型保存的目录
 )
 ```
+
+转换工具会将 GPT-SoVITS 的推理链路拆解为多份 ONNX：`t2s_encoder_fp32.onnx`、`t2s_first_stage_decoder_fp32.onnx`、
+`t2s_stage_decoder_fp32.onnx` 与 `vits_fp32.onnx`，并保留中文 HuBERT、说话人向量模型等配套依赖。转换过程中默认把
+原始 FP16 权重临时升为 FP32，以确保 onnxruntime 在 CPU 环境下具备稳定数值表现。
 
 ## 🌐 启动 FastAPI 服务器
 
@@ -215,13 +205,13 @@ lunavox.launch_command_line_client()
 
 ## 📝 未来计划 (Roadmap)
 
-- [ ] **🌐 语言扩展**
+- [x] **🌐 语言扩展**
     - [x] 增加对 **中文** 的支持。
     - [x] 增加对 **英文** 的支持。
 
-- [ ] **🚀 模型兼容性**
-    - [ ] 增加对 **V2 Pro** 模型版本的支持。
-    - [ ] 增加对 **V2 Pro Plus** 模型版本的支持。
+- [x] **🚀 模型兼容性**
+    - [x] 增加对 **V2 Pro** 模型版本的支持。
+    - [x] 增加对 **V2 Pro Plus** 模型版本的支持。
 
 - [ ] **⚡️ 性能优化**
     - [ ] 发布 **GPU 版本**，进一步提升推理速度。

@@ -1,0 +1,48 @@
+{
+  "models": [
+    {
+      "model_version": "v2",
+      "iterations": 100,
+      "model_disk_size_mb": 683.538,
+      "runtime_rss_delta_after_load_mb": 2151.461,
+      "peak_rss_after_mb": 3267.617,
+      "avg_first_packet_latency_ms": 1148.556,
+      "avg_total_latency_ms": 1148.625,
+      "avg_cpu_time_s": 19.29,
+      "avg_real_time_factor": 0.537635,
+      "avg_iterations_per_second": 0.954716,
+      "avg_audio_duration_s": 2.706,
+      "first_packet_latency_ms_p95": 1443.517,
+      "total_latency_ms_p95": 1443.579,
+      "cpu_time_s_p95": 24.079687,
+      "rss_after_mb_avg": 3267.289,
+      "rss_after_mb_p95": 3267.613,
+      "iterations_per_second_p95": 1.032543,
+      "audio_duration_s_p95": 3.526,
+      "failures": 0,
+      "input_path": "benchmark\\results\\v2_results.json"
+    },
+    {
+      "model_version": "v2_pro_plus",
+      "iterations": 100,
+      "model_disk_size_mb": 1256.141,
+      "runtime_rss_delta_after_load_mb": 2917.043,
+      "peak_rss_after_mb": 4058.027,
+      "avg_first_packet_latency_ms": 1383.119,
+      "avg_total_latency_ms": 1383.185,
+      "avg_cpu_time_s": 23.431719,
+      "avg_real_time_factor": 0.537016,
+      "avg_iterations_per_second": 0.761917,
+      "avg_audio_duration_s": 2.7232,
+      "first_packet_latency_ms_p95": 1793.471,
+      "total_latency_ms_p95": 1793.571,
+      "cpu_time_s_p95": 29.913281,
+      "rss_after_mb_avg": 4041.405,
+      "rss_after_mb_p95": 4057.993,
+      "iterations_per_second_p95": 0.860948,
+      "audio_duration_s_p95": 3.568,
+      "failures": 0,
+      "input_path": "benchmark\\results\\v2_pro_plus_results.json"
+    }
+  ]
+}

@@ -131,8 +131,9 @@ tmp/
 *.tmp
 *.temp
 
-# Documentation folder - ignore description folder
+# Documentation folders
 description/
+docs/
 
 # Ignore src/lunavox_tts/Data (tracked on Hugging Face instead)
 src/lunavox_tts/Data/
