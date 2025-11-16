@@ -49,6 +49,13 @@ For users in mainland China we recommend downloading the required models and dic
 
 After downloading, point to the assets with environment variables (`os.environ`).
 
+### Optional Dependencies
+
+- **Chinese text pipeline (`lunavox_tts.Chinese.ZhBert`)**  
+  Install with `pip install "lunavox-tts[zh]"` to pull in `torch` and `transformers`. Without the extra, Chinese inputs fall back to zero BERT embeddings while Japanese/English inference keeps working.
+- **Model conversion utilities (`lunavox.convert_to_onnx`)**  
+  Install with `pip install "lunavox-tts[convert]"` to enable the PyTorch-based converter.
+
 ### Best Practices for TTS Inference
 
 Example for multilingual synthesis:
@@ -104,10 +111,10 @@ The following numbers were collected with `benchmark/scripts/tts_benchmark.py` o
 
 ## Model Conversion
 
-Ensure `torch` is installed before converting original GPT-SoVITS checkpoints into the LunaVox layout:
+Install the optional converter dependencies first:
 
 ```bash
-pip install torch
+pip install "lunavox-tts[convert]"
 ```
 
 ```python
@@ -121,6 +128,11 @@ lunavox.convert_to_onnx(
 ```
 
 The converter decomposes the GPT-SoVITS pipeline into multiple ONNX graphs: `t2s_encoder_fp32.onnx`, `t2s_first_stage_decoder_fp32.onnx`, `t2s_stage_decoder_fp32.onnx`, and `vits_fp32.onnx`, while bundling the Chinese HuBERT model and speaker vector network. During conversion the original FP16 weights are temporarily promoted to FP32 so that ONNX Runtime delivers stable numerical behavior on CPU-only hosts.
+
+## Runtime Configuration
+
+- `LUNAVOX_ORT_PROVIDERS`: override the preferred ONNX Runtime providers (comma-separated). Example: `CUDAExecutionProvider,CPUExecutionProvider`.
+- `LUNAVOX_USE_IO_BINDING=1`: enable experimental IO binding for the vocoder step (can reduce host/device copies when GPU providers are available).
 
 ## Launch the FastAPI Server
 

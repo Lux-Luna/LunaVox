@@ -67,7 +67,6 @@ except ImportError:  # pragma: no cover
 
 import data_setup  # type: ignore
 import lunavox_tts as lunavox  # type: ignore
-from lunavox_tts.Utils.Shared import context  # type: ignore
 
 
 def bytes_to_mb(value: Optional[int]) -> Optional[float]:
@@ -146,12 +145,12 @@ async def run_tts_once(language: str) -> Tuple[float, float, bytearray]:
     start_time = time.perf_counter()
     first_packet_latency: Optional[float] = None
     audio_buffer = bytearray()
-    context.current_language = language
     async for chunk in lunavox.tts_async(
         character_name=CHARACTER_NAME,
         text=REFERENCE_TEXT,
         play=False,
         split_sentence=False,
+        language=language,
     ):
         now = time.perf_counter()
         if first_packet_latency is None:

@@ -46,8 +46,6 @@ dependencies = [
     "opencc-python-reimplemented",
     "cn2an",
     "jieba_fast",
-    "transformers",
-    "torch",
     "gradio",
     "inflect",
 ]
@@ -65,4 +63,13 @@ include-package-data = true
 "lunavox_tts" = [
     "Data/v2/Models/*",
     "Data/v2/Keys/*",
+]
+
+[project.optional-dependencies]
+convert = [
+    "torch",
+]
+zh = [
+    "torch",
+    "transformers",
 ]

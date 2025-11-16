@@ -45,6 +45,11 @@ _reference_audios: dict[str, dict] = {}
 SUPPORTED_AUDIO_EXTS = {'.wav', '.flac', '.ogg', '.aiff', '.aif'}
 
 
+def _normalize_language(code: Optional[str]) -> str:
+    lang = (code or "ja").lower()
+    return lang if lang in {"ja", "en", "zh"} else "ja"
+
+
 def load_character(
         character_name: str,
         onnx_model_dir: Union[str, PathLike],
@@ -127,6 +132,7 @@ async def tts_async(
         play: bool = False,
         split_sentence: bool = False,
         save_path: Union[str, PathLike, None] = None,
+        language: str = "ja",
 ) -> AsyncIterator[bytes]:
     """
     Asynchronously generates speech from text and yields audio chunks.
@@ -166,6 +172,7 @@ async def tts_async(
         loop.call_soon_threadsafe(stream_queue.put_nowait, chunk)
 
     # 设置 TTS 上下文
+    session_language = _normalize_language(language)
     context.current_speaker = character_name
     ref_info = _reference_audios[character_name]
     model_version = ref_info.get('model_version', model_manager.get_character_version(character_name))
@@ -175,6 +182,7 @@ async def tts_async(
         language=ref_info.get('audio_lang') or 'auto',
         model_version=model_version,
     )
+    prompt_audio = context.current_prompt_audio
 
     # 3. 使用新的回调接口启动 TTS 会话
     tts_player.start_session(
@@ -182,6 +190,9 @@ async def tts_async(
         split=split_sentence,
         save_path=save_path,
         chunk_callback=tts_chunk_callback,
+        speaker=character_name,
+        prompt_audio=prompt_audio,
+        language=session_language,
     )
 
     # 馈送文本并通知会话结束
@@ -228,7 +239,7 @@ def tts(
             os.makedirs(parent_dir, exist_ok=True)
 
     context.current_speaker = character_name
-    normalized_language = language if language in ["ja", "en", "zh"] else "ja"
+    normalized_language = _normalize_language(language)
     context.current_language = normalized_language
     ref_info = _reference_audios[character_name]
     model_version = ref_info.get('model_version', model_manager.get_character_version(character_name))
@@ -238,11 +249,15 @@ def tts(
         language=ref_info.get('audio_lang') or 'auto',
         model_version=model_version,
     )
+    prompt_audio = context.current_prompt_audio
 
     tts_player.start_session(
         play=play,
         split=split_sentence,
         save_path=save_path,
+        speaker=character_name,
+        prompt_audio=prompt_audio,
+        language=normalized_language,
     )
     tts_player.feed(text)
     tts_player.end_session()

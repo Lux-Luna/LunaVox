@@ -20,6 +20,7 @@ from ..Core.Inference import tts_client
 from ..ModelManager import model_manager
 from ..Utils.Shared import context
 from ..Utils.Utils import clear_queue
+from ..Audio.ReferenceAudio import ReferenceAudio
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class TTSPlayer:
 
         self._stop_event: threading.Event = threading.Event()
         self._tts_done_event: threading.Event = threading.Event()
+        self._tts_done_event.set()
         self._api_lock: threading.Lock = threading.Lock()
 
         self._tts_worker: Optional[threading.Thread] = None
@@ -50,6 +52,9 @@ class TTSPlayer:
         self._split: bool = False
 
         self._chunk_callback: Optional[Callable[[Optional[bytes]], None]] = None
+        self._session_speaker: Optional[str] = None
+        self._session_prompt_audio: Optional[ReferenceAudio] = None
+        self._session_language: str = "ja"
 
     @staticmethod
     def _preprocess_for_playback(audio_float: np.ndarray) -> bytes:
@@ -76,22 +81,32 @@ class TTSPlayer:
                         self._chunk_callback(None)
 
                     self._tts_done_event.set()
+                    self._session_speaker = None
+                    self._session_prompt_audio = None
                     continue
 
-                gsv_model = model_manager.get(context.current_speaker)
-                if not gsv_model or not context.current_prompt_audio:
-                    logger.error("Missing model or reference audio.")
+                speaker = self._session_speaker or context.current_speaker
+                prompt_audio = self._session_prompt_audio or context.current_prompt_audio
+                language = self._session_language or context.current_language
+
+                if not speaker or prompt_audio is None:
+                    logger.error("Missing model or reference audio for the current session.")
+                    continue
+
+                gsv_model = model_manager.get(speaker)
+                if not gsv_model:
+                    logger.error("Failed to load model for current speaker.")
                     continue
 
                 tts_client.stop_event.clear()
                 audio_chunk = tts_client.tts(
                     text=sentence,
-                    prompt_audio=context.current_prompt_audio,
+                    prompt_audio=prompt_audio,
                     encoder=gsv_model.T2S_ENCODER,
                     first_stage_decoder=gsv_model.T2S_FIRST_STAGE_DECODER,
                     stage_decoder=gsv_model.T2S_STAGE_DECODER,
                     vocoder=gsv_model.VITS,
-                    language=context.current_language,
+                    language=language,
                 )
 
                 if audio_chunk is not None:
@@ -117,6 +132,8 @@ class TTSPlayer:
                 if self._chunk_callback:
                     self._chunk_callback(None)
                 self._tts_done_event.set()
+                self._session_speaker = None
+                self._session_prompt_audio = None
 
     def _playback_worker_loop(self):
         p = None
@@ -177,9 +194,14 @@ class TTSPlayer:
                       play: bool = False,
                       split: bool = False,
                       save_path: Optional[str] = None,
-                      chunk_callback: Optional[Callable[[Optional[bytes]], None]] = None
+                      chunk_callback: Optional[Callable[[Optional[bytes]], None]] = None,
+                      speaker: Optional[str] = None,
+                      prompt_audio: Optional[ReferenceAudio] = None,
+                      language: Optional[str] = None
                       ):
         with self._api_lock:
+            if self._tts_worker and not self._tts_done_event.is_set():
+                raise RuntimeError("A TTS session is already running. Please wait until it completes.")
             self._tts_done_event.clear()
             self._chunk_callback = chunk_callback
             self._stop_event.clear()
@@ -201,6 +223,14 @@ class TTSPlayer:
             self._session_audio_chunks = []
             self._start_time = None
             self._end_time = None
+            resolved_language = (language or context.current_language or "ja").lower()
+            if resolved_language not in {"ja", "en", "zh"}:
+                resolved_language = "ja"
+            self._session_language = resolved_language
+            self._session_speaker = speaker or context.current_speaker
+            self._session_prompt_audio = prompt_audio or context.current_prompt_audio
+            if not self._session_speaker or self._session_prompt_audio is None:
+                raise ValueError("Speaker and reference audio must be set before starting a TTS session.")
 
     def feed(self, text_chunk: str):
         with self._api_lock:
@@ -210,7 +240,8 @@ class TTSPlayer:
                 self._start_time = time.time()
 
             if self._split:
-                if context.current_language == 'en':
+                lang = self._session_language or context.current_language or 'ja'
+                if lang == 'en':
                     sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text_chunk.strip()) if s.strip()]
                 else:
                     sentences = split_japanese_text(text_chunk.strip())
@@ -234,6 +265,8 @@ class TTSPlayer:
             self._tts_done_event.set()
             self._text_queue.put(None)
             self._audio_queue.put(None)
+            self._session_speaker = None
+            self._session_prompt_audio = None
             if self._tts_worker and self._tts_worker.is_alive():
                 self._tts_worker.join()
             if self._playback_worker and self._playback_worker.is_alive():

@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 import types
@@ -5,8 +6,17 @@ from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
-import torch
-from transformers import AutoTokenizer, BertForMaskedLM
+
+try:
+    import torch  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    torch = None  # type: ignore
+
+try:
+    from transformers import AutoTokenizer, BertForMaskedLM  # type: ignore
+except ImportError:  # pragma: no cover - optional dependency
+    AutoTokenizer = None  # type: ignore
+    BertForMaskedLM = None  # type: ignore
 
 from ..Utils.GPTSoVITS import ensure_default_bert_env, find_repo_root
 
@@ -21,8 +31,9 @@ if "torchvision" not in sys.modules:
 os.environ.setdefault("TRANSFORMERS_NO_TORCHVISION", "1")
 os.environ.setdefault("DISABLE_TRANSFORMERS_IMAGE_TRANSFORMS", "1")
 
-_tokenizer: Optional[AutoTokenizer] = None
-_model: Optional[BertForMaskedLM] = None
+_tokenizer: Optional["AutoTokenizer"] = None
+_model: Optional["BertForMaskedLM"] = None
+_logger = logging.getLogger(__name__)
 
 
 def _resolve_bert_base_path() -> Optional[str]:
@@ -68,6 +79,11 @@ def _load_model() -> None:
     global _tokenizer, _model
     if _tokenizer is not None and _model is not None:
         return
+    if torch is None or AutoTokenizer is None or BertForMaskedLM is None:
+        raise ImportError(
+            "Chinese BERT backend requires the optional dependencies 'torch' and 'transformers'. "
+            "Install with `pip install lunavox-tts[zh]` to enable Chinese text features."
+        )
 
     ensure_default_bert_env()
     base_path = _resolve_bert_base_path()
@@ -96,14 +112,17 @@ def compute_bert_phone_features(norm_text: str, word2ph: List[int]) -> np.ndarra
 
     try:
         _load_model()
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Failed to load BERT model: {e}")
-        import traceback
-        traceback.print_exc()
+    except Exception as e:  # pragma: no cover - optional feature path
+        _logger.warning(
+            "Chinese BERT features are unavailable (%s). Returning zero embeddings. "
+            "Install optional dependencies via `pip install lunavox-tts[zh]` if needed.",
+            e,
+        )
         return np.zeros((sum(word2ph), 1024), dtype=np.float32)
 
     assert _tokenizer is not None and _model is not None
+    if torch is None:
+        return np.zeros((sum(word2ph), 1024), dtype=np.float32)
 
     device = torch.device("cpu")
     with torch.no_grad():

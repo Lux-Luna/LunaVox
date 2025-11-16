@@ -1,8 +1,11 @@
-﻿import os
+﻿import logging
+import os
 import json
 import time
 from pathlib import Path
+import socket
 import sys
+import tempfile
 from typing import List, Optional, Tuple
 
 # Import LunaVox TTS public APIs (support running from repo without installation)
@@ -15,6 +18,8 @@ import lunavox_tts as lunavox
 from lunavox_tts import unload_character
 from lunavox_tts.ModelManager import model_manager
 import gradio as gr
+import numpy as np
+import soundfile as sf
 from converter import render_converter_ui
 from i18n_texts import (
     get_guide_markdown,
@@ -25,6 +30,8 @@ from i18n_texts import (
     get_prompt_language_choices,
     get_output_language_choices,
 )
+
+logger = logging.getLogger(__name__)
 
 # ------------------------------
 # Paths and environment setup
@@ -39,6 +46,12 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # Assets
 ASSETS_DIR = SCRIPT_DIR / "assets"
 LANGUAGE_SVG_PATH = ASSETS_DIR / "language.svg"
+DEFAULT_WEBUI_PORT = 7860
+LANG_CODE_TO_AUDIO_DIR = {
+    "ja": AUDIO_RESOURCES_DIR / "Japanese",
+    "zh": AUDIO_RESOURCES_DIR / "Chinese",
+    "en": AUDIO_RESOURCES_DIR / "English",
+}
 
 # Prefer local dependencies to avoid downloads
 os.environ.setdefault("HUBERT_MODEL_PATH", str(DATA_DIR / "chinese-hubert-base.onnx"))
@@ -55,6 +68,41 @@ def _read_text_file(path: Path) -> str:
         return Path(path).read_text(encoding="utf-8")
     except Exception:
         return ""
+
+
+def _is_port_available(port: int) -> bool:
+    if port < 1 or port > 65535:
+        return False
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
+
+def _pick_server_port(default_port: int = DEFAULT_WEBUI_PORT, scan_span: int = 50) -> int:
+    candidates: list[int] = []
+    env_value = os.getenv("GRADIO_SERVER_PORT")
+    if env_value:
+        try:
+            env_port = int(env_value)
+            candidates.append(env_port)
+        except ValueError:
+            logger.warning("Invalid GRADIO_SERVER_PORT value '%s'. Ignoring.", env_value)
+    if default_port not in candidates:
+        candidates.append(default_port)
+    for offset in range(scan_span):
+        candidate = default_port + offset
+        if candidate not in candidates:
+            candidates.append(candidate)
+    for port in candidates:
+        if _is_port_available(port):
+            if port != default_port:
+                logger.info("Selected alternative WebUI port %s (default %s busy).", port, default_port)
+            return port
+    raise RuntimeError("Unable to find a free TCP port for the WebUI.")
 def _is_valid_character_dir(path: Path, version: str = "v2") -> bool:
     """验证角色模型目录是否有效
     
@@ -162,45 +210,20 @@ def get_model_dir(character_name: str, version: str = "v2") -> Path:
         return CHAR_MODEL_DIR_V2 / character_name
 
 
-def list_reference_audio_resources(character_name: str) -> List[Tuple[str, str]]:
+def list_language_audio_resources(language: str) -> List[Tuple[str, str]]:
     """
-    搜索指定角色的参考音频资源
-    
-    Args:
-        character_name: 角色名称
-        
-    Returns:
-        List of (display_name, choice_value) tuples for Gradio dropdown
-        display_name: 只显示文件名（不含扩展名）
-        choice_value: 内部使用的完整路径
+    根据语言代码列出 audio_resources/<Language> 下的 wav 文件。
     """
-    if not AUDIO_RESOURCES_DIR.exists():
+    lang_code = (language or "ja").lower()
+    lang_code = lang_code if lang_code in LANG_CODE_TO_AUDIO_DIR else "ja"
+    folder = LANG_CODE_TO_AUDIO_DIR.get(lang_code)
+    if not folder or not folder.exists():
         return []
-    
-    # 转换为小写进行搜索，避免大小写问题
-    character_name_lower = character_name.lower()
-    
-    # 查找匹配的文件夹
-    matching_folders = []
-    for folder in AUDIO_RESOURCES_DIR.iterdir():
-        if folder.is_dir() and folder.name.lower() == character_name_lower:
-            matching_folders.append(folder)
-    
-    if not matching_folders:
-        return []
-    
-    # 收集所有wav文件
-    audio_files = []
-    for folder in matching_folders:
-        for audio_file in folder.glob("*.wav"):
-            # 使用文件名（不含扩展名）作为显示名称
-            display_name = audio_file.stem
-            # 选择值就是文件路径
-            choice_value = str(audio_file)
-            audio_files.append((display_name, choice_value))
-    
-    # 按文件名排序
-    audio_files.sort(key=lambda x: x[0])
+    audio_files: List[Tuple[str, str]] = []
+    for audio_file in folder.glob("*.wav"):
+        if audio_file.is_file():
+            audio_files.append((audio_file.stem, str(audio_file)))
+    audio_files.sort(key=lambda x: x[0].lower())
     return audio_files
 
 
@@ -209,7 +232,7 @@ def load_default_prompt(character_name: str) -> Tuple[Optional[str], Optional[st
     return None, None, ""
 
 
-def ensure_character_loaded(character_name: str, version: str = "v2") -> Tuple[str, List[Tuple[str, str]]]:
+def ensure_character_loaded(character_name: str, version: str = "v2", language: str = "ja") -> Tuple[str, List[Tuple[str, str]]]:
     """加载角色模型
     
     Args:
@@ -234,12 +257,11 @@ def ensure_character_loaded(character_name: str, version: str = "v2") -> Tuple[s
         # 加载新模型
         lunavox.load_character(character_name, str(model_dir))
         
-        # 同时搜索参考音频资源
-        audio_resources = list_reference_audio_resources(character_name)
+        audio_resources = list_language_audio_resources(language)
         
         version_display = "v2 Pro Plus" if version == "v2_pro_plus" else "v2"
         if audio_resources:
-            return f"角色 {character_name} ({version_display}) 模型已加载，找到 {len(audio_resources)} 个参考音频资源。", audio_resources
+            return f"角色 {character_name} ({version_display}) 模型已加载，找到 {len(audio_resources)} 个预设音频。", audio_resources
         else:
             return f"角色 {character_name} ({version_display}) 模型已加载。", []
             
@@ -283,25 +305,35 @@ def set_reference(character_name: str, audio_path: str, audio_text: str, audio_l
         return f"设置参考音频时出错: {str(e)}"
 
 
-def synthesize(character_name: str, text: str, language: str) -> Tuple[Optional[str], str]:
+def synthesize(character_name: str, text: str, language: str) -> Tuple[Optional[Tuple[int, np.ndarray]], str]:
     if not text or not text.strip():
         return None, "请输入要合成的文本。"
 
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    save_path = OUTPUT_DIR / f"{character_name}_{timestamp}.wav"
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp_path = Path(tmp_file.name)
+    tmp_file.close()
 
-    # Do not play on host machine (web-only playback)
-    lunavox.tts(
-        character_name=character_name,
-        text=text.strip(),
-        play=False,
-        split_sentence=True,
-        save_path=str(save_path),
-        language=language,
-    )
-    if save_path.exists():
-        return str(save_path), f"合成完成：{save_path}"
-    return None, "合成失败，请检查日志。"
+    try:
+        lunavox.tts(
+            character_name=character_name,
+            text=text.strip(),
+            play=False,
+            split_sentence=True,
+            save_path=str(tmp_path),
+            language=language,
+        )
+        if not tmp_path.exists():
+            return None, "合成失败，请检查日志。"
+        audio_data, sample_rate = sf.read(tmp_path, dtype="float32")
+        if audio_data.ndim > 1:
+            audio_data = np.mean(audio_data, axis=1)
+        return (sample_rate, audio_data), "合成完成。"
+    finally:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except OSError:
+            pass
 
 
 # ------------------------------
@@ -371,7 +403,7 @@ def build_ui() -> gr.Blocks:
                         with gr.Group(elem_classes=["boxed"]):
                             ref_audio_dropdown = gr.Dropdown(
                                 label=ui_text("en", "webui", "preset_ref_label"),
-                                choices=[],
+                                choices=list_language_audio_resources("ja"),
                                 value=None,
                                 interactive=True,
                                 allow_custom_value=False,
@@ -410,7 +442,7 @@ def build_ui() -> gr.Blocks:
                         )
                         input_text = gr.Textbox(label=ui_text("en", "webui", "input_text_label"), lines=4, placeholder=ui_text("en", "webui", "input_text_placeholder"))
                         btn_tts = gr.Button(ui_text("en", "webui", "btn_tts"))
-                        out_audio = gr.Audio(label=ui_text("en", "webui", "out_audio_label"), type="filepath")
+                        out_audio = gr.Audio(label=ui_text("en", "webui", "out_audio_label"), type="numpy")
                         out_msg = gr.Markdown()
 
             with gr.TabItem("模型转换"):
@@ -440,17 +472,42 @@ def build_ui() -> gr.Blocks:
             version = "v2"
             characters = list_character_folders(version)
             if not characters:
-                return "No characters found. Please put models under Data/character_model/v2.", version, "", "", "", "", gr.update(choices=[])
+                return (
+                    "No characters found. Please put models under Data/character_model/v2.",
+                    version,
+                    "",
+                    "",
+                    "",
+                    "",
+                    gr.update(choices=list_language_audio_resources("ja")),
+                )
 
             # 不自动加载模型，让用户手动选择
-            return (ui_text("en", "webui", "status_ready"), version, "", "", "", "", gr.update(choices=characters))
+            return (
+                ui_text("en", "webui", "status_ready"),
+                version,
+                "",
+                "",
+                "",
+                "",
+                gr.update(choices=list_language_audio_resources("ja")),
+            )
 
         demo.load(on_app_load, outputs=[status, st_version, st_character, st_loaded_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown])
 
-        def on_version_change(current_character: str, loaded_character: str, new_version: str):
+        def on_version_change(current_character: str, loaded_character: str, new_version: str, ref_lang: str):
             """处理版本切换"""
             if not new_version:
-                return "Please select version.", new_version, gr.update(choices=[]), "", "", "", "", gr.update(choices=[])
+                return (
+                    "Please select version.",
+                    new_version,
+                    gr.update(choices=[]),
+                    "",
+                    "",
+                    "",
+                    "",
+                    gr.update(choices=list_language_audio_resources(_to_lang_code(ref_lang))),
+                )
             
             # 如果有当前角色，先卸载以确保重新加载（即使新版本有同名角色）
             # 优先使用已加载角色进行卸载和清理
@@ -469,7 +526,16 @@ def build_ui() -> gr.Blocks:
             characters = list_character_folders(new_version)
             if not characters:
                 version_dir = "Data/character_model/v2_pro_plus" if new_version == "v2_pro_plus" else "Data/character_model/v2"
-                return f"No {new_version} characters found. Put models under {version_dir}.", new_version, gr.update(choices=[]), "", "", "", "", gr.update(choices=[])
+                return (
+                    f"No {new_version} characters found. Put models under {version_dir}.",
+                    new_version,
+                    gr.update(choices=[]),
+                    "",
+                    "",
+                    "",
+                    "",
+                    gr.update(choices=list_language_audio_resources(_to_lang_code(ref_lang))),
+                )
             
             # 不自动加载第一个角色，让用户手动选择
             version_display = "v2 Pro Plus" if new_version == "v2_pro_plus" else "v2"
@@ -481,12 +547,12 @@ def build_ui() -> gr.Blocks:
                 "",
                 "",
                 "",
-                gr.update(choices=[]),
+                gr.update(choices=list_language_audio_resources(_to_lang_code(ref_lang))),
             )
 
         dd_version.change(
             on_version_change,
-            inputs=[st_character, st_loaded_character, dd_version],
+            inputs=[st_character, st_loaded_character, dd_version, ref_lang_dd],
             outputs=[status, st_version, dd_character, st_character, st_loaded_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown],
         )
 
@@ -500,10 +566,17 @@ def build_ui() -> gr.Blocks:
             outputs=[st_ui_lang, guide_md],
         )
 
-        def on_load_character_click(version: str, character: str, loaded_character: str):
+        def on_load_character_click(version: str, character: str, loaded_character: str, ref_lang: str):
             """处理加载角色按钮点击"""
             if not character:
-                return "请先选择一个角色。", "", "", "", gr.update(choices=[]), loaded_character or ""
+                return (
+                    "请先选择一个角色。",
+                    "",
+                    "",
+                    "",
+                    gr.update(choices=list_language_audio_resources(_to_lang_code(ref_lang))),
+                    loaded_character or "",
+                )
 
             # 如果已加载的角色与将要加载的不同，先卸载并清理
             if loaded_character and loaded_character != character:
@@ -516,19 +589,26 @@ def build_ui() -> gr.Blocks:
                 except Exception as e:
                     print(f"清理临时权重时出错（可忽略）: {e}")
             
-            msg, audio_resources = ensure_character_loaded(character, version)
-            return msg, character, "", "", gr.update(choices=audio_resources), character
+            msg, audio_resources = ensure_character_loaded(character, version, _to_lang_code(ref_lang))
+            return msg, character, "", "", gr.update(choices=audio_resources, value=None), character
 
         btn_load_character.click(
             on_load_character_click,
-            inputs=[st_version, dd_character, st_loaded_character],
+            inputs=[st_version, dd_character, st_loaded_character, ref_lang_dd],
             outputs=[status, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown, st_loaded_character],
         )
 
         # 卸载当前角色并清理临时文件
-        def on_unload_character_click(loaded_character: str):
+        def on_unload_character_click(loaded_character: str, ref_lang: str):
             if not loaded_character:
-                return "No character is currently loaded.", "", "", "", "", gr.update(choices=[])
+                return (
+                    "No character is currently loaded.",
+                    "",
+                    "",
+                    "",
+                    "",
+                    gr.update(choices=list_language_audio_resources(_to_lang_code(ref_lang)), value=None),
+                )
             try:
                 lunavox.unload_character(loaded_character)
             except Exception as e:
@@ -537,22 +617,35 @@ def build_ui() -> gr.Blocks:
                 model_manager.clean_cache()
             except Exception as e:
                 print(f"清理临时权重时出错（可忽略）: {e}")
-            return "Character unloaded and temporary weights cleaned.", "", "", "", "", gr.update(choices=[])
+            return (
+                "Character unloaded and temporary weights cleaned.",
+                "",
+                "",
+                "",
+                "",
+                gr.update(choices=list_language_audio_resources(_to_lang_code(ref_lang)), value=None),
+            )
 
         btn_unload_character.click(
             on_unload_character_click,
-            inputs=[st_loaded_character],
+            inputs=[st_loaded_character, ref_lang_dd],
             outputs=[status, st_character, st_loaded_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown],
         )
 
-        def on_character_change(current_character: str, version: str, new_char: str):
+        def on_character_change(current_character: str, version: str, new_char: str, ref_lang: str):
             """处理角色选择变更（仅更新状态，不自动加载）"""
             if not new_char:
-                return "Please select a character.", gr.update(), gr.update(), new_char, "", "", gr.update(choices=[])
+                return (
+                    "Please select a character.",
+                    gr.update(),
+                    gr.update(),
+                    new_char,
+                    "",
+                    "",
+                    gr.update(choices=list_language_audio_resources(_to_lang_code(ref_lang)), value=None),
+                )
             
-            # 仅更新状态，不自动加载模型
-            # 搜索参考音频资源用于显示
-            audio_resources = list_reference_audio_resources(new_char)
+            audio_resources = list_language_audio_resources(_to_lang_code(ref_lang))
             
             return (
                 f"Selected {new_char}. Click 'Load Character' to proceed.",
@@ -561,13 +654,22 @@ def build_ui() -> gr.Blocks:
                 new_char,
                 "",
                 "",
-                gr.update(choices=audio_resources),
+                gr.update(choices=audio_resources, value=None),
             )
 
         dd_character.change(
             on_character_change,
-            inputs=[st_character, st_version, dd_character],
+            inputs=[st_character, st_version, dd_character, ref_lang_dd],
             outputs=[status, ref_audio, ref_text, st_character, st_ref_audio_path, st_ref_audio_text, ref_audio_dropdown],
+        )
+
+        def on_ref_language_change(ref_lang: str):
+            return gr.update(choices=list_language_audio_resources(_to_lang_code(ref_lang)), value=None)
+
+        ref_lang_dd.change(
+            on_ref_language_change,
+            inputs=[ref_lang_dd],
+            outputs=[ref_audio_dropdown],
         )
         
         # 处理参考音频下拉选择器选择
@@ -684,7 +786,10 @@ def build_ui() -> gr.Blocks:
                 gr.update(value=ui_text(code, "webui", "synth_section_title")),
                 gr.update(label=ui_text(code, "webui", "output_lang_label"), choices=get_output_language_choices(code), value=get_output_language_choices(code)[0]),
                 gr.update(label=ui_text(code, "webui", "input_text_label"), placeholder=ui_text(code, "webui", "input_text_placeholder")),
-                gr.update(value=ui_text(code, "webui", "btn_tts")),
+                        # Reset audio/text inputs after language switch or inference completion.
+                        gr.update(value=None),
+                        gr.update(value=""),
+                        gr.update(value=ui_text(code, "webui", "btn_tts")),
                 gr.update(label=ui_text(code, "webui", "out_audio_label")),
             ]
             # Update converter labels
@@ -716,6 +821,17 @@ def build_ui() -> gr.Blocks:
 
 if __name__ == "__main__":
     app = build_ui()
-    app.launch(server_name="127.0.0.1", server_port=7860, inbrowser=True, show_api=False)
+    try:
+        server_port = _pick_server_port()
+    except RuntimeError as exc:
+        logger.error("Failed to start WebUI: %s", exc)
+        raise SystemExit(1) from exc
+    app.launch(
+        server_name="127.0.0.1",
+        server_port=server_port,
+        inbrowser=True,
+        show_api=False,
+        allowed_paths=[str(OUTPUT_DIR), str(AUDIO_RESOURCES_DIR)],
+    )
 
 

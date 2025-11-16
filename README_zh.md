@@ -60,6 +60,11 @@ python Tutorial/quick_tryout_zh.py
 
 下载后，请通过环境变量 (os.environ) 指定文件路径。
 
+### 🧩 可选依赖
+
+- **中文语义/说话人特征**：执行 `pip install "lunavox-tts[zh]"`，会自动安装 `torch` 与 `transformers`。未安装时，中文路径会退化为零向量，但日语/英语推理不受影响。
+- **模型转换 (`convert_to_onnx`)**：执行 `pip install "lunavox-tts[convert]"` 以启用 PyTorch 转换脚本。
+
 ### 🎤 语音合成最佳实践
 
 多语言 TTS 推理示例：
@@ -119,7 +124,7 @@ print("🎉 音频生成完毕!")
 如果您需要将原始的 GPT-SoVITS 模型转换为 LunaVox 使用的格式，请先确保已安装 `torch`。
 
 ```bash
-pip install torch
+pip install "lunavox-tts[convert]"
 ```
 
 然后，您可以使用内置的转换工具。
@@ -202,6 +207,11 @@ import lunavox_tts as lunavox
 # 启动命令行客户端
 lunavox.launch_command_line_client()
 ```
+
+## ⚙️ 运行时配置
+
+- `LUNAVOX_ORT_PROVIDERS`：覆盖 ONNX Runtime Provider 顺序（逗号分隔），示例 `CUDAExecutionProvider,CPUExecutionProvider`。
+- `LUNAVOX_USE_IO_BINDING=1`：启用实验性的 IO Binding，可在支持的 GPU Provider 下减少 Host/Device 拷贝。
 
 ## 📝 未来计划 (Roadmap)
 

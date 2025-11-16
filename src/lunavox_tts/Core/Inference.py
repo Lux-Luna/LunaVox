@@ -1,3 +1,5 @@
+import os
+import logging
 import onnxruntime as ort
 import numpy as np
 from typing import List, Optional
@@ -9,6 +11,9 @@ from ..English.EnglishG2P import english_to_phones
 from ..Chinese.ChineseG2P import chinese_clean_g2p_and_norm
 from ..Chinese.ZhBert import compute_bert_phone_features
 from ..Utils.Constants import BERT_FEATURE_DIM
+
+USE_IO_BINDING = os.getenv("LUNAVOX_USE_IO_BINDING", "0") == "1"
+logger = logging.getLogger(__name__)
 
 
 class LunaVoxEngine:
@@ -122,16 +127,38 @@ class LunaVoxEngine:
         self._validate_vocoder_inputs(vocoder, vocoder_inputs)
         
         # Run VITS
-        vits_output = vocoder.run(None, vocoder_inputs)[0]
+        vits_output = self._run_vocoder(vocoder, vocoder_inputs)
         
-        # Debug: check output range
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.debug(f"VITS output: shape={vits_output.shape}, "
-                    f"range=[{vits_output.min():.6f}, {vits_output.max():.6f}], "
-                    f"RMS={np.sqrt(np.mean(vits_output**2)):.6f}")
+        logger.debug(
+            "VITS output: shape=%s, range=[%.6f, %.6f], RMS=%.6f",
+            vits_output.shape,
+            float(vits_output.min()),
+            float(vits_output.max()),
+            float(np.sqrt(np.mean(vits_output**2))),
+        )
         
         return vits_output
+
+    def _run_vocoder(self, session: ort.InferenceSession, inputs: dict) -> np.ndarray:
+        if not USE_IO_BINDING:
+            return session.run(None, inputs)[0]
+        try:
+            io_binding = session.io_binding()
+            for name, value in inputs.items():
+                ort_value = ort.OrtValue.ortvalue_from_numpy(value)
+                io_binding.bind_input(name, ort_value)
+            for output in session.get_outputs():
+                io_binding.bind_output(output.name, "cpu")
+            session.run_with_iobinding(io_binding)
+            outputs = io_binding.copy_outputs_to_cpu()
+            if outputs:
+                return outputs[0]
+        except Exception as exc:  # pragma: no cover - fallback path
+            logger.warning(
+                "Failed to run vocoder with IO binding (%s). Falling back to regular execution.",
+                exc,
+            )
+        return session.run(None, inputs)[0]
     
     def _validate_vocoder_inputs(self, vocoder: ort.InferenceSession, 
                                  inputs: dict) -> None:

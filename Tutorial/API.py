@@ -38,7 +38,7 @@ def set_reference_audio(character_name: str, audio_path: str | PathLike, audio_t
 
 
 async def tts_async(character_name: str, text: str, play: bool = False, split_sentence: bool = False,
-                    save_path: str | PathLike | None = None) -> AsyncIterator[bytes]:
+                    save_path: str | PathLike | None = None, language: str = "ja") -> AsyncIterator[bytes]:
     """
     Asynchronously generates speech from text and yields audio chunks.
 
@@ -62,7 +62,7 @@ async def tts_async(character_name: str, text: str, play: bool = False, split_se
 
 
 def tts(character_name: str, text: str, play: bool = False, split_sentence: bool = True,
-        save_path: str | PathLike | None = None) -> None:
+        save_path: str | PathLike | None = None, language: str = "ja") -> None:
     """
     Synchronously generates speech from text.
 

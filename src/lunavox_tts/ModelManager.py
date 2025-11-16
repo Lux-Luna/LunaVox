@@ -19,6 +19,34 @@ logger = logging.getLogger(__name__)
 SESS_OPTIONS = onnxruntime.SessionOptions()
 SESS_OPTIONS.log_severity_level = 3
 
+_DEFAULT_PROVIDER_ORDER: list[str] = [
+    "CUDAExecutionProvider",
+    "DmlExecutionProvider",
+    "ROCMExecutionProvider",
+    "CPUExecutionProvider",
+]
+
+
+def _resolve_providers() -> list[str]:
+    available = set(onnxruntime.get_available_providers())
+    env_value = os.getenv("LUNAVOX_ORT_PROVIDERS")
+    if env_value:
+        requested = [item.strip() for item in env_value.split(",") if item.strip()]
+        resolved = [provider for provider in requested if provider in available]
+        if resolved:
+            logger.info("Using ONNXRuntime providers from LUNAVOX_ORT_PROVIDERS: %s", ",".join(resolved))
+            return resolved
+        logger.warning(
+            "Requested providers '%s' are not available in this environment. Falling back to auto detection.",
+            env_value,
+        )
+    resolved = [provider for provider in _DEFAULT_PROVIDER_ORDER if provider in available]
+    if resolved:
+        logger.info("Auto-detected ONNXRuntime providers: %s", ",".join(resolved))
+        return resolved
+    logger.info("No preferred providers available; falling back to CPUExecutionProvider.")
+    return ["CPUExecutionProvider"]
+
 
 class _GSVModelFile:
     T2S_ENCODER: str = 't2s_encoder_fp32.onnx'
@@ -89,7 +117,7 @@ class ModelManager:
             capacity=int(capacity_str))
         self.character_model_paths: dict[str, str] = {}  # 创建一个持久化字典来存储角色模型路径
         self.character_versions: dict[str, str] = {}  # 存储每个角色的模型版本
-        self.providers = ["CPUExecutionProvider"]
+        self.providers = _resolve_providers()
 
         self.cn_hubert: Optional[InferenceSession] = None
 

@@ -11,7 +11,6 @@ from pydantic import BaseModel
 from .Audio.ReferenceAudio import ReferenceAudio
 from .Core.TTSPlayer import tts_player
 from .ModelManager import model_manager
-from .Utils.Shared import context
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +40,7 @@ class TTSPayload(BaseModel):
     text: str
     split_sentence: bool = False
     save_path: Optional[str] = None
+    language: str = "ja"
 
 
 @app.post("/load_character")
@@ -84,19 +84,25 @@ def run_tts_in_background(
         text: str,
         split_sentence: bool,
         save_path: Optional[str],
-        chunk_callback: Callable[[Optional[bytes]], None]
+        chunk_callback: Callable[[Optional[bytes]], None],
+        language: str,
 ):
     try:
-        context.current_speaker = character_name
-        context.current_prompt_audio = ReferenceAudio(
+        prompt_audio = ReferenceAudio(
             prompt_wav=_reference_audios[character_name]['audio_path'],
             prompt_text=_reference_audios[character_name]['audio_text'],
         )
+        session_language = language.lower()
+        if session_language not in {"ja", "en", "zh"}:
+            session_language = "ja"
         tts_player.start_session(
             play=False,
             split=split_sentence,
             save_path=save_path,
             chunk_callback=chunk_callback,
+            speaker=character_name,
+            prompt_audio=prompt_audio,
+            language=session_language,
         )
         tts_player.feed(text)
         tts_player.end_session()
@@ -131,7 +137,8 @@ async def tts_endpoint(payload: TTSPayload):
         payload.text,
         payload.split_sentence,
         payload.save_path,
-        tts_chunk_callback
+        tts_chunk_callback,
+        payload.language,
     )
 
     return StreamingResponse(audio_stream_generator(stream_queue), media_type="audio/wav")
