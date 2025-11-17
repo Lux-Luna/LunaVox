@@ -16,6 +16,8 @@ DATA_DIR = REPO_ROOT / "Data"
 CHAR_DIR = DATA_DIR / "character_model"
 AUDIO_DIR = DATA_DIR / "audio_resources"
 AUDIO_LANGUAGE_FOLDERS = ["Chinese", "English", "Japanese"]
+SRC_DATA_DIR = REPO_ROOT / "src" / "lunavox_tts" / "Data"
+SRC_DATA_FOLDERS = ["sv", "v2", "v2ProPlus"]
 
 REQUIRED_CN_HUBERT = DATA_DIR / "chinese-hubert-base.onnx"
 REQUIRED_OPENJTALK_DIR = DATA_DIR / "open_jtalk_dic_utf_8-1.11"
@@ -137,6 +139,22 @@ def audio_language_missing_items() -> List[str]:
     return missing
 
 
+def src_data_missing_items() -> List[str]:
+    """
+    Ensure required folders exist within src/lunavox_tts/Data.
+    """
+    missing: List[str] = []
+    for folder in SRC_DATA_FOLDERS:
+        folder_path = SRC_DATA_DIR / folder
+        rel_dir = str(folder_path.relative_to(REPO_ROOT)) + "/"
+        if not folder_path.exists():
+            missing.append(rel_dir)
+            continue
+        if not any(folder_path.iterdir()):
+            missing.append(f"{rel_dir}(missing contents)")
+    return missing
+
+
 def character_missing_files(char_path: Path) -> List[str]:
     missing: List[str] = []
     for name in CHAR_REQUIRED_FILES:
@@ -175,6 +193,10 @@ def need_download() -> Tuple[bool, List[Tuple[str, List[str]]]]:
     audio_missing = audio_language_missing_items()
     if audio_missing:
         missing_summary.append(("audio_resources", audio_missing))
+
+    src_data_missing = src_data_missing_items()
+    if src_data_missing:
+        missing_summary.append(("src_data", src_data_missing))
 
     return (len(missing_summary) > 0), missing_summary
 
@@ -258,6 +280,18 @@ def ensure_data_from_hf() -> None:
         AUDIO_DIR.mkdir(parents=True, exist_ok=True)
         _copy_missing(audio_src_root, AUDIO_DIR)
 
+    # Download/complement src/lunavox_tts/Data folders
+    src_data_root = hf_root / "src" / "lunavox_tts" / "Data"
+    if src_data_root.exists():
+        SRC_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        for folder in SRC_DATA_FOLDERS:
+            remote_folder = src_data_root / folder
+            if not remote_folder.exists():
+                continue
+            local_folder = SRC_DATA_DIR / folder
+            local_folder.mkdir(parents=True, exist_ok=True)
+            _copy_missing(remote_folder, local_folder)
+
     print("Data setup completed.")
 
 
@@ -271,6 +305,8 @@ __all__ = [
     "CHAR_DIR",
     "AUDIO_DIR",
     "AUDIO_LANGUAGE_FOLDERS",
+    "SRC_DATA_DIR",
+    "SRC_DATA_FOLDERS",
     "REQUIRED_CN_HUBERT",
     "REQUIRED_OPENJTALK_DIR",
     "REQUIRED_CHINESE_ROBERTA_DIR",
@@ -278,6 +314,7 @@ __all__ = [
     "list_existing_characters",
     "list_existing_audio_characters",
     "audio_language_missing_items",
+    "src_data_missing_items",
     "character_missing_files",
     "need_download",
     "ensure_data_from_hf",
