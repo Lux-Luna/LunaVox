@@ -45,6 +45,37 @@ def _copy_missing(src: Path, dst: Path) -> None:
                 target.write_bytes(path.read_bytes())
 
 
+def _strip_missing_annotation(path_str: str) -> str:
+    """
+    Remove explanatory annotations such as '(missing .wav files)' that are only meant for logging.
+    """
+    cleaned = path_str.strip()
+    marker = "(missing"
+    if marker in cleaned:
+        cleaned = cleaned.split(marker, 1)[0].rstrip()
+    return cleaned
+
+
+def _missing_items_to_patterns(missing_summary: List[Tuple[str, List[str]]]) -> List[str]:
+    """
+    Convert missing summary entries into Hugging Face allow_patterns so we only download what we lack.
+    """
+    patterns: List[str] = []
+    seen: set[str] = set()
+    for _, names in missing_summary:
+        for name in names:
+            normalized = _strip_missing_annotation(name).lstrip("./")
+            if not normalized:
+                continue
+            normalized = normalized.replace("\\", "/")
+            if normalized.endswith("/"):
+                normalized = f"{normalized}**"
+            if normalized not in seen:
+                seen.add(normalized)
+                patterns.append(normalized)
+    return patterns
+
+
 def list_local_model_dirs() -> List[Path]:
     """Return character model leaf directories, e.g. Data/character_model/v2/pretrained."""
     results: List[Path] = []
@@ -160,16 +191,23 @@ def ensure_data_from_hf() -> None:
     for scope, names in items:
         print(f"- {scope}: {', '.join(names)}")
 
+    allow_patterns = _missing_items_to_patterns(items)
+    if not allow_patterns:
+        print("Unable to determine the specific assets to download; aborting.")
+        return
+
     # Optional token support for private repos
     hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN")
 
     print(f"Downloading missing assets from Hugging Face repo: {REPO_ID} ...")
+    for pattern in allow_patterns:
+        print(f"  - {pattern}")
     local_dir = snapshot_download(
         repo_id=REPO_ID,
         local_dir=None,
         local_dir_use_symlinks=False,
         token=hf_token,
-        allow_patterns=["Data/**"]
+        allow_patterns=allow_patterns
     )
     hf_root = Path(local_dir)
 
