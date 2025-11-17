@@ -770,38 +770,66 @@ def build_ui() -> gr.Blocks:
         # i18n: apply language change across the UI (webui + converter)
         def on_ui_language_change(display_lang: str):
             code = display_to_code(display_lang)
-            # Update webui labels
-            updates = [
-                gr.update(label=ui_text(code, "webui", "version_label")),
-                gr.update(label=ui_text(code, "webui", "character_label"), info=ui_text(code, "webui", "character_info")),
-                gr.update(value=ui_text(code, "webui", "btn_load")),
-                gr.update(value=ui_text(code, "webui", "status_ready")),
-                gr.update(value=ui_text(code, "webui", "ref_section_title")),
-                gr.update(label=ui_text(code, "webui", "preset_ref_label"), info=ui_text(code, "webui", "preset_ref_info")),
-                gr.update(label=ui_text(code, "webui", "ref_lang_label"), choices=get_prompt_language_choices(code), value=get_prompt_language_choices(code)[-1]),
-                gr.update(value=ui_text(code, "webui", "or")),
-                gr.update(label=ui_text(code, "webui", "upload_ref_label")),
-                gr.update(label=ui_text(code, "webui", "auto_filename_label"), info=ui_text(code, "webui", "auto_filename_info")),
-                gr.update(label=ui_text(code, "webui", "ref_text_label"), placeholder=ui_text(code, "webui", "ref_text_placeholder")),
-                gr.update(value=ui_text(code, "webui", "synth_section_title")),
-                gr.update(label=ui_text(code, "webui", "output_lang_label"), choices=get_output_language_choices(code), value=get_output_language_choices(code)[0]),
-                gr.update(label=ui_text(code, "webui", "input_text_label"), placeholder=ui_text(code, "webui", "input_text_placeholder")),
-                        # Reset audio/text inputs after language switch or inference completion.
-                        gr.update(value=None),
-                        gr.update(value=""),
-                        gr.update(value=ui_text(code, "webui", "btn_tts")),
-                gr.update(label=ui_text(code, "webui", "out_audio_label")),
+            prompt_lang_choices = get_prompt_language_choices(code)
+            prompt_lang_value = prompt_lang_choices[-1] if prompt_lang_choices else ""
+            prompt_lang_code = _to_lang_code(prompt_lang_value or "ja")
+
+            output_lang_choices = get_output_language_choices(code)
+            output_lang_value = output_lang_choices[0] if output_lang_choices else ""
+
+            audio_choices = list_language_audio_resources(prompt_lang_code)
+
+            return [
+                gr.update(label=ui_text(code, "webui", "version_label")),  # dd_version
+                gr.update(label=ui_text(code, "webui", "character_label"), info=ui_text(code, "webui", "character_info")),  # dd_character
+                gr.update(value=ui_text(code, "webui", "btn_load")),  # btn_load_character
+                gr.update(value=ui_text(code, "webui", "status_ready")),  # status
+                gr.update(value=ui_text(code, "webui", "ref_section_title")),  # ref_section_title_md
+                gr.update(  # ref_audio_dropdown
+                    label=ui_text(code, "webui", "preset_ref_label"),
+                    info=ui_text(code, "webui", "preset_ref_info"),
+                    choices=audio_choices,
+                    value=None,
+                ),
+                gr.update(  # ref_lang_dd
+                    label=ui_text(code, "webui", "ref_lang_label"),
+                    choices=prompt_lang_choices,
+                    value=prompt_lang_value,
+                ),
+                gr.update(value=ui_text(code, "webui", "or")),  # or_md
+                gr.update(  # ref_audio
+                    label=ui_text(code, "webui", "upload_ref_label"),
+                    value=None,
+                ),
+                gr.update(label=ui_text(code, "webui", "auto_filename_label"), info=ui_text(code, "webui", "auto_filename_info")),  # auto_filename
+                gr.update(  # ref_text
+                    label=ui_text(code, "webui", "ref_text_label"),
+                    placeholder=ui_text(code, "webui", "ref_text_placeholder"),
+                    value="",
+                ),
+                gr.update(value=ui_text(code, "webui", "synth_section_title")),  # synth_section_title_md
+                gr.update(  # lang_dd
+                    label=ui_text(code, "webui", "output_lang_label"),
+                    choices=output_lang_choices,
+                    value=output_lang_value,
+                ),
+                gr.update(  # input_text
+                    label=ui_text(code, "webui", "input_text_label"),
+                    placeholder=ui_text(code, "webui", "input_text_placeholder"),
+                    value="",
+                ),
+                gr.update(value=ui_text(code, "webui", "btn_tts")),  # btn_tts
+                gr.update(  # out_audio
+                    label=ui_text(code, "webui", "out_audio_label"),
+                    value=None,
+                ),
+                gr.update(label=ui_text(code, "converter", "version_label")),  # conv_version
+                gr.update(label=ui_text(code, "converter", "in_ckpt_label")),  # in_ckpt
+                gr.update(label=ui_text(code, "converter", "in_pth_label")),  # in_pth
+                gr.update(label=ui_text(code, "converter", "out_dir_label")),  # out_dir
+                gr.update(value=ui_text(code, "converter", "btn_convert")),  # btn_convert
+                gr.update(value=ui_text(code, "converter", "ready")),  # out_title
             ]
-            # Update converter labels
-            updates.extend([
-                gr.update(label=ui_text(code, "converter", "version_label")),
-                gr.update(label=ui_text(code, "converter", "in_ckpt_label")),
-                gr.update(label=ui_text(code, "converter", "in_pth_label")),
-                gr.update(label=ui_text(code, "converter", "out_dir_label")),
-                gr.update(value=ui_text(code, "converter", "btn_convert")),
-                gr.update(value=ui_text(code, "converter", "ready")),
-            ])
-            return updates
 
         ui_lang_dd.change(
             on_ui_language_change,
