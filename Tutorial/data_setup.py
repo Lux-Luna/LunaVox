@@ -15,6 +15,7 @@ REPO_ROOT = Path(__file__).parent.parent  # Go up one level from Tutorial to rep
 DATA_DIR = REPO_ROOT / "Data"
 CHAR_DIR = DATA_DIR / "character_model"
 AUDIO_DIR = DATA_DIR / "audio_resources"
+AUDIO_LANGUAGE_FOLDERS = ["Chinese", "English", "Japanese"]
 
 REQUIRED_CN_HUBERT = DATA_DIR / "chinese-hubert-base.onnx"
 REQUIRED_OPENJTALK_DIR = DATA_DIR / "open_jtalk_dic_utf_8-1.11"
@@ -68,9 +69,41 @@ def list_existing_characters() -> List[Path]:
 
 
 def list_existing_audio_characters() -> List[Path]:
+    """
+    Returns audio preset directories following the language-based layout.
+
+    Falls back to any subdirectories if explicit language folders are absent
+    to maintain backward compatibility.
+    """
     if not AUDIO_DIR.exists():
         return []
-    return [p for p in AUDIO_DIR.iterdir() if p.is_dir()]
+    language_dirs: List[Path] = []
+    for lang in AUDIO_LANGUAGE_FOLDERS:
+        lang_dir = AUDIO_DIR / lang
+        if lang_dir.is_dir():
+            language_dirs.append(lang_dir)
+    if language_dirs:
+        language_dirs.sort(key=lambda p: p.name.lower())
+        return language_dirs
+    fallback = [p for p in AUDIO_DIR.iterdir() if p.is_dir()]
+    fallback.sort(key=lambda p: p.name.lower())
+    return fallback
+
+
+def audio_language_missing_items() -> List[str]:
+    """
+    Return detailed missing info for language audio resources.
+    """
+    missing: List[str] = []
+    for lang in AUDIO_LANGUAGE_FOLDERS:
+        lang_dir = AUDIO_DIR / lang
+        rel_dir = str(lang_dir.relative_to(REPO_ROOT)) + "/"
+        if not lang_dir.exists():
+            missing.append(rel_dir)
+            continue
+        if not any(p.is_file() and p.suffix.lower() == ".wav" for p in lang_dir.iterdir()):
+            missing.append(f"{rel_dir}(missing .wav files)")
+    return missing
 
 
 def character_missing_files(char_path: Path) -> List[str]:
@@ -108,9 +141,9 @@ def need_download() -> Tuple[bool, List[Tuple[str, List[str]]]]:
                 missing_summary.append((scope, rel_missing))
 
     # Check audio resources
-    existing_audio_chars = list_existing_audio_characters()
-    if not existing_audio_chars:
-        missing_summary.append(("audio_resources", ["audio_resources directory with character folders"]))
+    audio_missing = audio_language_missing_items()
+    if audio_missing:
+        missing_summary.append(("audio_resources", audio_missing))
 
     return (len(missing_summary) > 0), missing_summary
 
@@ -185,19 +218,7 @@ def ensure_data_from_hf() -> None:
     audio_src_root = hf_root / "Data" / "audio_resources"
     if audio_src_root.exists():
         AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-        local_audio_chars = [p for p in AUDIO_DIR.iterdir() if p.is_dir()]
-        if not local_audio_chars:
-            # No local audio resources; copy the first available from remote
-            audio_candidates = [p for p in audio_src_root.iterdir() if p.is_dir()]
-            audio_candidates.sort(key=lambda p: p.name)
-            if audio_candidates:
-                _copy_missing(audio_candidates[0], AUDIO_DIR / audio_candidates[0].name)
-        else:
-            # Complement existing local audio folders only
-            for local_audio in local_audio_chars:
-                src_audio = audio_src_root / local_audio.name
-                if src_audio.exists() and src_audio.is_dir():
-                    _copy_missing(src_audio, local_audio)
+        _copy_missing(audio_src_root, AUDIO_DIR)
 
     print("Data setup completed.")
 
@@ -211,12 +232,14 @@ __all__ = [
     "DATA_DIR",
     "CHAR_DIR",
     "AUDIO_DIR",
+    "AUDIO_LANGUAGE_FOLDERS",
     "REQUIRED_CN_HUBERT",
     "REQUIRED_OPENJTALK_DIR",
     "REQUIRED_CHINESE_ROBERTA_DIR",
     "CHAR_REQUIRED_FILES",
     "list_existing_characters",
     "list_existing_audio_characters",
+    "audio_language_missing_items",
     "character_missing_files",
     "need_download",
     "ensure_data_from_hf",
