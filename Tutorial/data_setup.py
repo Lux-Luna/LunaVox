@@ -18,7 +18,6 @@ AUDIO_DIR = DATA_DIR / "audio_resources"
 AUDIO_LANGUAGE_FOLDERS = ["Chinese", "English", "Japanese"]
 SRC_DATA_DIR = REPO_ROOT / "src" / "lunavox_tts" / "Data"
 SRC_DATA_FOLDERS = ["sv", "v2", "v2ProPlus"]
-HF_SNAPSHOT_DIR = REPO_ROOT / ".hf_downloads"
 
 REQUIRED_CN_HUBERT = DATA_DIR / "chinese-hubert-base.onnx"
 REQUIRED_OPENJTALK_DIR = DATA_DIR / "open_jtalk_dic_utf_8-1.11"
@@ -32,21 +31,6 @@ CHAR_REQUIRED_FILES = [
     "vits_fp32.onnx",
     "vits_fp16.bin",
 ]
-
-def _copy_missing(src: Path, dst: Path) -> None:
-    """Recursively copy files/dirs from src to dst, skipping paths that already exist locally."""
-    if not src.exists():
-        return
-    for path in src.rglob("*"):
-        rel = path.relative_to(src)
-        target = dst / rel
-        if path.is_dir():
-            target.mkdir(parents=True, exist_ok=True)
-        else:
-            if not target.exists():
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(path.read_bytes())
-
 
 def _strip_missing_annotation(path_str: str) -> str:
     """
@@ -225,31 +209,14 @@ def ensure_data_from_hf() -> None:
     print(f"Downloading missing assets from Hugging Face repo: {REPO_ID} ...")
     for pattern in allow_patterns:
         print(f"  - {pattern}")
-    HF_SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
     local_dir = snapshot_download(
         repo_id=REPO_ID,
-        local_dir=str(HF_SNAPSHOT_DIR),
+        local_dir=str(REPO_ROOT),
         local_dir_use_symlinks=False,
         token=hf_token,
         allow_patterns=allow_patterns
     )
     hf_root = Path(local_dir)
-
-    src_cn = hf_root / "Data" / "chinese-hubert-base.onnx"
-    if src_cn.exists() and not REQUIRED_CN_HUBERT.exists():
-        REQUIRED_CN_HUBERT.parent.mkdir(parents=True, exist_ok=True)
-        REQUIRED_CN_HUBERT.write_bytes(src_cn.read_bytes())
-
-    src_dict = hf_root / "Data" / "open_jtalk_dic_utf_8-1.11"
-    if src_dict.exists() and not REQUIRED_OPENJTALK_DIR.exists():
-        REQUIRED_OPENJTALK_DIR.mkdir(parents=True, exist_ok=True)
-        for path in src_dict.rglob("*"):
-            if path.is_dir():
-                (REQUIRED_OPENJTALK_DIR / path.relative_to(src_dict)).mkdir(parents=True, exist_ok=True)
-            else:
-                dst = REQUIRED_OPENJTALK_DIR / path.relative_to(src_dict)
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                dst.write_bytes(path.read_bytes())
 
     # Download Chinese RoBERTa model if missing
     if not REQUIRED_CHINESE_ROBERTA_DIR.exists():
@@ -261,38 +228,6 @@ def ensure_data_from_hf() -> None:
             token=hf_token
         )
         print(f"Chinese RoBERTa model downloaded to: {roberta_local_dir}")
-
-    char_src_root = hf_root / "Data" / "character_model"
-    if char_src_root.exists():
-        CHAR_DIR.mkdir(parents=True, exist_ok=True)
-        local_chars = [p for p in CHAR_DIR.iterdir() if p.is_dir()]
-        if not local_chars:
-            # No local characters; copy entire remote character_model
-            _copy_missing(char_src_root, CHAR_DIR)
-        else:
-            # Complement existing local characters only
-            for local_char in local_chars:
-                src_char = char_src_root / local_char.name
-                if src_char.exists() and src_char.is_dir():
-                    _copy_missing(src_char, local_char)
-
-    # Download/complement audio resources
-    audio_src_root = hf_root / "Data" / "audio_resources"
-    if audio_src_root.exists():
-        AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-        _copy_missing(audio_src_root, AUDIO_DIR)
-
-    # Download/complement src/lunavox_tts/Data folders
-    src_data_root = hf_root / "src" / "lunavox_tts" / "Data"
-    if src_data_root.exists():
-        SRC_DATA_DIR.mkdir(parents=True, exist_ok=True)
-        for folder in SRC_DATA_FOLDERS:
-            remote_folder = src_data_root / folder
-            if not remote_folder.exists():
-                continue
-            local_folder = SRC_DATA_DIR / folder
-            local_folder.mkdir(parents=True, exist_ok=True)
-            _copy_missing(remote_folder, local_folder)
 
     print("Data setup completed.")
 
