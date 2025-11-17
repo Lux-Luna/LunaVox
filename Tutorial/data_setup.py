@@ -18,6 +18,7 @@ AUDIO_DIR = DATA_DIR / "audio_resources"
 AUDIO_LANGUAGE_FOLDERS = ["Chinese", "English", "Japanese"]
 SRC_DATA_DIR = REPO_ROOT / "src" / "lunavox_tts" / "Data"
 SRC_DATA_FOLDERS = ["sv", "v2", "v2ProPlus"]
+HF_SNAPSHOT_DIR = REPO_ROOT / ".hf_downloads"
 
 REQUIRED_CN_HUBERT = DATA_DIR / "chinese-hubert-base.onnx"
 REQUIRED_OPENJTALK_DIR = DATA_DIR / "open_jtalk_dic_utf_8-1.11"
@@ -224,9 +225,10 @@ def ensure_data_from_hf() -> None:
     print(f"Downloading missing assets from Hugging Face repo: {REPO_ID} ...")
     for pattern in allow_patterns:
         print(f"  - {pattern}")
+    HF_SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
     local_dir = snapshot_download(
         repo_id=REPO_ID,
-        local_dir=None,
+        local_dir=str(HF_SNAPSHOT_DIR),
         local_dir_use_symlinks=False,
         token=hf_token,
         allow_patterns=allow_patterns
@@ -305,6 +307,7 @@ __all__ = [
     "CHAR_DIR",
     "AUDIO_DIR",
     "AUDIO_LANGUAGE_FOLDERS",
+    "HF_SNAPSHOT_DIR",
     "SRC_DATA_DIR",
     "SRC_DATA_FOLDERS",
     "REQUIRED_CN_HUBERT",
