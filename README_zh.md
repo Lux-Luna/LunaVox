@@ -40,15 +40,25 @@ pip install lunavox-tts
 
 ### ⚡️ 快速体验 (Quick Tryout)
 
-手上还没有 GPT-SoVITS 模型？没关系！
+所有示例脚本都位于 `Tutorial/` 目录，并会在启动时调用 `Tutorial/data_setup.py` 自动补齐缺失的模型/词典，同时设置好 `HUBERT_MODEL_PATH` 与 `OPEN_JTALK_DICT_DIR`。在仓库根目录执行以下命令即可：
 
-为了让您能够轻松上手，LunaVox 内置了预设的说话人角色。无需任何模型文件，只需运行下面的脚本，即可立即听到效果：
+#### GPT-SoVITS v2 预设（无需说话人向量）
 
 ```bash
-python Tutorial/quick_tryout_zh.py
+python Tutorial/v2_quick_tryout/quick_tryout_en.py  # 英文演示
+python Tutorial/v2_quick_tryout/quick_tryout_zh.py  # 中文演示
+python Tutorial/v2_quick_tryout/quick_tryout_ja.py  # 日文演示
 ```
 
-该脚本会自动下载所需的依赖文件并播放示例音频。
+#### GPT-SoVITS v2 Pro Plus 预设（需要说话人向量）
+
+```bash
+python Tutorial/v2_pro_plus_quick_tryout/quick_tryout_v2proplus_en.py
+python Tutorial/v2_pro_plus_quick_tryout/quick_tryout_v2proplus_zh.py
+python Tutorial/v2_pro_plus_quick_tryout/quick_tryout_v2proplus_ja.py
+```
+
+> 运行 v2 Pro Plus 脚本前，请先按文档将 ERes2NetV2 导出为 `Data/sv/eres2netv2.onnx`，否则无法生成必需的说话人嵌入。
 
 ### 🔗 依赖项下载
 

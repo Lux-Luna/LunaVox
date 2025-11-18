@@ -33,11 +33,25 @@ pip install lunavox-tts
 
 ### Quick Tryout
 
-No GPT-SoVITS model on hand? LunaVox ships with a preset character. Run the script below and you will hear a ready-made demo after the required assets are fetched automatically:
+All demo scripts live under `Tutorial/` and will first call `Tutorial/data_setup.py` to download any missing assets plus set `HUBERT_MODEL_PATH` / `OPEN_JTALK_DICT_DIR` for you. Run them from the repo root:
+
+#### GPT-SoVITS v2 preset (no speaker vector required)
 
 ```bash
-python Tutorial/quick_tryout_zh.py
+python Tutorial/v2_quick_tryout/quick_tryout_en.py  # English prompt + output
+python Tutorial/v2_quick_tryout/quick_tryout_zh.py  # Chinese prompt + output
+python Tutorial/v2_quick_tryout/quick_tryout_ja.py  # Japanese prompt + output
 ```
+
+#### GPT-SoVITS v2 Pro Plus preset (requires speaker embedding)
+
+```bash
+python Tutorial/v2_pro_plus_quick_tryout/quick_tryout_v2proplus_en.py
+python Tutorial/v2_pro_plus_quick_tryout/quick_tryout_v2proplus_zh.py
+python Tutorial/v2_pro_plus_quick_tryout/quick_tryout_v2proplus_ja.py
+```
+
+> The v2 Pro Plus scripts need the ERes2NetV2 speaker embedding model exported to `Data/sv/eres2netv2.onnx`; follow the documentation’s export steps before running them.
 
 ### Recommended Downloads
 
