@@ -21,11 +21,19 @@ def load_audio(
         target_sampling_rate: int = TARGET_SAMPLING_RATE
 ) -> Optional[np.ndarray]:
     try:
-        wav, original_sr = sf.read(audio_path, dtype='float32')
-        if wav.ndim > 1:
-            wav = np.mean(wav, axis=1)  # 多声道转单声道。
-        if original_sr != target_sampling_rate:
-            wav = soxr.resample(wav, original_sr, target_sampling_rate, quality='hq')  # 重采样。
+        if audio_path.lower().endswith(".mp3"):
+            try:
+                import librosa
+                wav, original_sr = librosa.load(audio_path, sr=target_sampling_rate)
+            except ImportError:
+                logger.error("librosa is required for MP3 support but not found.")
+                return None
+        else:
+            wav, original_sr = sf.read(audio_path, dtype='float32')
+            if wav.ndim > 1:
+                wav = np.mean(wav, axis=1)  # 多声道转单声道。
+            if original_sr != target_sampling_rate:
+                wav = soxr.resample(wav, original_sr, target_sampling_rate, quality='hq')  # 重采样。
 
     except Exception as e:
         logger.error(f"Failed to load reference audio: {audio_path}. Error: {e}")

@@ -220,9 +220,10 @@ def list_language_audio_resources(language: str) -> List[Tuple[str, str]]:
     if not folder or not folder.exists():
         return []
     audio_files: List[Tuple[str, str]] = []
-    for audio_file in folder.glob("*.wav"):
-        if audio_file.is_file():
-            audio_files.append((audio_file.stem, str(audio_file)))
+    for ext in ["*.wav", "*.mp3"]:
+        for audio_file in folder.glob(ext):
+            if audio_file.is_file():
+                audio_files.append((audio_file.stem, str(audio_file)))
     audio_files.sort(key=lambda x: x[0].lower())
     return audio_files
 
@@ -340,7 +341,7 @@ def synthesize(character_name: str, text: str, language: str) -> Tuple[Optional[
 # Gradio UI
 # ------------------------------
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(css="footer {visibility: hidden} .boxed {border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px; margin-bottom: 8px;}") as demo:
+    with gr.Blocks() as demo:
         gr.Markdown("""
         **LunaVox 本地 WebUI**  
         - 支持 v2 和 v2 Pro Plus 模型版本
@@ -858,8 +859,8 @@ if __name__ == "__main__":
         server_name="127.0.0.1",
         server_port=server_port,
         inbrowser=True,
-        show_api=False,
         allowed_paths=[str(OUTPUT_DIR), str(AUDIO_RESOURCES_DIR)],
+        css="footer {visibility: hidden} .boxed {border: 1px solid #e5e7eb; padding: 12px; border-radius: 6px; margin-bottom: 8px;}",
     )
 
 

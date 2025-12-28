@@ -21,3 +21,4 @@ jieba_fast
 transformers
 torch
 Gradio
+librosa
