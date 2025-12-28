@@ -56,7 +56,16 @@ class ReferenceAudio:
             audio_path=prompt_wav,
             target_sampling_rate=32000,
         )
+        # Check for NaNs immediately after loading
+        if self.audio_32k is not None and np.isnan(self.audio_32k).any():
+            import logging
+            logging.getLogger(__name__).warning(f"NaNs detected in loaded audio: {prompt_wav}. Replacing with zeros.")
+            self.audio_32k = np.nan_to_num(self.audio_32k)
+
         audio_16k: np.ndarray = soxr.resample(self.audio_32k, 32000, 16000, quality="hq")
+        # Check NaNs after resampling
+        if np.isnan(audio_16k).any():
+             audio_16k = np.nan_to_num(audio_16k)
         
         # Extract SSL content (always needed)
         audio_16k_batch = np.expand_dims(audio_16k, axis=0)

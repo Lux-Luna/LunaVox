@@ -126,6 +126,9 @@ class LunaVoxEngine:
         # Validate inputs before calling vocoder
         self._validate_vocoder_inputs(vocoder, vocoder_inputs)
         
+        # Cast inputs for vocoder
+        vocoder_inputs = self._cast_inputs(vocoder, vocoder_inputs)
+
         # Run VITS
         vits_output = self._run_vocoder(vocoder, vocoder_inputs)
         
@@ -201,10 +204,13 @@ class LunaVoxEngine:
                 )
                 raise TypeError(f"Input '{name}' dtype mismatch: {actual_dtype} != int64")
             elif expected.type == 'tensor(float)' and actual_dtype != np.float32:
-                logger.error(
-                    f"Input '{name}' has wrong dtype: {actual_dtype}, expected float32"
-                )
-                raise TypeError(f"Input '{name}' dtype mismatch: {actual_dtype} != float32")
+                # logger.error(
+                #     f"Input '{name}' has wrong dtype: {actual_dtype}, expected float32"
+                # )
+                # raise TypeError(f"Input '{name}' dtype mismatch: {actual_dtype} != float32")
+                pass # Allow float mismatch, will be cast later
+            elif expected.type == 'tensor(float16)' and actual_dtype != np.float16:
+                pass # Allow mismatch, will be cast later
             
             # Validate specific shapes
             if name == 'sv_emb':
@@ -237,6 +243,25 @@ class LunaVoxEngine:
         
         logger.debug(f"✓ Vocoder input validation passed")
 
+    def _cast_inputs(self, session: ort.InferenceSession, inputs: dict) -> dict:
+        """Automatically cast inputs to match the model's expected precision (fp32/fp16)."""
+        input_meta = {inp.name: inp.type for inp in session.get_inputs()}
+        new_inputs = {}
+        for name, value in inputs.items():
+            if name not in input_meta:
+                new_inputs[name] = value
+                continue
+            
+            expected_type = input_meta[name]
+            # Handle float conversions
+            if expected_type == 'tensor(float16)' and value.dtype == np.float32:
+                new_inputs[name] = value.astype(np.float16)
+            elif expected_type == 'tensor(float)' and value.dtype == np.float16:
+                new_inputs[name] = value.astype(np.float32)
+            else:
+                new_inputs[name] = value
+        return new_inputs
+
     def t2s_cpu(
             self,
             ref_seq: np.ndarray,
@@ -250,18 +275,23 @@ class LunaVoxEngine:
     ) -> Optional[np.ndarray]:
         """在CPU上运行T2S模型"""
         # Encoder
+        encoder_inputs = {
+            "ref_seq": ref_seq,
+            "text_seq": text_seq,
+            "ref_bert": ref_bert,
+            "text_bert": text_bert,
+            "ssl_content": ssl_content,
+        }
+        encoder_inputs = self._cast_inputs(encoder, encoder_inputs)
+        
         x, prompts = encoder.run(
             None,
-            {
-                "ref_seq": ref_seq,
-                "text_seq": text_seq,
-                "ref_bert": ref_bert,
-                "text_bert": text_bert,
-                "ssl_content": ssl_content,
-            },
+            encoder_inputs,
         )
         # First Stage Decoder
-        fs_outputs = first_stage_decoder.run(None, {"x": x, "prompts": prompts})
+        fs_inputs = {"x": x, "prompts": prompts}
+        fs_inputs = self._cast_inputs(first_stage_decoder, fs_inputs)
+        fs_outputs = first_stage_decoder.run(None, fs_inputs)
         fs_out_info = first_stage_decoder.get_outputs()
         fs_out_names: List[str] = [o.name for o in fs_out_info]
 
@@ -384,6 +414,7 @@ class LunaVoxEngine:
                 return None
 
             input_feed = _build_stage_feed(y, y_emb, k_layers, v_layers, k_agg, v_agg, x_example)
+            input_feed = self._cast_inputs(stage_decoder, input_feed)
             outputs_list = stage_decoder.run(None, input_feed)
             y, y_emb, new_k_layers, new_v_layers, new_k_agg, new_v_agg, logits, samples = _unpack_stage_outputs(outputs_list, y_emb)
 

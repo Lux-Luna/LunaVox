@@ -58,6 +58,14 @@ class TTSPlayer:
 
     @staticmethod
     def _preprocess_for_playback(audio_float: np.ndarray) -> bytes:
+        # Check for NaNs or Infs before conversion
+        if np.isnan(audio_float).any() or np.isinf(audio_float).any():
+            # Replace NaNs/Infs with 0
+            audio_float = np.nan_to_num(audio_float, nan=0.0, posinf=0.0, neginf=0.0)
+            
+        # Clip to valid range to avoid overflow when scaling
+        audio_float = np.clip(audio_float, -1.0, 1.0)
+        
         audio_int16 = (audio_float.squeeze() * 32767).astype(np.int16)
         return audio_int16.tobytes()
 

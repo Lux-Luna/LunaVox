@@ -24,7 +24,11 @@ def load_audio(
         if audio_path.lower().endswith(".mp3"):
             try:
                 import librosa
+                # librosa loads as float32 by default, normalized to [-1, 1]
                 wav, original_sr = librosa.load(audio_path, sr=target_sampling_rate)
+                # Ensure no NaNs from librosa
+                if np.isnan(wav).any():
+                    wav = np.nan_to_num(wav)
             except ImportError:
                 logger.error("librosa is required for MP3 support but not found.")
                 return None
@@ -38,6 +42,11 @@ def load_audio(
     except Exception as e:
         logger.error(f"Failed to load reference audio: {audio_path}. Error: {e}")
         return None
+
+    # Ensure array is contiguous and float32
+    wav = np.ascontiguousarray(wav, dtype=np.float32)
+    # Clip to valid range to avoid potential issues with MP3 decoding artifacts > 1.0
+    wav = np.clip(wav, -1.0, 1.0)
 
     # 检查音频长度是否在建议范围之外
     min_samples = int(MIN_DURATION_S * target_sampling_rate)

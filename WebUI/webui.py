@@ -117,40 +117,40 @@ def _is_valid_character_dir(path: Path, version: str = "v2") -> bool:
     
     if version == "v2":
         required_onnx = {
-            't2s_encoder_fp32.onnx',
-            't2s_first_stage_decoder_fp32.onnx',
-            't2s_stage_decoder_fp32.onnx',
-            'vits_fp32.onnx',
+            't2s_encoder_fp16.onnx',
+            't2s_first_stage_decoder_fp16.onnx',
+            't2s_stage_decoder_fp16.onnx',
+            'vits_fp16.onnx',
         }
-        # 需要 fp16 权重来生成 fp32（加载前会自动生成）
-        required_fp16_bin = {
-            't2s_shared_fp16.bin',
-            'vits_fp16.bin',
-        }
+        # 需要 fp16 权重来生成 fp32（加载前会自动生成） -> 现在直接使用 FP16 onnx，不需要动态生成 fp32
+        # required_fp16_bin = {
+        #     't2s_shared_fp16.bin',
+        #     'vits_fp16.bin',
+        # }
         
         if not required_onnx.issubset(names):
             return False
-        if not required_fp16_bin.issubset(names):
-            return False
+        # if not required_fp16_bin.issubset(names):
+        #     return False
         return True
     
     elif version == "v2_pro_plus":
         # v2 pro plus 使用相同的文件结构
         required_onnx = {
-            't2s_encoder_fp32.onnx',
-            't2s_first_stage_decoder_fp32.onnx',
-            't2s_stage_decoder_fp32.onnx',
-            'vits_fp32.onnx',
+            't2s_encoder_fp16.onnx',
+            't2s_first_stage_decoder_fp16.onnx',
+            't2s_stage_decoder_fp16.onnx',
+            'vits_fp16.onnx',
         }
-        required_fp16_bin = {
-            't2s_shared_fp16.bin',
-            'vits_fp16.bin',
-        }
+        # required_fp16_bin = {
+        #     't2s_shared_fp16.bin',
+        #     'vits_fp16.bin',
+        # }
         
         if not required_onnx.issubset(names):
             return False
-        if not required_fp16_bin.issubset(names):
-            return False
+        # if not required_fp16_bin.issubset(names):
+        #     return False
         return True
     
     return False
@@ -325,9 +325,12 @@ def synthesize(character_name: str, text: str, language: str) -> Tuple[Optional[
         )
         if not tmp_path.exists():
             return None, "合成失败，请检查日志。"
-        audio_data, sample_rate = sf.read(tmp_path, dtype="float32")
+        
+        # Read as int16 to avoid Gradio's float-to-int conversion issues (div by zero on silence)
+        audio_data, sample_rate = sf.read(tmp_path, dtype="int16")
         if audio_data.ndim > 1:
-            audio_data = np.mean(audio_data, axis=1)
+            audio_data = np.mean(audio_data, axis=1).astype(np.int16)
+            
         return (sample_rate, audio_data), "合成完成。"
     finally:
         try:

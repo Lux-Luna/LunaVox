@@ -64,17 +64,39 @@ def _missing_items_to_patterns(missing_summary: List[Tuple[str, List[str]]]) -> 
 
 
 def list_local_model_dirs() -> List[Path]:
-    """Return character model leaf directories, e.g. Data/character_model/v2/pretrained."""
+    """
+    Return character model leaf directories to check.
+    explicitly includes default 'pretrained' directories to ensure they are downloaded if missing.
+    Ignores *_fp16 directories to avoid checking converted models against original requirements.
+    """
     results: List[Path] = []
-    if not CHAR_DIR.exists():
-        return results
-    for family_dir in CHAR_DIR.iterdir():
-        if not family_dir.is_dir():
-            continue
-        for model_dir in family_dir.iterdir():
-            if model_dir.is_dir():
-                results.append(model_dir)
-    return sorted(results, key=lambda p: str(p.relative_to(REPO_ROOT)))
+    
+    # Defaults that should always be present/downloaded
+    defaults = [
+        CHAR_DIR / "v2" / "pretrained",
+        CHAR_DIR / "v2_pro_plus" / "pretrained"
+    ]
+    
+    # 1. Add existing directories (skipping _fp16)
+    if CHAR_DIR.exists():
+        for family_dir in CHAR_DIR.iterdir():
+            if not family_dir.is_dir():
+                continue
+            for model_dir in family_dir.iterdir():
+                if model_dir.is_dir():
+                    # Skip fp16 converted folders
+                    if model_dir.name.endswith("_fp16"):
+                        continue
+                    # Skip if already in defaults (handled later)
+                    if model_dir in defaults:
+                        continue
+                    results.append(model_dir)
+    
+    # 2. Add defaults (pretrained)
+    for d in defaults:
+        results.append(d)
+        
+    return sorted(list(set(results)), key=lambda p: str(p.relative_to(REPO_ROOT)))
 
 
 def list_existing_characters() -> List[Path]:

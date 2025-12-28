@@ -49,14 +49,16 @@ def _resolve_providers() -> list[str]:
 
 
 class _GSVModelFile:
-    T2S_ENCODER: str = 't2s_encoder_fp32.onnx'
-    T2S_FIRST_STAGE_DECODER: str = 't2s_first_stage_decoder_fp32.onnx'
-    T2S_STAGE_DECODER: str = 't2s_stage_decoder_fp32.onnx'
-    VITS: str = 'vits_fp32.onnx'
-    T2S_DECODER_WEIGHT_FP32: str = 't2s_shared_fp32.bin'
-    T2S_DECODER_WEIGHT_FP16: str = 't2s_shared_fp16.bin'
-    VITS_WEIGHT_FP32: str = 'vits_fp32.bin'
-    VITS_WEIGHT_FP16: str = 'vits_fp16.bin'
+    T2S_ENCODER_FP16: str = 't2s_encoder_fp16.onnx'
+    T2S_FIRST_STAGE_DECODER_FP16: str = 't2s_first_stage_decoder_fp16.onnx'
+    T2S_STAGE_DECODER_FP16: str = 't2s_stage_decoder_fp16.onnx'
+    # Use FP32 VITS for stability (FP16 VITS produces silence)
+    VITS_FP16: str = 'vits_fp32.onnx'
+    
+    T2S_ENCODER_FP32: str = 't2s_encoder_fp32.onnx'
+    T2S_FIRST_STAGE_DECODER_FP32: str = 't2s_first_stage_decoder_fp32.onnx'
+    T2S_STAGE_DECODER_FP32: str = 't2s_stage_decoder_fp32.onnx'
+    VITS_FP32: str = 'vits_fp32.onnx'
 
 
 @dataclass
@@ -65,14 +67,6 @@ class GSVModel:
     T2S_FIRST_STAGE_DECODER: InferenceSession
     T2S_STAGE_DECODER: InferenceSession
     VITS: InferenceSession
-
-
-def convert_bin_to_fp32(
-        fp16_bin_path: str, output_fp32_bin_path: str
-) -> None:
-    fp16_array = np.fromfile(fp16_bin_path, dtype=np.float16)
-    fp32_array = fp16_array.astype(np.float32)
-    fp32_array.tofile(output_fp32_bin_path)
 
 
 def download_model(filename: str, repo_id: str = 'Lux-Luna/LunaVox') -> Optional[str]:
@@ -90,24 +84,6 @@ def download_model(filename: str, repo_id: str = 'Lux-Luna/LunaVox') -> Optional
 
     except Exception as e:
         logger.error(f"Failed to download model {filename}: {str(e)}", exc_info=True)
-
-
-def convert_bins_to_fp32(model_dir: str) -> None:
-    fp16_fp32_pairs = [
-        (_GSVModelFile.T2S_DECODER_WEIGHT_FP16, _GSVModelFile.T2S_DECODER_WEIGHT_FP32),
-        (_GSVModelFile.VITS_WEIGHT_FP16, _GSVModelFile.VITS_WEIGHT_FP32),
-    ]
-
-    for fp16_name, fp32_name in fp16_fp32_pairs:
-        fp16_bin = os.path.normpath(os.path.join(model_dir, fp16_name))
-        fp32_bin = os.path.normpath(os.path.join(model_dir, fp32_name))
-
-        if not os.path.exists(fp16_bin):
-            raise FileNotFoundError(f"Weight file {fp16_bin} does not exist!")
-        if not os.path.exists(fp32_bin):
-            convert_bin_to_fp32(fp16_bin, fp32_bin)
-
-    logger.info("Successfully generated temporary FP32 weights to improve inference speed.")
 
 
 class ModelManager:
@@ -148,10 +124,10 @@ class ModelManager:
         if character_name in self.character_to_model:
             model_map = self.character_to_model[character_name]
             return GSVModel(
-                T2S_ENCODER=model_map[_GSVModelFile.T2S_ENCODER],
-                T2S_FIRST_STAGE_DECODER=model_map[_GSVModelFile.T2S_FIRST_STAGE_DECODER],
-                T2S_STAGE_DECODER=model_map[_GSVModelFile.T2S_STAGE_DECODER],
-                VITS=model_map[_GSVModelFile.VITS]
+                T2S_ENCODER=model_map["T2S_ENCODER"],
+                T2S_FIRST_STAGE_DECODER=model_map["T2S_FIRST_STAGE_DECODER"],
+                T2S_STAGE_DECODER=model_map["T2S_STAGE_DECODER"],
+                VITS=model_map["VITS"]
             )
         if character_name in self.character_model_paths:
             model_dir = self.character_model_paths[character_name]
@@ -172,8 +148,6 @@ class ModelManager:
             logger.info(f"Character '{character_name}' is already in cache; no need to reload.")
             _ = self.character_to_model[character_name]  # 访问一次以更新其在LRU缓存中的位置
             return True
-
-        convert_bins_to_fp32(model_dir)
         
         # Load model version metadata
         model_version = 'v2'  # Default
@@ -191,16 +165,31 @@ class ModelManager:
             logger.info(f"No model_info.json found, assuming v2")
 
         model_dict: dict[str, InferenceSession] = {}
-        model_filename: list[str] = [_GSVModelFile.T2S_ENCODER,
-                                     _GSVModelFile.T2S_FIRST_STAGE_DECODER,
-                                     _GSVModelFile.T2S_STAGE_DECODER,
-                                     _GSVModelFile.VITS]
+        
+        # Check for FP16 models first
+        if os.path.exists(os.path.join(model_dir, _GSVModelFile.VITS_FP16)):
+            logger.info("Using FP16 models.")
+            files_to_load = {
+                "T2S_ENCODER": _GSVModelFile.T2S_ENCODER_FP16,
+                "T2S_FIRST_STAGE_DECODER": _GSVModelFile.T2S_FIRST_STAGE_DECODER_FP16,
+                "T2S_STAGE_DECODER": _GSVModelFile.T2S_STAGE_DECODER_FP16,
+                # Force VITS FP32 for debugging
+                "VITS": _GSVModelFile.VITS_FP32,
+            }
+        else:
+            logger.info("Using FP32 models.")
+            files_to_load = {
+                "T2S_ENCODER": _GSVModelFile.T2S_ENCODER_FP32,
+                "T2S_FIRST_STAGE_DECODER": _GSVModelFile.T2S_FIRST_STAGE_DECODER_FP32,
+                "T2S_STAGE_DECODER": _GSVModelFile.T2S_STAGE_DECODER_FP32,
+                "VITS": _GSVModelFile.VITS_FP32,
+            }
 
-        for model_file in model_filename:
-            model_path: str = os.path.join(model_dir, model_file)
+        for key, filename in files_to_load.items():
+            model_path: str = os.path.join(model_dir, filename)
             model_path = os.path.normpath(model_path)
             try:
-                model_dict[model_file] = onnxruntime.InferenceSession(model_path,
+                model_dict[key] = onnxruntime.InferenceSession(model_path,
                                                                       providers=self.providers,
                                                                       sess_options=SESS_OPTIONS)
                 logger.info(f"Model loaded successfully: {model_path}")
@@ -235,19 +224,7 @@ class ModelManager:
         logger.info(f"Character {character_name.capitalize()} removed successfully.")
 
     def clean_cache(self) -> None:
-        temp_weights: list[str] = [_GSVModelFile.T2S_DECODER_WEIGHT_FP32, _GSVModelFile.VITS_WEIGHT_FP32]
-        deleted_any: bool = False
-        try:
-            for character, model_dir in self.character_model_paths.items():
-                for filename in temp_weights:
-                    filepath: str = os.path.join(model_dir, filename)
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
-                        deleted_any = True
-            if deleted_any:
-                logger.info("All temporary weight files have been successfully deleted.")
-        except Exception as e:
-            logger.error(f"Failed to delete temporary weight file: {e}")
+        pass
 
 
 model_manager: ModelManager = ModelManager()
