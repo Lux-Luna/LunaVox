@@ -1,66 +1,60 @@
 import time
 import os
 import sys
+import logging
 from pathlib import Path
 
-# Import LunaVox TTS from local src directory (support running from repo without installation)
+# 配置日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# 将本地 src 添加到 sys.path
 SCRIPT_DIR = Path(__file__).parent
-TUTORIAL_DIR = SCRIPT_DIR.parent  # Tutorial directory
-REPO_ROOT = TUTORIAL_DIR.parent  # Go up two levels from v2_quick_tryout to repo root
-REPO_SRC = REPO_ROOT / "src"
-if str(REPO_SRC) not in sys.path:
-    sys.path.insert(0, str(REPO_SRC))
-if str(TUTORIAL_DIR) not in sys.path:
-    sys.path.insert(0, str(TUTORIAL_DIR))
-    
-# Import and run data_setup to ensure all required files are present
+REPO_ROOT = SCRIPT_DIR.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+sys.path.insert(0, str(SCRIPT_DIR.parent))
+
+# 确保数据依赖项存在
 import data_setup
 data_setup.ensure_data_from_hf()
 
+from lunavox_tts.Utils.EnvManager import env_manager
+
+# --- 可选：环境配置 ---
+# 取消注释以强制指定运行模式。默认为 "cpu"。
+# env_manager.set_mode("cpu")
+# env_manager.set_mode("gpu")
+
+if not env_manager.ensure_environment():
+    print(f"\n环境已更新为 {env_manager.get_mode().upper()}。请重新运行此脚本。")
+    sys.exit(0)
 
 import lunavox_tts as lunavox
 
-# 使用Data目录下的本地文件
+# 本地环境设置
 os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'Data' / 'chinese-hubert-base.onnx')
 os.environ['OPEN_JTALK_DICT_DIR'] = str(REPO_ROOT / 'Data' / 'open_jtalk_dic_utf_8-1.11')
 
+def resolve_reference(language: str):
+    audio_dir = REPO_ROOT / 'Data' / 'audio_resources' / language
+    wav_file = next(audio_dir.glob("*.wav"))
+    return str(wav_file), wav_file.stem
 
-def _resolve_reference_audio(language_folder: str):
-    """
-    Locate the first .wav file inside Data/audio_resources/<language_folder>.
-    Returns the file path and an inferred transcript (filename stem).
-    """
-    audio_dir = REPO_ROOT / 'Data' / 'audio_resources' / language_folder
-    if not audio_dir.is_dir():
-        raise FileNotFoundError(f"Reference audio directory not found: {audio_dir}")
-    wav_files = sorted(audio_dir.glob("*.wav"))
-    if not wav_files:
-        raise FileNotFoundError(f"No .wav files found in {audio_dir}")
-    audio_file = wav_files[0]
-    return str(audio_file), audio_file.stem
-
-# 加载模型（使用 Data/character_model/v2/pretrained_fp16）
-model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2' / 'pretrained_fp16')
+# 1. 加载角色模型
+model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2' / 'pretrained')
 lunavox.load_character('pretrained', model_dir)
 
-# 注意：参考音频仅支持 .wav 格式，禁止使用 .mp3 格式。
-# 设置参考音频（自动查找 Data/audio_resources/Chinese 下的 .wav 文件）
-audio_path, reference_text = _resolve_reference_audio('Chinese')
-lunavox.set_reference_audio(
-    'pretrained',
-    audio_path,
-    reference_text,
-    audio_language='zh'
-)
+# 2. 设置参考音频 (使用 Chinese 文件夹下的第一个 .wav 文件)
+audio_path, reference_text = resolve_reference('Chinese')
+lunavox.set_reference_audio('pretrained', audio_path, reference_text, audio_language='zh')
 
-# 合成中文
+# 3. 文本转语音 (TTS)
 lunavox.tts(
     character_name='pretrained',
-    text='你好，我正在用中文说话。',
+    text='你好，我是 LunaVox。现在正在为您演示中文语音合成。',
     play=True,
-    language='zh',  # 输出目标语言：中文
+    language='zh'
 )
 
-time.sleep(10)
-
-
+# 等待播放完成
+time.sleep(5)

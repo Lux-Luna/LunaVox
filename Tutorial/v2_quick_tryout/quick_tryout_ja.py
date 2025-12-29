@@ -1,63 +1,60 @@
 import time
 import os
-import json
 import sys
+import logging
 from pathlib import Path
 
-# Import LunaVox TTS from local src directory (support running from repo without installation)
-SCRIPT_DIR = Path(__file__).parent
-TUTORIAL_DIR = SCRIPT_DIR.parent  # Tutorial directory
-REPO_ROOT = TUTORIAL_DIR.parent  # Go up two levels from v2_quick_tryout to repo root
-REPO_SRC = REPO_ROOT / "src"
-if str(REPO_SRC) not in sys.path:
-    sys.path.insert(0, str(REPO_SRC))
-if str(TUTORIAL_DIR) not in sys.path:
-    sys.path.insert(0, str(TUTORIAL_DIR))
+# ロギング設定
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Import and run data_setup to ensure all required files are present
+# ローカルの src を sys.path に追加
+SCRIPT_DIR = Path(__file__).parent
+REPO_ROOT = SCRIPT_DIR.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+sys.path.insert(0, str(SCRIPT_DIR.parent))
+
+# データ依存関係の確認
 import data_setup
 data_setup.ensure_data_from_hf()
 
+from lunavox_tts.Utils.EnvManager import env_manager
+
+# --- オプション: 環境設定 ---
+# 特定の実行モードを強制する場合は、以下の行のコメントを解除してください。デフォルトは "cpu" です。
+# env_manager.set_mode("cpu")
+# env_manager.set_mode("gpu")
+
+if not env_manager.ensure_environment():
+    print(f"\n環境が {env_manager.get_mode().upper()} に更新されました。このスクリプトを再実行してください。")
+    sys.exit(0)
+
 import lunavox_tts as lunavox
 
-# 设置环境变量使用Data目录下的本地文件
+# ローカル環境設定
 os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'Data' / 'chinese-hubert-base.onnx')
 os.environ['OPEN_JTALK_DICT_DIR'] = str(REPO_ROOT / 'Data' / 'open_jtalk_dic_utf_8-1.11')
 
+def resolve_reference(language: str):
+    audio_dir = REPO_ROOT / 'Data' / 'audio_resources' / language
+    wav_file = next(audio_dir.glob("*.wav"))
+    return str(wav_file), wav_file.stem
 
-def _resolve_reference_audio(language_folder: str):
-    """
-    Locate the first .wav file inside Data/audio_resources/<language_folder>.
-    Returns the file path and an inferred transcript (filename stem).
-    """
-    audio_dir = REPO_ROOT / 'Data' / 'audio_resources' / language_folder
-    if not audio_dir.is_dir():
-        raise FileNotFoundError(f"Reference audio directory not found: {audio_dir}")
-    wav_files = sorted(audio_dir.glob("*.wav"))
-    if not wav_files:
-        raise FileNotFoundError(f"No .wav files found in {audio_dir}")
-    audio_file = wav_files[0]
-    return str(audio_file), audio_file.stem
-
-# 使用Data目录下的本地模型文件（使用 Data/character_model/v2/pretrained）
+# 1. キャラクタモデルのロード
 model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2' / 'pretrained')
 lunavox.load_character('pretrained', model_dir)
 
-# 注意：参照オーディオは .wav 形式のみサポートされています。.mp3 は禁止されています。
-# 设置参考音频（自动查找 Data/audio_resources/Japanese 下的 .wav 文件）
-audio_path, reference_text = _resolve_reference_audio('Japanese')
-lunavox.set_reference_audio(
-    'pretrained',
-    audio_path,
-    reference_text,
-    audio_language='ja'
-)
+# 2. 参照オーディオの設定 (Japanese フォルダ内の最初の .wav ファイル)
+audio_path, reference_text = resolve_reference('Japanese')
+lunavox.set_reference_audio('pretrained', audio_path, reference_text, audio_language='ja')
 
+# 3. テキスト読み上げ (TTS)
 lunavox.tts(
     character_name='pretrained',
-    text='こんにちは、ルナヴォックスです。日本語でお話しします。',
-    play=True,  # Play the generated audio directly
-    language='ja',  # 输出目标语言：日语
+    text='こんにちは、ルナヴォックスです。日本語の音声合成テストを開始します。',
+    play=True,
+    language='ja'
 )
 
-time.sleep(10)  # Add delay to ensure audio playback completes
+# 再生完了まで待機
+time.sleep(5)
