@@ -124,7 +124,10 @@ def compute_bert_phone_features(norm_text: str, word2ph: List[int]) -> np.ndarra
     if torch is None:
         return np.zeros((sum(word2ph), 1024), dtype=np.float32)
 
-    device = torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if _model.device != device:
+        _model.to(device)
+
     with torch.no_grad():
         inputs = _tokenizer(norm_text, return_tensors="pt")
         for key in inputs:

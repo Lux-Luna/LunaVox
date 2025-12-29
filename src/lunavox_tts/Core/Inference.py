@@ -4,6 +4,7 @@ import onnxruntime as ort
 import numpy as np
 from typing import List, Optional
 import threading
+import time
 
 from ..Audio.ReferenceAudio import ReferenceAudio
 from ..Japanese.JapaneseG2P import japanese_to_phones
@@ -30,6 +31,7 @@ class LunaVoxEngine:
             vocoder: ort.InferenceSession,
             language: str = "ja",
     ) -> Optional[np.ndarray]:
+        t0 = time.time()
         if language == "en":
             ids = english_to_phones(text)
             text_seq: np.ndarray = np.array([ids], dtype=np.int64)
@@ -46,6 +48,9 @@ class LunaVoxEngine:
         else:
             text_seq: np.ndarray = np.array([japanese_to_phones(text)], dtype=np.int64)
             text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
+        t_frontend = time.time()
+        logger.info(f"Frontend ({language}) took: {(t_frontend - t0) * 1000:.2f}ms")
+
         ref_seq = prompt_audio.phonemes_seq
         if ref_seq is None:
             return None
@@ -53,7 +58,7 @@ class LunaVoxEngine:
         if ref_bert is None or ref_bert.shape[0] != ref_seq.shape[1]:
             ref_bert = np.zeros((ref_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
 
-        semantic_tokens: np.ndarray = self.t2s_cpu(
+        semantic_tokens: np.ndarray = self.t2s_gpu(
             ref_seq=ref_seq,
             ref_bert=ref_bert,
             text_seq=text_seq,
@@ -63,6 +68,9 @@ class LunaVoxEngine:
             first_stage_decoder=first_stage_decoder,
             stage_decoder=stage_decoder,
         )
+        t_t2s = time.time()
+        logger.info(f"T2S Inference took: {(t_t2s - t_frontend) * 1000:.2f}ms")
+
         if self.stop_event.is_set():
             return None
 
@@ -126,12 +134,13 @@ class LunaVoxEngine:
         # Validate inputs before calling vocoder
         self._validate_vocoder_inputs(vocoder, vocoder_inputs)
         
-        # Cast inputs for vocoder
-        vocoder_inputs = self._cast_inputs(vocoder, vocoder_inputs)
-
         # Run VITS
         vits_output = self._run_vocoder(vocoder, vocoder_inputs)
         
+        t_vits = time.time()
+        logger.info(f"VITS Inference took: {(t_vits - t_t2s) * 1000:.2f}ms")
+        logger.info(f"Total TTS Latency: {(t_vits - t0) * 1000:.2f}ms")
+
         logger.debug(
             "VITS output: shape=%s, range=[%.6f, %.6f], RMS=%.6f",
             vits_output.shape,
@@ -204,10 +213,130 @@ class LunaVoxEngine:
                 )
                 raise TypeError(f"Input '{name}' dtype mismatch: {actual_dtype} != int64")
             elif expected.type == 'tensor(float)' and actual_dtype != np.float32:
-                # logger.error(
-                #     f"Input '{name}' has wrong dtype: {actual_dtype}, expected float32"
-                # )
-                # raise TypeError(f"Input '{name}' dtype mismatch: {actual_dtype} != float32")
+                logger.error(
+                    f"Input '{name}' has wrong dtype: {actual_dtype}, expected float32"
+                )
+                raise TypeError(f"Input '{name}' dtype mismatch: {actual_dtype} != float32")
+            
+            # Validate specific shapes
+            if name == 'sv_emb':
+                if actual_shape != (1, 20480):
+                    logger.error(
+                        f"Speaker embedding has wrong shape: {actual_shape}, expected (1, 20480). "
+                        f"Please check ERes2NetV2 model output."
+                    )
+                    raise ValueError(f"Speaker embedding shape mismatch: {actual_shape} != (1, 20480)")
+            elif name == 'text_seq':
+                if len(actual_shape) != 2 or actual_shape[0] != 1:
+                    logger.error(
+                        f"Text sequence has wrong shape: {actual_shape}, expected (1, N)"
+                    )
+                    raise ValueError(f"Text sequence shape invalid: {actual_shape}")
+            elif name == 'pred_semantic':
+                # Semantic tokens can be (1, M) or (1, 1, M)
+                if len(actual_shape) not in [2, 3] or actual_shape[0] != 1:
+                    logger.error(
+                        f"Semantic tokens have wrong shape: {actual_shape}, expected (1, M) or (1, 1, M)"
+                    )
+                    raise ValueError(f"Semantic tokens shape invalid: {actual_shape}")
+            elif name == 'ref_audio':
+                # Reference audio can be (1, samples) for raw audio or (1, H, W) for features
+                if len(actual_shape) not in [2, 3] or actual_shape[0] != 1:
+                    logger.error(
+                        f"Reference audio has wrong shape: {actual_shape}, expected (1, N) or (1, H, W)"
+                    )
+                    raise ValueError(f"Reference audio shape invalid: {actual_shape}")
+        
+        logger.debug(f"✓ Vocoder input validation passed")
+
+    def _run_vocoder(self, session: ort.InferenceSession, inputs: dict) -> np.ndarray:
+        # Use IO Binding for performance, especially on GPU
+        try:
+            io_binding = session.io_binding()
+            for name, value in inputs.items():
+                if isinstance(value, ort.OrtValue):
+                    io_binding.bind_ortvalue_input(name, value)
+                else:
+                    # Automatically handle device placement
+                    # If model is on CUDA, move numpy to CUDA
+                    device = "cuda" if "CUDAExecutionProvider" in session.get_providers() else "cpu"
+                    ort_value = ort.OrtValue.ortvalue_from_numpy(value, device, 0)
+                    io_binding.bind_ortvalue_input(name, ort_value)
+            
+            for output in session.get_outputs():
+                io_binding.bind_output(output.name, "cpu") # Pull result back to CPU for audio output
+            
+            session.run_with_iobinding(io_binding)
+            outputs = io_binding.copy_outputs_to_cpu()
+            if outputs:
+                return outputs[0]
+        except Exception as exc:
+            logger.warning(
+                "Failed to run vocoder with IO binding (%s). Falling back to regular execution.",
+                exc,
+            )
+        return session.run(None, inputs)[0]
+
+    def _cast_inputs(self, session: ort.InferenceSession, inputs: dict) -> dict:
+        """Automatically cast inputs to match the model's expected precision (fp32/fp16)."""
+        input_meta = {inp.name: inp.type for inp in session.get_inputs()}
+        new_inputs = {}
+        for name, value in inputs.items():
+            if name not in input_meta:
+                new_inputs[name] = value
+                continue
+            
+            expected_type = input_meta[name]
+            # Handle float conversions
+            if expected_type == 'tensor(float16)' and value.dtype == np.float32:
+                new_inputs[name] = value.astype(np.float16)
+            elif expected_type == 'tensor(float)' and value.dtype == np.float16:
+                new_inputs[name] = value.astype(np.float32)
+            else:
+                new_inputs[name] = value
+        return new_inputs
+
+    def _validate_vocoder_inputs(self, vocoder: ort.InferenceSession, 
+                                 inputs: dict) -> None:
+        """
+        Validate vocoder input shapes and types before inference.
+        Provides actionable error messages if validation fails.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Get expected inputs from ONNX model
+        expected_inputs = {inp.name: inp for inp in vocoder.get_inputs()}
+        
+        # Check all required inputs are provided
+        for name in expected_inputs:
+            if name not in inputs:
+                if name == 'sv_emb':
+                    logger.error(
+                        f"Missing 'sv_emb' input for vocoder. "
+                        f"This model requires v2Pro/v2ProPlus with speaker vector. "
+                        f"Please ensure the model was converted with correct version detection."
+                    )
+                else:
+                    logger.error(f"Missing required input: {name}")
+                raise ValueError(f"Missing required input: {name}")
+        
+        # Validate shapes and types
+        for name, value in inputs.items():
+            if name not in expected_inputs:
+                continue  # Skip extra inputs
+            
+            expected = expected_inputs[name]
+            actual_shape = value.shape
+            actual_dtype = value.dtype
+            
+            # Validate dtype
+            if expected.type == 'tensor(int64)' and actual_dtype != np.int64:
+                logger.error(
+                    f"Input '{name}' has wrong dtype: {actual_dtype}, expected int64"
+                )
+                raise TypeError(f"Input '{name}' dtype mismatch: {actual_dtype} != int64")
+            elif expected.type == 'tensor(float)' and actual_dtype != np.float32:
                 pass # Allow float mismatch, will be cast later
             elif expected.type == 'tensor(float16)' and actual_dtype != np.float16:
                 pass # Allow mismatch, will be cast later
@@ -243,24 +372,255 @@ class LunaVoxEngine:
         
         logger.debug(f"✓ Vocoder input validation passed")
 
-    def _cast_inputs(self, session: ort.InferenceSession, inputs: dict) -> dict:
-        """Automatically cast inputs to match the model's expected precision (fp32/fp16)."""
-        input_meta = {inp.name: inp.type for inp in session.get_inputs()}
-        new_inputs = {}
-        for name, value in inputs.items():
-            if name not in input_meta:
-                new_inputs[name] = value
-                continue
+    def t2s_gpu(
+            self,
+            ref_seq: np.ndarray,
+            ref_bert: np.ndarray,
+            text_seq: np.ndarray,
+            text_bert: np.ndarray,
+            ssl_content: np.ndarray,
+            encoder: ort.InferenceSession,
+            first_stage_decoder: ort.InferenceSession,
+            stage_decoder: ort.InferenceSession,
+    ) -> Optional[np.ndarray]:
+        """Runs T2S model with IO Binding and KV Cache staying on GPU"""
+        
+        # 1. Encoder (Single run)
+        encoder_inputs = {
+            "ref_seq": ref_seq,
+            "text_seq": text_seq,
+            "ref_bert": ref_bert,
+            "text_bert": text_bert,
+            "ssl_content": ssl_content,
+        }
+        encoder_inputs = self._cast_inputs(encoder, encoder_inputs)
+        x, prompts = encoder.run(None, encoder_inputs)
+        
+        # 2. First Stage Decoder (Single run)
+        fs_inputs = {"x": x, "prompts": prompts}
+        fs_inputs = self._cast_inputs(first_stage_decoder, fs_inputs)
+        fs_outputs = first_stage_decoder.run(None, fs_inputs)
+        fs_out_info = first_stage_decoder.get_outputs()
+        fs_out_names: List[str] = [o.name for o in fs_out_info]
+        
+        def _fs_get(name: str, default_idx: int):
+            if name in fs_out_names:
+                return fs_outputs[fs_out_names.index(name)]
+            if default_idx < len(fs_outputs):
+                return fs_outputs[default_idx]
+            return None
+
+        # Collect per-layer caches from first stage if available (Variant B)
+        def _collect_fs_layers(prefix: str):
+            layers = []
+            for idx, nm in enumerate(fs_out_names):
+                if nm.startswith(prefix):
+                    try:
+                        li = int(nm.split("_layer_")[-1])
+                    except Exception:
+                        li = idx
+                    layers.append((li, fs_outputs[idx]))
+            layers.sort(key=lambda x: x[0])
+            return [arr for _, arr in layers]
+
+        y = _fs_get("y", 0)
+        y_emb = _fs_get("y_emb", 3)
+        x_example = _fs_get("x_example", 4)
+        
+        # Aggregated caches (Variant A)
+        k_agg = _fs_get("k", 1)
+        v_agg = _fs_get("v", 2)
+        
+        # Per-layer caches (Variant B)
+        fs_k_layers = _collect_fs_layers("present_k_layer_")
+        fs_v_layers = _collect_fs_layers("present_v_layer_")
+
+        # 3. Stage Decoder (Autoregressive Loop)
+        stage_in_info = stage_decoder.get_inputs()
+        stage_in_names: List[str] = [i.name for i in stage_in_info]
+        stage_out_info = stage_decoder.get_outputs()
+        stage_out_names: List[str] = [o.name for o in stage_out_info]
+
+        # Prepare GPU IO Binding for the loop
+        # We need to allocate buffers for inputs/outputs on GPU to avoid transfers
+        
+        # Determine KV cache structure
+        n_past_k = sum(1 for n in stage_in_names if n.startswith("past_k_layer_"))
+        n_past_v = sum(1 for n in stage_in_names if n.startswith("past_v_layer_"))
+        n_layers = max(n_past_k, n_past_v)
+
+        # Ensure correct types (FP16)
+        if x_example is not None:
+            x_example = x_example.astype(np.float16) if x_example.dtype == np.float32 else x_example
+        if k_agg is not None:
+            k_agg = k_agg.astype(np.float16) if k_agg.dtype == np.float32 else k_agg
+        if v_agg is not None:
+            v_agg = v_agg.astype(np.float16) if v_agg.dtype == np.float32 else v_agg
+        
+        # Create OrtValues for static inputs
+        d_x_example = ort.OrtValue.ortvalue_from_numpy(x_example, "cuda", 0) if x_example is not None else None
+        d_k_agg = ort.OrtValue.ortvalue_from_numpy(k_agg, "cuda", 0) if k_agg is not None else None
+        d_v_agg = ort.OrtValue.ortvalue_from_numpy(v_agg, "cuda", 0) if v_agg is not None else None
+
+        # Handle split KV cache if needed
+        past_kv_ort = {}
+        
+        # Helper to create empty tensors matching the required shape
+        def _get_empty_past_kv(name):
+            for inp in stage_in_info:
+                if inp.name == name:
+                    shape = list(inp.shape)
+                    processed_shape = []
+                    for dim in shape:
+                        if isinstance(dim, str) or dim is None:
+                            if 'seq' in str(dim).lower() or 'past' in str(dim).lower():
+                                processed_shape.append(0)
+                            else:
+                                processed_shape.append(1) # Default to 1 for batch/heads
+                        else:
+                            processed_shape.append(dim)
+                    
+                    # Fallback for hidden size if last dim is dynamic
+                    if processed_shape and processed_shape[-1] == 0:
+                        processed_shape[-1] = 512
+                    
+                    return np.zeros(processed_shape, dtype=np.float16)
+            return None
+
+        if n_layers > 0:
+            # Case 1: Already have per-layer caches from first stage (Variant B)
+            if fs_k_layers and fs_v_layers:
+                for i in range(min(len(fs_k_layers), n_layers)):
+                    past_kv_ort[f"past_k_layer_{i}"] = ort.OrtValue.ortvalue_from_numpy(
+                        np.ascontiguousarray(fs_k_layers[i].astype(np.float16)), "cuda", 0)
+                    past_kv_ort[f"past_v_layer_{i}"] = ort.OrtValue.ortvalue_from_numpy(
+                        np.ascontiguousarray(fs_v_layers[i].astype(np.float16)), "cuda", 0)
             
-            expected_type = input_meta[name]
-            # Handle float conversions
-            if expected_type == 'tensor(float16)' and value.dtype == np.float32:
-                new_inputs[name] = value.astype(np.float16)
-            elif expected_type == 'tensor(float)' and value.dtype == np.float16:
-                new_inputs[name] = value.astype(np.float32)
+            # Case 2: Have aggregated cache, need to split (Variant A)
+            elif k_agg is not None and v_agg is not None:
+                try:
+                    split_axis = 0
+                    if k_agg.shape[0] % n_layers != 0:
+                        if len(k_agg.shape) > 1 and k_agg.shape[1] % n_layers == 0:
+                            split_axis = 1
+                    
+                    k_splits = np.split(k_agg, n_layers, axis=split_axis)
+                    v_splits = np.split(v_agg, n_layers, axis=split_axis)
+                    for i in range(n_layers):
+                        past_kv_ort[f"past_k_layer_{i}"] = ort.OrtValue.ortvalue_from_numpy(
+                            np.ascontiguousarray(k_splits[i]), "cuda", 0)
+                        past_kv_ort[f"past_v_layer_{i}"] = ort.OrtValue.ortvalue_from_numpy(
+                            np.ascontiguousarray(v_splits[i]), "cuda", 0)
+                except Exception as e:
+                    logger.warning(f"Failed to split initial KV cache: {e}. Falling back to empty tensors.")
+            
+            # Ensure all required past layers are bound
+            for i in range(n_layers):
+                if f"past_k_layer_{i}" not in past_kv_ort:
+                    empty_k = _get_empty_past_kv(f"past_k_layer_{i}")
+                    if empty_k is not None:
+                        past_kv_ort[f"past_k_layer_{i}"] = ort.OrtValue.ortvalue_from_numpy(empty_k, "cuda", 0)
+                if f"past_v_layer_{i}" not in past_kv_ort:
+                    empty_v = _get_empty_past_kv(f"past_v_layer_{i}")
+                    if empty_v is not None:
+                        past_kv_ort[f"past_v_layer_{i}"] = ort.OrtValue.ortvalue_from_numpy(empty_v, "cuda", 0)
+
+        # Loop state
+        curr_y = y.astype(np.int64) # y is int64
+        curr_y_emb = y_emb.astype(np.float16)
+        
+        # Initial OrtValues for loop state
+        d_iy = ort.OrtValue.ortvalue_from_numpy(curr_y, "cuda", 0)
+        d_iy_emb = ort.OrtValue.ortvalue_from_numpy(curr_y_emb, "cuda", 0)
+
+        # Collected output tokens
+        out_tokens = []
+
+        for idx in range(500):
+            if self.stop_event.is_set():
+                return None
+
+            io_binding = stage_decoder.io_binding()
+            
+            # Bind Inputs
+            io_binding.bind_ortvalue_input("iy", d_iy)
+            io_binding.bind_ortvalue_input("iy_emb", d_iy_emb)
+            if "ix_example" in stage_in_names:
+                io_binding.bind_ortvalue_input("ix_example", d_x_example)
+            if "ik" in stage_in_names and d_k_agg:
+                io_binding.bind_ortvalue_input("ik", d_k_agg)
+            if "iv" in stage_in_names and d_v_agg:
+                io_binding.bind_ortvalue_input("iv", d_v_agg)
+
+            # Bind Past KV Layers
+            for name, val in past_kv_ort.items():
+                if name in stage_in_names:
+                    io_binding.bind_ortvalue_input(name, val)
+
+            # Bind Outputs
+            for out_name in stage_out_names:
+                # We let ORT allocate the output buffer on GPU
+                io_binding.bind_output(out_name, "cuda") 
+            
+            # Run
+            try:
+                stage_decoder.run_with_iobinding(io_binding)
+            except Exception as e:
+                logger.error(f"Error during T2S GPU loop step {idx}: {e}")
+                # Log bound inputs for debugging if needed
+                raise e
+            
+            # Retrieve Outputs (as OrtValues)
+            raw_outputs = io_binding.get_outputs()
+            out_map = {name: val for name, val in zip(stage_out_names, raw_outputs)}
+
+            # Update State
+            
+            # 1. Samples (Stop Token) - Copy to CPU (minimal overhead)
+            d_samples = out_map.get("samples")
+            if d_samples:
+                samples_cpu = d_samples.numpy()
+                val = int(samples_cpu.flat[0])
+                out_tokens.append(val)
+                
+                # Stop Check
+                if val >= 1024:
+                    break
+                
+                # Update next input 'iy' (int64)
+                # Reuse output OrtValue as input for next step
+                d_iy = d_samples
             else:
-                new_inputs[name] = value
-        return new_inputs
+                # Fallback to y check if samples not present
+                d_y_out = out_map.get("y")
+                if d_y_out:
+                    y_cpu = d_y_out.numpy()
+                    val = int(y_cpu.flat[-1])
+                    out_tokens.append(val)
+                    if val >= 1024:
+                        break
+                    d_iy = d_y_out
+                else:
+                    break
+
+            # 2. Embeddings (y_emb) - Keep on GPU
+            if "y_emb" in out_map:
+                d_iy_emb = out_map["y_emb"]
+            
+            # 3. Update KV Cache - Keep on GPU
+            for name, val in out_map.items():
+                if name.startswith("present_k_layer_"):
+                    li = int(name.split("_layer_")[-1])
+                    past_kv_ort[f"past_k_layer_{li}"] = val
+                elif name.startswith("present_v_layer_"):
+                    li = int(name.split("_layer_")[-1])
+                    past_kv_ort[f"past_v_layer_{li}"] = val
+
+        # Reconstruct result
+        if not out_tokens:
+            return np.zeros((1, 0), dtype=np.int64)
+        result = np.array([out_tokens], dtype=np.int64)
+        return result
 
     def t2s_cpu(
             self,
@@ -275,23 +635,18 @@ class LunaVoxEngine:
     ) -> Optional[np.ndarray]:
         """在CPU上运行T2S模型"""
         # Encoder
-        encoder_inputs = {
-            "ref_seq": ref_seq,
-            "text_seq": text_seq,
-            "ref_bert": ref_bert,
-            "text_bert": text_bert,
-            "ssl_content": ssl_content,
-        }
-        encoder_inputs = self._cast_inputs(encoder, encoder_inputs)
-        
         x, prompts = encoder.run(
             None,
-            encoder_inputs,
+            {
+                "ref_seq": ref_seq,
+                "text_seq": text_seq,
+                "ref_bert": ref_bert,
+                "text_bert": text_bert,
+                "ssl_content": ssl_content,
+            },
         )
         # First Stage Decoder
-        fs_inputs = {"x": x, "prompts": prompts}
-        fs_inputs = self._cast_inputs(first_stage_decoder, fs_inputs)
-        fs_outputs = first_stage_decoder.run(None, fs_inputs)
+        fs_outputs = first_stage_decoder.run(None, {"x": x, "prompts": prompts})
         fs_out_info = first_stage_decoder.get_outputs()
         fs_out_names: List[str] = [o.name for o in fs_out_info]
 
@@ -414,7 +769,6 @@ class LunaVoxEngine:
                 return None
 
             input_feed = _build_stage_feed(y, y_emb, k_layers, v_layers, k_agg, v_agg, x_example)
-            input_feed = self._cast_inputs(stage_decoder, input_feed)
             outputs_list = stage_decoder.run(None, input_feed)
             y, y_emb, new_k_layers, new_v_layers, new_k_agg, new_v_agg, logits, samples = _unpack_stage_outputs(outputs_list, y_emb)
 
