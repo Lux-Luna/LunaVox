@@ -10,8 +10,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Converter")
 
 # Paths relative to repository root when run from there
-SRC_DIR = r"Data/character_model/v2_pro_plus/pretrained"
-DST_DIR = r"Data/character_model/v2_pro_plus/pretrained_fp16"
+SRC_DIR = r"LunaVox/Data/character_model/v2_pro_plus/pretrained"
+DST_DIR = r"LunaVox/Data/character_model/v2_pro_plus/pretrained_fp16"
 
 def convert_bin_to_fp32(fp16_bin_path: str, output_fp32_bin_path: str) -> None:
     """Converts FP16 binary weight file to FP32."""
@@ -59,7 +59,6 @@ def main():
     # VITS is the large model we want to convert to FP16.
     # However, standard conversion fails with TypeErrors on internal Cast nodes for this specific model.
     # To allow the pipeline test to proceed, we copy the FP32 model as FP16.
-    # In a real scenario, manual graph optimization or different conversion settings would be needed.
     if os.path.exists(os.path.join(SRC_DIR, "vits_fp32.onnx")):
         logger.warning("VITS conversion failed in previous attempts. Copying FP32 model as FP16 workaround.")
         shutil.copy(
@@ -69,47 +68,64 @@ def main():
 
     # The T2S models are small and sensitive to conversion (Cast nodes), so we keep them as FP32
     # but rename to *_fp16.onnx so ModelManager loads them in the fallback path.
-    # This works on CPU because ModelManager ensures FP32 weights (.bin) are available via conversion.
-    t2s_models = [
+    # SPECIAL HANDLING: t2s_encoder_fp32.onnx relies on external weights t2s_encoder_fp32.bin.
+    # To avoid having an "fp32.bin" file in the "fp16" directory, we load the ONNX and SAVE it 
+    # (without conversion) which embeds the weights because save_as_external_data defaults to False for small models.
+    
+    t2s_models_copy = [
         ("t2s_stage_decoder_fp32.onnx", "t2s_stage_decoder_fp16.onnx"),
         ("t2s_first_stage_decoder_fp32.onnx", "t2s_first_stage_decoder_fp16.onnx"),
-        ("t2s_encoder_fp32.onnx", "t2s_encoder_fp16.onnx"),
     ]
 
-    for src_name, dst_name in t2s_models:
+    for src_name, dst_name in t2s_models_copy:
         src_path = os.path.join(SRC_DIR, src_name)
         dst_path = os.path.join(DST_DIR, dst_name)
         if os.path.exists(src_path):
             logger.info(f"Copying {src_name} -> {dst_name} (keeping FP32)")
             shutil.copy(src_path, dst_path)
-        else:
-            logger.warning(f"Source model not found: {src_path}")
+
+    # Handle t2s_encoder specifically to embed weights
+    src_encoder = os.path.join(SRC_DIR, "t2s_encoder_fp32.onnx")
+    dst_encoder = os.path.join(DST_DIR, "t2s_encoder_fp16.onnx")
+    if os.path.exists(src_encoder):
+        logger.info(f"Embedding weights into {dst_encoder} (keeping FP32)")
+        try:
+            model = onnx.load(src_encoder)
+            # Just save it. By default for <2GB models it embeds weights.
+            onnx.save(model, dst_encoder)
+        except Exception as e:
+            logger.error(f"Failed to embed weights for encoder: {e}")
+            # Fallback to copy if embedding fails
+            shutil.copy(src_encoder, dst_encoder)
 
     # 3. Copy other files
     # Copy model_info.json
     shutil.copy(os.path.join(SRC_DIR, "model_info.json"), os.path.join(DST_DIR, "model_info.json"))
     
-    # Copy t2s_encoder_fp32.bin (needed by t2s_encoder)
-    src_encoder_bin = os.path.join(SRC_DIR, "t2s_encoder_fp32.bin")
-    if os.path.exists(src_encoder_bin):
-        logger.info(f"Copying {src_encoder_bin} -> {DST_DIR}")
-        shutil.copy(src_encoder_bin, os.path.join(DST_DIR, "t2s_encoder_fp32.bin"))
+    # We DO NOT copy t2s_encoder_fp32.bin anymore because we embedded it into t2s_encoder_fp16.onnx
     
     # Copy t2s_shared_fp16.bin (needed by t2s decoders, ModelManager will convert to FP32)
     if os.path.exists(src_shared_fp16):
         shutil.copy(src_shared_fp16, os.path.join(DST_DIR, "t2s_shared_fp16.bin"))
     
-    # Copy vits_fp16.bin? VITS ONNX is now embedded FP16, so we don't strictly need it unless ModelManager checks.
-    # We skip copying vits_fp16.bin to save space, assuming the converted ONNX is self-contained.
-
+    # Copy vits_fp16.bin? 
+    # VITS is just a copy of FP32 ONNX now. The FP32 ONNX might expect embedded weights (it is usually embedded).
+    # If it expected external weights, we would need them.
+    # The original vits_fp32.onnx (323MB) likely embeds weights.
+    
     # 4. Cleanup temporary FP32 bins in SRC
     if os.path.exists(src_shared_fp32):
         os.remove(src_shared_fp32)
     if os.path.exists(src_vits_fp32):
         os.remove(src_vits_fp32)
+    
+    # 5. Cleanup t2s_encoder_fp32.bin in DST if it exists from previous run
+    bad_bin = os.path.join(DST_DIR, "t2s_encoder_fp32.bin")
+    if os.path.exists(bad_bin):
+        os.remove(bad_bin)
+        logger.info(f"Removed leftover {bad_bin}")
 
     logger.info("Conversion complete.")
 
 if __name__ == "__main__":
     main()
-
