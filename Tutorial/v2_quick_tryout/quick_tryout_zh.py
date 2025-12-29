@@ -43,6 +43,7 @@ def _resolve_reference_audio(language_folder: str):
 model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2' / 'pretrained_fp16')
 lunavox.load_character('pretrained', model_dir)
 
+# 注意：参考音频仅支持 .wav 格式，禁止使用 .mp3 格式。
 # 设置参考音频（自动查找 Data/audio_resources/Chinese 下的 .wav 文件）
 audio_path, reference_text = _resolve_reference_audio('Chinese')
 lunavox.set_reference_audio(

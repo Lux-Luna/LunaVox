@@ -220,7 +220,7 @@ def list_language_audio_resources(language: str) -> List[Tuple[str, str]]:
     if not folder or not folder.exists():
         return []
     audio_files: List[Tuple[str, str]] = []
-    for ext in ["*.wav", "*.mp3"]:
+    for ext in ["*.wav"]:
         for audio_file in folder.glob(ext):
             if audio_file.is_file():
                 audio_files.append((audio_file.stem, str(audio_file)))

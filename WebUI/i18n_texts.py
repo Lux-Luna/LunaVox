@@ -8,13 +8,14 @@ GUIDE_TEXTS = {
 - Select Model Version: choose `v2` or `v2 Pro Plus`.
 - Pick a Character: select from scanned folders, then click "Load Character".
 - Reference Audio (optional but recommended):
-  - Choose from preset audio under `Data/audio_resources/<character>/` or upload your own `.wav`.
+  - Choose from preset audio under `Data/audio_resources/<character>/` or upload your own `.wav`. (MP3 is NOT supported)
   - Provide the matching transcript and set the prompt language.
 - Synthesis:
   - Choose Output Language (ja/en/zh), enter text, click "Synthesize".
   - Output is saved under `Output/` and previewed below.
 
 Tips:
+- Only .wav format is supported for reference audio.
 - Keep reference audio clean and 2–10 seconds for best results.
 - If file permissions block access, the app copies audio to a temp folder.
 """,
@@ -24,13 +25,14 @@ Tips:
 - 选择模型版本：`v2` 或 `v2 Pro Plus`。
 - 选择角色：从扫描到的文件夹中选择角色，然后点击“加载角色”。
 - 参考音频（可选但推荐）：
-  - 从 `Data/audio_resources/<character>/` 选择预设 `.wav`，或上传自己的 `.wav`。
+  - 从 `Data/audio_resources/<character>/` 选择预设 `.wav`，或上传自己的 `.wav`。（不支持 MP3 格式）
   - 填写与音频匹配的文本，并设置提示语言。
 - 文本合成：
   - 选择输出语言（ja/en/zh），输入文本，点击“开始合成”。
   - 生成的音频保存至 `Output/`，并可在界面中试听。
 
 提示：
+- 参考音频仅支持 .wav 格式。
 - 建议使用干净的 2–10 秒参考音频以获得更好效果。
 - 若出现权限问题，程序会将音频复制到临时目录后再使用。
 """,
@@ -98,11 +100,11 @@ UI_STRINGS = {
             "btn_load": "Load Character",
             "status_ready": "Ready.",
             "ref_section_title": "### Reference Audio",
-            "preset_ref_label": "Preset Reference Audio (optional)",
+            "preset_ref_label": "Preset Reference Audio (WAV only)",
             "preset_ref_info": "Choose from Data/audio_resources",
             "ref_lang_label": "Prompt Language",
             "or": "**or**",
-            "upload_ref_label": "Upload Reference Audio",
+            "upload_ref_label": "Upload Reference Audio (WAV only)",
             "auto_filename_label": "Auto use filename as transcript",
             "auto_filename_info": "When uploading, use the filename (without extension) as transcript",
             "ref_text_label": "Reference transcript",
@@ -132,11 +134,11 @@ UI_STRINGS = {
             "btn_load": "加载角色",
             "status_ready": "准备就绪。",
             "ref_section_title": "### 参考音频",
-            "preset_ref_label": "预设参考音频（可选）",
+            "preset_ref_label": "预设参考音频（仅支持 WAV）",
             "preset_ref_info": "从 Data/audio_resources 中选择预设参考音频",
             "ref_lang_label": "参考音频语言",
             "or": "**或**",
-            "upload_ref_label": "上传参考音频",
+            "upload_ref_label": "上传参考音频（仅支持 WAV）",
             "auto_filename_label": "自动使用文件名作为参考文本",
             "auto_filename_info": "上传音频时自动将文件名（去除后缀）作为文本",
             "ref_text_label": "参考音频文本",

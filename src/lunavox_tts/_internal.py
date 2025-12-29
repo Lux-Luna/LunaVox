@@ -42,7 +42,7 @@ except ImportError:
 
 # A module-level private dictionary to store reference audio configurations.
 _reference_audios: dict[str, dict] = {}
-SUPPORTED_AUDIO_EXTS = {'.wav', '.flac', '.ogg', '.aiff', '.aif', '.mp3'}
+SUPPORTED_AUDIO_EXTS = {'.wav', '.flac', '.ogg', '.aiff', '.aif'}
 
 
 def _normalize_language(code: Optional[str]) -> str:

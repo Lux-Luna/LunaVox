@@ -44,9 +44,10 @@ def _resolve_reference_audio(language_folder: str):
 model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2' / 'pretrained_fp16')
 lunavox.load_character('pretrained', model_dir)
 
+# Note: Only .wav format is supported for reference audio. .mp3 is prohibited.
 # 设置参考音频（自动查找 Data/audio_resources/English 下的 .wav 文件）
-audio_path = str(REPO_ROOT / 'Data' / 'audio_resources' / 'English' / "First get into position like this, then move like that. Yep, that's it..mp3")
-reference_text = "First get into position like this, then move like that. Yep, that's it."
+audio_path = str(REPO_ROOT / 'Data' / 'audio_resources' / 'English' / "If youre not sure what to do next, how about I take you on a walk.wav")
+reference_text = "If you're not sure what to do next, how about I take you on a walk?"
 # audio_path, reference_text = _resolve_reference_audio('English')
 lunavox.set_reference_audio(
     'pretrained',

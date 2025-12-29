@@ -22,22 +22,17 @@ def load_audio(
 ) -> Optional[np.ndarray]:
     try:
         if audio_path.lower().endswith(".mp3"):
-            try:
-                import librosa
-                # librosa loads as float32 by default, normalized to [-1, 1]
-                wav, original_sr = librosa.load(audio_path, sr=target_sampling_rate)
-                # Ensure no NaNs from librosa
-                if np.isnan(wav).any():
-                    wav = np.nan_to_num(wav)
-            except ImportError:
-                logger.error("librosa is required for MP3 support but not found.")
-                return None
-        else:
-            wav, original_sr = sf.read(audio_path, dtype='float32')
-            if wav.ndim > 1:
-                wav = np.mean(wav, axis=1)  # 多声道转单声道。
-            if original_sr != target_sampling_rate:
-                wav = soxr.resample(wav, original_sr, target_sampling_rate, quality='hq')  # 重采样。
+            logger.error(f"Unsupported audio format: {audio_path}. Only .wav files are supported.")
+            return None
+        
+        if not audio_path.lower().endswith(".wav"):
+            logger.warning(f"Audio file {audio_path} does not have a .wav extension. Attempting to read with soundfile.")
+
+        wav, original_sr = sf.read(audio_path, dtype='float32')
+        if wav.ndim > 1:
+            wav = np.mean(wav, axis=1)  # 多声道转单声道。
+        if original_sr != target_sampling_rate:
+            wav = soxr.resample(wav, original_sr, target_sampling_rate, quality='hq')  # 重采样。
 
     except Exception as e:
         logger.error(f"Failed to load reference audio: {audio_path}. Error: {e}")

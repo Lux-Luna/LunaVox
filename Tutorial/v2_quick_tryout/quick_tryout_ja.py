@@ -43,6 +43,7 @@ def _resolve_reference_audio(language_folder: str):
 model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2' / 'pretrained')
 lunavox.load_character('pretrained', model_dir)
 
+# 注意：参照オーディオは .wav 形式のみサポートされています。.mp3 は禁止されています。
 # 设置参考音频（自动查找 Data/audio_resources/Japanese 下的 .wav 文件）
 audio_path, reference_text = _resolve_reference_audio('Japanese')
 lunavox.set_reference_audio(
