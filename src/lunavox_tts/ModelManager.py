@@ -194,10 +194,7 @@ class ModelManager:
                                                                       sess_options=SESS_OPTIONS)
                 logger.info(f"Model loaded successfully: {model_path}")
             except Exception as e:
-                logger.error(
-                    f"Error: Failed to load ONNX model '{model_path}'.\n"
-                    f"Details: {e}"
-                )
+                print(f"DEBUG: Error: Failed to load ONNX model '{model_path}'.\nDetails: {e}", flush=True)
                 return False
 
         self.character_to_model[character_name] = model_dict

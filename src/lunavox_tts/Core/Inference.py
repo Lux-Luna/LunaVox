@@ -120,6 +120,15 @@ class LunaVoxEngine:
         else:
             # v2: use raw audio (2D: batch, samples)
             ref_audio_features = np.expand_dims(prompt_audio.audio_32k, axis=0)
+            
+            # WORKAROUND: Truncate reference audio for VITS if too long.
+            # Long raw audio inputs (> ~4-5s) can cause FP16 overflow in VITS models, resulting in NaN output.
+            # T2S encoder still uses the full length audio for context.
+            # 128000 samples @ 32k = 4.0 seconds.
+            MAX_VITS_AUDIO_SAMPLES = 128000
+            if ref_audio_features.shape[1] > MAX_VITS_AUDIO_SAMPLES:
+                logger.warning(f"Truncating VITS ref_audio from {ref_audio_features.shape[1]} to {MAX_VITS_AUDIO_SAMPLES} to avoid FP16 overflow.")
+                ref_audio_features = ref_audio_features[:, :MAX_VITS_AUDIO_SAMPLES]
         
         # Build vocoder inputs
         vocoder_inputs = {
@@ -422,6 +431,7 @@ class LunaVoxEngine:
                     past_kv_ort[f"past_k_layer_{i}"] = fs_k_layers[i]
                     past_kv_ort[f"past_v_layer_{i}"] = fs_v_layers[i]
             
+
             # Case 2: Have aggregated cache, need to split (Variant A)
             elif d_k_agg is not None and d_v_agg is not None:
                 # Splitting OrtValue is not directly supported, convert to numpy for split
@@ -430,30 +440,47 @@ class LunaVoxEngine:
                 v_agg = d_v_agg.numpy()
                 try:
                     split_axis = 0
-                    if k_agg.shape[0] % n_layers != 0:
-                        if len(k_agg.shape) > 1 and k_agg.shape[1] % n_layers == 0:
-                            split_axis = 1
+                    # Robustly determine split axis
+                    if k_agg.shape[0] % n_layers == 0:
+                        split_axis = 0
+                    elif len(k_agg.shape) > 1 and k_agg.shape[1] % n_layers == 0:
+                        split_axis = 1
+                    else:
+                        raise ValueError(f"Cannot determine split axis for k_agg shape {k_agg.shape} and {n_layers} layers")
                     
+                    if split_axis == 0 and k_agg.shape[0] != n_layers:
+                        # Extra check: if axis 0 dim is not multiple, we might have issue, but above modulo check handles it.
+                        # However, sometimes shape is (Layers, Batch, ...) where Batch=1.
+                        # Let's ensure strict division results in expected per-layer shape.
+                        pass
+
                     k_splits = np.split(k_agg, n_layers, axis=split_axis)
                     v_splits = np.split(v_agg, n_layers, axis=split_axis)
+                    
                     for i in range(n_layers):
+                        # Ensure we squeeze the split dimension if it was concatenated there?
+                        # No, usually concatenation preserves dimensionality (e.g. stack) or extends it.
+                        # T2S aggregated cache is usually stacked on dim 0 or 1.
+                        # BUT, `np.split` returns views with the same number of dimensions.
+                        # If the aggregation added a dimension, we might need to squeeze it?
+                        # Let's look at standard GPT-SoVITS behavior: aggregation is usually a list -> stack.
+                        # If shape was (Layers, Batch, Heads, Len, Dim), and we split on axis 0, each split is (1, Batch, ...).
+                        # The model *might* expect (Batch, ...) for per-layer, i.e. 4D not 5D. 
+                        # However, previous logic didn't squeeze.
+                        # Let's check `_get_empty_past_kv` logic: it matches shape of input in ONNX.
+                        # To be safe, we rely on ONNX Runtime handling or shape matching.
+                        # If splitting results in (1, ...), and input expects (1, ...), it matches.
+                        
+                        # Use ascontiguousarray to ensure memory safety for ORT
                         past_kv_ort[f"past_k_layer_{i}"] = ort.OrtValue.ortvalue_from_numpy(
                             np.ascontiguousarray(k_splits[i]), "cuda", 0)
                         past_kv_ort[f"past_v_layer_{i}"] = ort.OrtValue.ortvalue_from_numpy(
                             np.ascontiguousarray(v_splits[i]), "cuda", 0)
+                            
                 except Exception as e:
-                    logger.warning(f"Failed to split initial KV cache: {e}. Falling back to empty tensors.")
-            
-            # Ensure all required past layers are bound
-            for i in range(n_layers):
-                if f"past_k_layer_{i}" not in past_kv_ort:
-                    empty_k = _get_empty_past_kv(f"past_k_layer_{i}")
-                    if empty_k is not None:
-                        past_kv_ort[f"past_k_layer_{i}"] = ort.OrtValue.ortvalue_from_numpy(empty_k, "cuda", 0)
-                if f"past_v_layer_{i}" not in past_kv_ort:
-                    empty_v = _get_empty_past_kv(f"past_v_layer_{i}")
-                    if empty_v is not None:
-                        past_kv_ort[f"past_v_layer_{i}"] = ort.OrtValue.ortvalue_from_numpy(empty_v, "cuda", 0)
+                    logger.error(f"Failed to split initial KV cache: {e}. k_agg shape: {k_agg.shape}, n_layers: {n_layers}")
+                    raise e # Do not fallback to empty tensors, force error to avoid silence
+
 
         # Loop state
         # d_y and d_y_emb are already OrtValues on GPU
@@ -478,6 +505,8 @@ class LunaVoxEngine:
         for name, val in past_kv_ort.items():
             if name in stage_in_names:
                 io_binding.bind_ortvalue_input(name, val)
+
+        if d_k_agg: logger.debug(f"IK Agg Shape: {d_k_agg.numpy().shape}")
 
         for idx in range(500):
             if self.stop_event.is_set():
@@ -513,6 +542,7 @@ class LunaVoxEngine:
                 
                 # Stop Check
                 if val >= 1024:
+                    logger.debug(f"T2S EOS generated at step {idx}, Token={val}")
                     break
                 
                 # Update next input 'iy' (int64)
@@ -525,10 +555,13 @@ class LunaVoxEngine:
                     val = int(y_cpu.flat[-1])
                     out_tokens.append(val)
                     if val >= 1024:
+                        logger.debug(f"T2S EOS (from y) generated at step {idx}, Token={val}")
                         break
                     d_iy = d_y_out
                 else:
+                    logger.error("No valid output (samples or y) found in T2S step.")
                     break
+
 
             # 2. Embeddings (y_emb) - Keep on GPU
             if "y_emb" in out_map:
