@@ -22,3 +22,4 @@ transformers
 torch
 Gradio
 librosa
+nvidia-ml-py
