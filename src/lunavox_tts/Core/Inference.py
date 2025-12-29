@@ -40,7 +40,8 @@ class LunaVoxEngine:
             ids, word2ph, norm_text = chinese_clean_g2p_and_norm(text)
             text_seq: np.ndarray = np.array([ids], dtype=np.int64)
             # Full zh-BERT parity: compute 1024-d features and align to phones
-            bert_phone = compute_bert_phone_features(norm_text, word2ph)  # (len_phones, 1024)
+            # Keep BERT on GPU but return numpy for ORT compatibility
+            bert_phone = compute_bert_phone_features(norm_text, word2ph, return_tensor=False)
             if bert_phone.shape[0] != text_seq.shape[1]:
                 text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
             else:
@@ -152,104 +153,6 @@ class LunaVoxEngine:
         return vits_output
 
     def _run_vocoder(self, session: ort.InferenceSession, inputs: dict) -> np.ndarray:
-        if not USE_IO_BINDING:
-            return session.run(None, inputs)[0]
-        try:
-            io_binding = session.io_binding()
-            for name, value in inputs.items():
-                ort_value = ort.OrtValue.ortvalue_from_numpy(value)
-                io_binding.bind_input(name, ort_value)
-            for output in session.get_outputs():
-                io_binding.bind_output(output.name, "cpu")
-            session.run_with_iobinding(io_binding)
-            outputs = io_binding.copy_outputs_to_cpu()
-            if outputs:
-                return outputs[0]
-        except Exception as exc:  # pragma: no cover - fallback path
-            logger.warning(
-                "Failed to run vocoder with IO binding (%s). Falling back to regular execution.",
-                exc,
-            )
-        return session.run(None, inputs)[0]
-    
-    def _validate_vocoder_inputs(self, vocoder: ort.InferenceSession, 
-                                 inputs: dict) -> None:
-        """
-        Validate vocoder input shapes and types before inference.
-        Provides actionable error messages if validation fails.
-        """
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        # Get expected inputs from ONNX model
-        expected_inputs = {inp.name: inp for inp in vocoder.get_inputs()}
-        
-        # Check all required inputs are provided
-        for name in expected_inputs:
-            if name not in inputs:
-                if name == 'sv_emb':
-                    logger.error(
-                        f"Missing 'sv_emb' input for vocoder. "
-                        f"This model requires v2Pro/v2ProPlus with speaker vector. "
-                        f"Please ensure the model was converted with correct version detection."
-                    )
-                else:
-                    logger.error(f"Missing required input: {name}")
-                raise ValueError(f"Missing required input: {name}")
-        
-        # Validate shapes and types
-        for name, value in inputs.items():
-            if name not in expected_inputs:
-                continue  # Skip extra inputs
-            
-            expected = expected_inputs[name]
-            actual_shape = value.shape
-            actual_dtype = value.dtype
-            
-            # Validate dtype
-            if expected.type == 'tensor(int64)' and actual_dtype != np.int64:
-                logger.error(
-                    f"Input '{name}' has wrong dtype: {actual_dtype}, expected int64"
-                )
-                raise TypeError(f"Input '{name}' dtype mismatch: {actual_dtype} != int64")
-            elif expected.type == 'tensor(float)' and actual_dtype != np.float32:
-                logger.error(
-                    f"Input '{name}' has wrong dtype: {actual_dtype}, expected float32"
-                )
-                raise TypeError(f"Input '{name}' dtype mismatch: {actual_dtype} != float32")
-            
-            # Validate specific shapes
-            if name == 'sv_emb':
-                if actual_shape != (1, 20480):
-                    logger.error(
-                        f"Speaker embedding has wrong shape: {actual_shape}, expected (1, 20480). "
-                        f"Please check ERes2NetV2 model output."
-                    )
-                    raise ValueError(f"Speaker embedding shape mismatch: {actual_shape} != (1, 20480)")
-            elif name == 'text_seq':
-                if len(actual_shape) != 2 or actual_shape[0] != 1:
-                    logger.error(
-                        f"Text sequence has wrong shape: {actual_shape}, expected (1, N)"
-                    )
-                    raise ValueError(f"Text sequence shape invalid: {actual_shape}")
-            elif name == 'pred_semantic':
-                # Semantic tokens can be (1, M) or (1, 1, M)
-                if len(actual_shape) not in [2, 3] or actual_shape[0] != 1:
-                    logger.error(
-                        f"Semantic tokens have wrong shape: {actual_shape}, expected (1, M) or (1, 1, M)"
-                    )
-                    raise ValueError(f"Semantic tokens shape invalid: {actual_shape}")
-            elif name == 'ref_audio':
-                # Reference audio can be (1, samples) for raw audio or (1, H, W) for features
-                if len(actual_shape) not in [2, 3] or actual_shape[0] != 1:
-                    logger.error(
-                        f"Reference audio has wrong shape: {actual_shape}, expected (1, N) or (1, H, W)"
-                    )
-                    raise ValueError(f"Reference audio shape invalid: {actual_shape}")
-        
-        logger.debug(f"✓ Vocoder input validation passed")
-
-    def _run_vocoder(self, session: ort.InferenceSession, inputs: dict) -> np.ndarray:
         # Use IO Binding for performance, especially on GPU
         try:
             io_binding = session.io_binding()
@@ -286,6 +189,19 @@ class LunaVoxEngine:
                 new_inputs[name] = value
                 continue
             
+            # If it's a torch tensor, we might need to cast it on GPU
+            if hasattr(value, 'dtype') and not isinstance(value, np.ndarray):
+                # Assume it's a torch tensor
+                import torch
+                expected_type = input_meta[name]
+                if expected_type == 'tensor(float16)' and value.dtype == torch.float32:
+                    new_inputs[name] = value.to(torch.float16)
+                elif expected_type == 'tensor(float)' and value.dtype == torch.float16:
+                    new_inputs[name] = value.to(torch.float32)
+                else:
+                    new_inputs[name] = value
+                continue
+
             expected_type = input_meta[name]
             # Handle float conversions
             if expected_type == 'tensor(float16)' and value.dtype == np.float32:
@@ -302,9 +218,6 @@ class LunaVoxEngine:
         Validate vocoder input shapes and types before inference.
         Provides actionable error messages if validation fails.
         """
-        import logging
-        logger = logging.getLogger(__name__)
-        
         # Get expected inputs from ONNX model
         expected_inputs = {inp.name: inp for inp in vocoder.get_inputs()}
         
@@ -394,12 +307,37 @@ class LunaVoxEngine:
             "ssl_content": ssl_content,
         }
         encoder_inputs = self._cast_inputs(encoder, encoder_inputs)
-        x, prompts = encoder.run(None, encoder_inputs)
+        
+        enc_io = encoder.io_binding()
+        for name, val in encoder_inputs.items():
+            if isinstance(val, np.ndarray):
+                d_val = ort.OrtValue.ortvalue_from_numpy(val, "cuda", 0)
+                enc_io.bind_ortvalue_input(name, d_val)
+            else:
+                enc_io.bind_ortvalue_input(name, val)
+        
+        for out in encoder.get_outputs():
+            enc_io.bind_output(out.name, "cuda")
+            
+        encoder.run_with_iobinding(enc_io)
+        enc_outputs = enc_io.get_outputs() # These are OrtValues on GPU
+        enc_out_names = [o.name for o in encoder.get_outputs()]
+        enc_out_map = {name: val for name, val in zip(enc_out_names, enc_outputs)}
         
         # 2. First Stage Decoder (Single run)
-        fs_inputs = {"x": x, "prompts": prompts}
-        fs_inputs = self._cast_inputs(first_stage_decoder, fs_inputs)
-        fs_outputs = first_stage_decoder.run(None, fs_inputs)
+        fs_io = first_stage_decoder.io_binding()
+        # Bind outputs from encoder directly to first stage inputs
+        for name, d_val in enc_out_map.items():
+            if name in [i.name for i in first_stage_decoder.get_inputs()]:
+                fs_io.bind_ortvalue_input(name, d_val)
+            elif name == "x" or name == "prompts": # Handle potential name mismatch
+                fs_io.bind_ortvalue_input(name, d_val)
+
+        for out in first_stage_decoder.get_outputs():
+            fs_io.bind_output(out.name, "cuda")
+            
+        first_stage_decoder.run_with_iobinding(fs_io)
+        fs_outputs = fs_io.get_outputs() # OrtValues on GPU
         fs_out_info = first_stage_decoder.get_outputs()
         fs_out_names: List[str] = [o.name for o in fs_out_info]
         
@@ -423,13 +361,13 @@ class LunaVoxEngine:
             layers.sort(key=lambda x: x[0])
             return [arr for _, arr in layers]
 
-        y = _fs_get("y", 0)
-        y_emb = _fs_get("y_emb", 3)
-        x_example = _fs_get("x_example", 4)
+        d_y = _fs_get("y", 0)
+        d_y_emb = _fs_get("y_emb", 3)
+        d_x_example = _fs_get("x_example", 4)
         
         # Aggregated caches (Variant A)
-        k_agg = _fs_get("k", 1)
-        v_agg = _fs_get("v", 2)
+        d_k_agg = _fs_get("k", 1)
+        d_v_agg = _fs_get("v", 2)
         
         # Per-layer caches (Variant B)
         fs_k_layers = _collect_fs_layers("present_k_layer_")
@@ -448,19 +386,6 @@ class LunaVoxEngine:
         n_past_k = sum(1 for n in stage_in_names if n.startswith("past_k_layer_"))
         n_past_v = sum(1 for n in stage_in_names if n.startswith("past_v_layer_"))
         n_layers = max(n_past_k, n_past_v)
-
-        # Ensure correct types (FP16)
-        if x_example is not None:
-            x_example = x_example.astype(np.float16) if x_example.dtype == np.float32 else x_example
-        if k_agg is not None:
-            k_agg = k_agg.astype(np.float16) if k_agg.dtype == np.float32 else k_agg
-        if v_agg is not None:
-            v_agg = v_agg.astype(np.float16) if v_agg.dtype == np.float32 else v_agg
-        
-        # Create OrtValues for static inputs
-        d_x_example = ort.OrtValue.ortvalue_from_numpy(x_example, "cuda", 0) if x_example is not None else None
-        d_k_agg = ort.OrtValue.ortvalue_from_numpy(k_agg, "cuda", 0) if k_agg is not None else None
-        d_v_agg = ort.OrtValue.ortvalue_from_numpy(v_agg, "cuda", 0) if v_agg is not None else None
 
         # Handle split KV cache if needed
         past_kv_ort = {}
@@ -491,13 +416,15 @@ class LunaVoxEngine:
             # Case 1: Already have per-layer caches from first stage (Variant B)
             if fs_k_layers and fs_v_layers:
                 for i in range(min(len(fs_k_layers), n_layers)):
-                    past_kv_ort[f"past_k_layer_{i}"] = ort.OrtValue.ortvalue_from_numpy(
-                        np.ascontiguousarray(fs_k_layers[i].astype(np.float16)), "cuda", 0)
-                    past_kv_ort[f"past_v_layer_{i}"] = ort.OrtValue.ortvalue_from_numpy(
-                        np.ascontiguousarray(fs_v_layers[i].astype(np.float16)), "cuda", 0)
+                    past_kv_ort[f"past_k_layer_{i}"] = fs_k_layers[i]
+                    past_kv_ort[f"past_v_layer_{i}"] = fs_v_layers[i]
             
             # Case 2: Have aggregated cache, need to split (Variant A)
-            elif k_agg is not None and v_agg is not None:
+            elif d_k_agg is not None and d_v_agg is not None:
+                # Splitting OrtValue is not directly supported, convert to numpy for split
+                # This is a one-time thing before loop
+                k_agg = d_k_agg.numpy()
+                v_agg = d_v_agg.numpy()
                 try:
                     split_axis = 0
                     if k_agg.shape[0] % n_layers != 0:
@@ -526,48 +453,46 @@ class LunaVoxEngine:
                         past_kv_ort[f"past_v_layer_{i}"] = ort.OrtValue.ortvalue_from_numpy(empty_v, "cuda", 0)
 
         # Loop state
-        curr_y = y.astype(np.int64) # y is int64
-        curr_y_emb = y_emb.astype(np.float16)
-        
-        # Initial OrtValues for loop state
-        d_iy = ort.OrtValue.ortvalue_from_numpy(curr_y, "cuda", 0)
-        d_iy_emb = ort.OrtValue.ortvalue_from_numpy(curr_y_emb, "cuda", 0)
+        # d_y and d_y_emb are already OrtValues on GPU
+        d_iy = d_y
+        d_iy_emb = d_y_emb
 
         # Collected output tokens
         out_tokens = []
+
+        # Create IO Binding once outside the loop
+        io_binding = stage_decoder.io_binding()
+        
+        # Pre-bind static inputs
+        if "ix_example" in stage_in_names and d_x_example:
+            io_binding.bind_ortvalue_input("ix_example", d_x_example)
+        if "ik" in stage_in_names and d_k_agg:
+            io_binding.bind_ortvalue_input("ik", d_k_agg)
+        if "iv" in stage_in_names and d_v_agg:
+            io_binding.bind_ortvalue_input("iv", d_v_agg)
+            
+        # Bind all initial Past KV Layers
+        for name, val in past_kv_ort.items():
+            if name in stage_in_names:
+                io_binding.bind_ortvalue_input(name, val)
 
         for idx in range(500):
             if self.stop_event.is_set():
                 return None
 
-            io_binding = stage_decoder.io_binding()
-            
-            # Bind Inputs
+            # Only bind inputs that change in the loop
             io_binding.bind_ortvalue_input("iy", d_iy)
             io_binding.bind_ortvalue_input("iy_emb", d_iy_emb)
-            if "ix_example" in stage_in_names:
-                io_binding.bind_ortvalue_input("ix_example", d_x_example)
-            if "ik" in stage_in_names and d_k_agg:
-                io_binding.bind_ortvalue_input("ik", d_k_agg)
-            if "iv" in stage_in_names and d_v_agg:
-                io_binding.bind_ortvalue_input("iv", d_v_agg)
-
-            # Bind Past KV Layers
-            for name, val in past_kv_ort.items():
-                if name in stage_in_names:
-                    io_binding.bind_ortvalue_input(name, val)
-
-            # Bind Outputs
+            
+            # Re-bind Outputs because shapes change (KV cache grows)
             for out_name in stage_out_names:
-                # We let ORT allocate the output buffer on GPU
-                io_binding.bind_output(out_name, "cuda") 
+                io_binding.bind_output(out_name, "cuda")
             
             # Run
             try:
                 stage_decoder.run_with_iobinding(io_binding)
             except Exception as e:
                 logger.error(f"Error during T2S GPU loop step {idx}: {e}")
-                # Log bound inputs for debugging if needed
                 raise e
             
             # Retrieve Outputs (as OrtValues)
@@ -588,7 +513,6 @@ class LunaVoxEngine:
                     break
                 
                 # Update next input 'iy' (int64)
-                # Reuse output OrtValue as input for next step
                 d_iy = d_samples
             else:
                 # Fallback to y check if samples not present
@@ -607,14 +531,18 @@ class LunaVoxEngine:
             if "y_emb" in out_map:
                 d_iy_emb = out_map["y_emb"]
             
-            # 3. Update KV Cache - Keep on GPU
+            # 3. Update KV Cache - Keep on GPU and re-bind for next iteration
             for name, val in out_map.items():
                 if name.startswith("present_k_layer_"):
                     li = int(name.split("_layer_")[-1])
-                    past_kv_ort[f"past_k_layer_{li}"] = val
+                    in_name = f"past_k_layer_{li}"
+                    if in_name in stage_in_names:
+                        io_binding.bind_ortvalue_input(in_name, val)
                 elif name.startswith("present_v_layer_"):
                     li = int(name.split("_layer_")[-1])
-                    past_kv_ort[f"past_v_layer_{li}"] = val
+                    in_name = f"past_v_layer_{li}"
+                    if in_name in stage_in_names:
+                        io_binding.bind_ortvalue_input(in_name, val)
 
         # Reconstruct result
         if not out_tokens:

@@ -39,8 +39,8 @@ def _resolve_reference_audio(language_folder: str):
     audio_file = wav_files[0]
     return str(audio_file), audio_file.stem
 
-# 加载模型（使用 Data/character_model/v2/pretrained）
-model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2' / 'pretrained')
+# 加载模型（使用 Data/character_model/v2/pretrained_fp16）
+model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2' / 'pretrained_fp16')
 lunavox.load_character('pretrained', model_dir)
 
 # 设置参考音频（自动查找 Data/audio_resources/Chinese 下的 .wav 文件）

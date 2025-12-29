@@ -104,7 +104,7 @@ def _load_model() -> None:
     _model.eval()
 
 
-def compute_bert_phone_features(norm_text: str, word2ph: List[int]) -> np.ndarray:
+def compute_bert_phone_features(norm_text: str, word2ph: List[int], return_tensor: bool = False) -> np.ndarray:
     if not norm_text:
         return np.zeros((sum(word2ph), 1024), dtype=np.float32)
     if len(word2ph) != len(norm_text):
@@ -133,7 +133,8 @@ def compute_bert_phone_features(norm_text: str, word2ph: List[int]) -> np.ndarra
         for key in inputs:
             inputs[key] = inputs[key].to(device)
         outputs = _model(**inputs, output_hidden_states=True)
-        hidden = torch.cat(outputs["hidden_states"][-3:-2], dim=-1)[0].cpu()[1:-1]
+        # Keep on GPU if return_tensor is True
+        hidden = torch.cat(outputs["hidden_states"][-3:-2], dim=-1)[0][1:-1]
 
     phone_features = []
     for idx, repeat in enumerate(word2ph):
@@ -142,8 +143,14 @@ def compute_bert_phone_features(norm_text: str, word2ph: List[int]) -> np.ndarra
         phone_features.append(hidden[idx].repeat(repeat, 1))
 
     if not phone_features:
+        if return_tensor:
+            return torch.zeros((0, 1024), dtype=torch.float32, device=device)
         return np.zeros((0, 1024), dtype=np.float32)
 
     stacked = torch.cat(phone_features, dim=0)
-    return stacked.numpy().astype(np.float32)
+    
+    if return_tensor:
+        return stacked
+    
+    return stacked.cpu().numpy().astype(np.float32)
 
