@@ -1,63 +1,60 @@
-"""
-Quick tryout script for the v2ProPlus model - English synthesis.
-"""
 import time
 import os
 import sys
+import logging
 from pathlib import Path
 
-# Import LunaVox TTS from local src directory
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Add local src to sys.path
 SCRIPT_DIR = Path(__file__).parent
-TUTORIAL_DIR = SCRIPT_DIR.parent  # Tutorial directory
-REPO_ROOT = TUTORIAL_DIR.parent  # Go up two levels from v2_pro_plus_quick_tryout to repo root
-REPO_SRC = REPO_ROOT / "src"
-if str(REPO_SRC) not in sys.path:
-    sys.path.insert(0, str(REPO_SRC))
-if str(TUTORIAL_DIR) not in sys.path:
-    sys.path.insert(0, str(TUTORIAL_DIR))
+REPO_ROOT = SCRIPT_DIR.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+sys.path.insert(0, str(SCRIPT_DIR.parent))
+
+# Ensure data dependencies are present
+import data_setup
+data_setup.ensure_data_from_hf()
+
+from lunavox_tts.Utils.EnvManager import env_manager
+
+# --- OPTIONAL: Environment Configuration ---
+# Uncomment to force a specific runtime mode. Default is "cpu".
+# env_manager.set_mode("cpu")
+# env_manager.set_mode("gpu")
+
+if not env_manager.ensure_environment():
+    print(f"\nEnvironment updated to {env_manager.get_mode().upper()}. Please RE-RUN this script.")
+    sys.exit(0)
 
 import lunavox_tts as lunavox
-import data_setup
 
-data_setup.ensure_data_from_hf()
+# Local environment settings
 os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'Data' / 'chinese-hubert-base.onnx')
 os.environ['OPEN_JTALK_DICT_DIR'] = str(REPO_ROOT / 'Data' / 'open_jtalk_dic_utf_8-1.11')
 
+def resolve_reference(language: str):
+    audio_dir = REPO_ROOT / 'Data' / 'audio_resources' / language
+    wav_file = next(audio_dir.glob("*.wav"))
+    return str(wav_file), wav_file.stem
 
-def _resolve_reference_audio(language_folder: str):
-    """
-    Locate the first .wav file inside Data/audio_resources/<language_folder>.
-    Returns the file path and an inferred transcript (filename stem).
-    """
-    audio_dir = REPO_ROOT / 'Data' / 'audio_resources' / language_folder
-    if not audio_dir.is_dir():
-        raise FileNotFoundError(f"Reference audio directory not found: {audio_dir}")
-    wav_files = sorted(audio_dir.glob("*.wav"))
-    if not wav_files:
-        raise FileNotFoundError(f"No .wav files found in {audio_dir}")
-    audio_file = wav_files[0]
-    return str(audio_file), audio_file.stem
-
-
+# 1. Load v2 Pro Plus Model
 model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2_pro_plus' / 'pretrained')
-lunavox.load_character('pretrained', model_dir)
+lunavox.load_character('pretrained_v2pp', model_dir)
 
-# 设置参考音频（自动查找 Data/audio_resources/English 下的 .wav 文件）
-audio_path, reference_text = _resolve_reference_audio('English')
-lunavox.set_reference_audio(
-    'pretrained',
-    audio_path,
-    reference_text,
-    audio_language='en'
-)
+# 2. Set Reference Audio
+audio_path, reference_text = resolve_reference('English')
+lunavox.set_reference_audio('pretrained_v2pp', audio_path, reference_text, audio_language='en')
 
+# 3. Text-to-Speech
 lunavox.tts(
-    character_name='pretrained',
-    text='This is the LunaVox v2 Pro Plus model speaking English.',
+    character_name='pretrained_v2pp',
+    text='This is the LunaVox v2 Pro Plus model speaking English. Optimized for CPU and GPU.',
     play=True,
-    language='en',
+    language='en'
 )
 
-time.sleep(10)  # Ensure audio playback completes
-
-
+# Keep process alive for playback
+time.sleep(5)

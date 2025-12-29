@@ -20,6 +20,7 @@ cn2an
 jieba_fast
 transformers
 torch
+torchaudio
 Gradio
 librosa
 nvidia-ml-py
