@@ -92,14 +92,32 @@ def _load_model() -> None:
         _tokenizer = AutoTokenizer.from_pretrained(base_path)
         _model = BertForMaskedLM.from_pretrained(base_path)
     else:
+        # Lazy download implementation using huggingface_hub
+        try:
+            from huggingface_hub import snapshot_download
+        except ImportError:
+            raise ImportError(
+                "huggingface_hub is required for lazy loading Chinese BERT. "
+                "Install it with `pip install huggingface_hub`."
+            )
+            
         repo_root = Path(__file__).resolve().parents[3]
         base_dir = repo_root / "Data" / "chinese-roberta-wwm-ext-large"
-        base_dir.mkdir(parents=True, exist_ok=True)
-        model_id = "hfl/chinese-roberta-wwm-ext-large"
-        _tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=str(base_dir))
-        _model = BertForMaskedLM.from_pretrained(model_id, cache_dir=str(base_dir))
-        _tokenizer.save_pretrained(str(base_dir))
-        _model.save_pretrained(str(base_dir))
+        
+        _logger.info("Chinese RoBERTa model not found. Starting lazy download of 'hfl/chinese-roberta-wwm-ext-large' to %s...", base_dir)
+        
+        try:
+            download_path = snapshot_download(
+                repo_id="hfl/chinese-roberta-wwm-ext-large",
+                local_dir=str(base_dir),
+                local_dir_use_symlinks=False,
+            )
+            _tokenizer = AutoTokenizer.from_pretrained(download_path)
+            _model = BertForMaskedLM.from_pretrained(download_path)
+            _logger.info("Chinese RoBERTa model download and loading successful.")
+        except Exception as e:
+            _logger.error("Failed to download or load Chinese RoBERTa model: %s", e)
+            raise RuntimeError(f"Could not prepare Chinese BERT model: {e}")
 
     _model.eval()
 

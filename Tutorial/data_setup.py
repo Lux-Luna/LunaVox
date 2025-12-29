@@ -178,8 +178,7 @@ def need_download() -> Tuple[bool, List[Tuple[str, List[str]]]]:
         base_missing.append(str(REQUIRED_CN_HUBERT.relative_to(REPO_ROOT)))
     if not REQUIRED_OPENJTALK_DIR.exists():
         base_missing.append(str(REQUIRED_OPENJTALK_DIR.relative_to(REPO_ROOT)) + "/")
-    if not REQUIRED_CHINESE_ROBERTA_DIR.exists():
-        base_missing.append(str(REQUIRED_CHINESE_ROBERTA_DIR.relative_to(REPO_ROOT)) + "/")
+    # Chinese RoBERTa is excluded from base_missing to support lazy loading for Chinese-only TTS.
     if base_missing:
         missing_summary.append(("base", base_missing))
 
@@ -240,16 +239,7 @@ def ensure_data_from_hf() -> None:
     )
     hf_root = Path(local_dir)
 
-    # Download Chinese RoBERTa model if missing
-    if not REQUIRED_CHINESE_ROBERTA_DIR.exists():
-        print("Downloading Chinese RoBERTa model from hfl/chinese-roberta-wwm-ext-large...")
-        roberta_local_dir = snapshot_download(
-            repo_id="hfl/chinese-roberta-wwm-ext-large",
-            local_dir=str(REQUIRED_CHINESE_ROBERTA_DIR),
-            local_dir_use_symlinks=False,
-            token=hf_token
-        )
-        print(f"Chinese RoBERTa model downloaded to: {roberta_local_dir}")
+    # Chinese RoBERTa model download is now deferred to first Chinese TTS usage (lazy loading).
 
     print("Data setup completed.")
 
