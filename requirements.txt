@@ -1,5 +1,5 @@
 onnx
-onnxruntime-gpu
+onnxruntime
 numpy
 pyopenjtalk
 soundfile

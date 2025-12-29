@@ -29,7 +29,18 @@ _DEFAULT_PROVIDER_ORDER: list[str] = [
 
 
 def _resolve_providers() -> list[str]:
+    from .Utils.EnvManager import env_manager
+    
+    # 1. Check persistence/user requested mode
+    target_mode = env_manager.get_mode()
     available = set(onnxruntime.get_available_providers())
+    
+    # If user explicitly wants CPU, we only return CPU provider
+    if target_mode == "cpu":
+        logger.info("LunaVox is running in CPU mode as configured.")
+        return ["CPUExecutionProvider"]
+
+    # 2. Handle GPU/Auto mode
     env_value = os.getenv("LUNAVOX_ORT_PROVIDERS")
     if env_value:
         requested = [item.strip() for item in env_value.split(",") if item.strip()]
@@ -41,11 +52,14 @@ def _resolve_providers() -> list[str]:
             "Requested providers '%s' are not available in this environment. Falling back to auto detection.",
             env_value,
         )
+    
+    # Filter preferred providers by availability
     resolved = [provider for provider in _DEFAULT_PROVIDER_ORDER if provider in available]
     if resolved:
         logger.info("Auto-detected ONNXRuntime providers: %s", ",".join(resolved))
         return resolved
-    logger.info("No preferred providers available; falling back to CPUExecutionProvider.")
+    
+    logger.info("No preferred providers available or found; falling back to CPUExecutionProvider.")
     return ["CPUExecutionProvider"]
 
 

@@ -16,9 +16,21 @@ if str(TUTORIAL_DIR) not in sys.path:
     sys.path.insert(0, str(TUTORIAL_DIR))
     
     
-# Import and run data_setup to ensure all required files are present
+# Import data_setup to ensure all required files are present
 import data_setup
 data_setup.ensure_data_from_hf()
+
+from lunavox_tts.Utils.EnvManager import env_manager
+import sys
+
+# Forces GPU mode for this test
+env_manager.set_mode("gpu")
+if not env_manager.ensure_environment():
+    print("\n" + "="*60)
+    print("环境已切换至 GPU模式 (onnxruntime-gpu 已安装)。")
+    print("由于 Python 无法在运行时加载新安装的二进制库，请重新运行此脚本。")
+    print("="*60 + "\n")
+    sys.exit(0)
 
 
 import lunavox_tts as lunavox
