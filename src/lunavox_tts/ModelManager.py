@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 SESS_OPTIONS = onnxruntime.SessionOptions()
 SESS_OPTIONS.log_severity_level = 3
+SESS_OPTIONS.add_session_config_entry("session.use_env_allocators", "1")
 
 _DEFAULT_PROVIDER_ORDER: list[str] = [
     "CUDAExecutionProvider",
