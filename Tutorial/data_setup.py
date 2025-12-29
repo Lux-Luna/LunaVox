@@ -24,12 +24,13 @@ REQUIRED_OPENJTALK_DIR = DATA_DIR / "open_jtalk_dic_utf_8-1.11"
 REQUIRED_CHINESE_ROBERTA_DIR = DATA_DIR / "chinese-roberta-wwm-ext-large"
 
 CHAR_REQUIRED_FILES = [
-    "t2s_encoder_fp32.onnx",
-    "t2s_first_stage_decoder_fp32.onnx",
-    "t2s_stage_decoder_fp32.onnx",
+    "t2s_encoder_fp16.onnx",
+    "t2s_first_stage_decoder_fp16.onnx",
+    "t2s_stage_decoder_fp16.onnx",
     "t2s_shared_fp16.bin",
-    "vits_fp32.onnx",
+    "vits_fp16.onnx",
     "vits_fp16.bin",
+    "model_info.json",
 ]
 
 def _strip_missing_annotation(path_str: str) -> str:
@@ -67,7 +68,6 @@ def list_local_model_dirs() -> List[Path]:
     """
     Return character model leaf directories to check.
     explicitly includes default 'pretrained' directories to ensure they are downloaded if missing.
-    Ignores *_fp16 directories to avoid checking converted models against original requirements.
     """
     results: List[Path] = []
     
@@ -77,16 +77,13 @@ def list_local_model_dirs() -> List[Path]:
         CHAR_DIR / "v2_pro_plus" / "pretrained"
     ]
     
-    # 1. Add existing directories (skipping _fp16)
+    # 1. Add existing directories
     if CHAR_DIR.exists():
         for family_dir in CHAR_DIR.iterdir():
             if not family_dir.is_dir():
                 continue
             for model_dir in family_dir.iterdir():
                 if model_dir.is_dir():
-                    # Skip fp16 converted folders
-                    if model_dir.name.endswith("_fp16"):
-                        continue
                     # Skip if already in defaults (handled later)
                     if model_dir in defaults:
                         continue
