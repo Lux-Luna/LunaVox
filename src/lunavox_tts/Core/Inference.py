@@ -59,16 +59,31 @@ class LunaVoxEngine:
         if ref_bert is None or ref_bert.shape[0] != ref_seq.shape[1]:
             ref_bert = np.zeros((ref_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
 
-        semantic_tokens: np.ndarray = self.t2s_gpu(
-            ref_seq=ref_seq,
-            ref_bert=ref_bert,
-            text_seq=text_seq,
-            text_bert=text_bert,
-            ssl_content=prompt_audio.ssl_content,
-            encoder=encoder,
-            first_stage_decoder=first_stage_decoder,
-            stage_decoder=stage_decoder,
-        )
+        from ..Utils.EnvManager import env_manager
+        is_gpu = env_manager.get_mode() == "gpu"
+        
+        if is_gpu:
+            semantic_tokens: np.ndarray = self.t2s_gpu(
+                ref_seq=ref_seq,
+                ref_bert=ref_bert,
+                text_seq=text_seq,
+                text_bert=text_bert,
+                ssl_content=prompt_audio.ssl_content,
+                encoder=encoder,
+                first_stage_decoder=first_stage_decoder,
+                stage_decoder=stage_decoder,
+            )
+        else:
+            semantic_tokens: np.ndarray = self.t2s_cpu(
+                ref_seq=ref_seq,
+                ref_bert=ref_bert,
+                text_seq=text_seq,
+                text_bert=text_bert,
+                ssl_content=prompt_audio.ssl_content,
+                encoder=encoder,
+                first_stage_decoder=first_stage_decoder,
+                stage_decoder=stage_decoder,
+            )
         t_t2s = time.time()
         logger.info(f"T2S Inference took: {(t_t2s - t_frontend) * 1000:.2f}ms")
 

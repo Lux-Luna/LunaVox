@@ -23,12 +23,11 @@ data_setup.ensure_data_from_hf()
 from lunavox_tts.Utils.EnvManager import env_manager
 import sys
 
-# Forces GPU mode for this test
-env_manager.set_mode("gpu")
+# Ensure environment matches configuration (from env_config.json)
 if not env_manager.ensure_environment():
     print("\n" + "="*60)
-    print("环境已切换至 GPU模式 (onnxruntime-gpu 已安装)。")
-    print("由于 Python 无法在运行时加载新安装的二进制库，请重新运行此脚本。")
+    print(f"环境已根据配置进行调整。")
+    print("由于 Python 无法在运行时加载/卸载二进制库，请重新运行此脚本。")
     print("="*60 + "\n")
     sys.exit(0)
 
