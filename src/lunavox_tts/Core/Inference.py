@@ -153,6 +153,9 @@ class LunaVoxEngine:
         return vits_output
 
     def _run_vocoder(self, session: ort.InferenceSession, inputs: dict) -> np.ndarray:
+        # Automatically cast inputs to match model precision
+        inputs = self._cast_inputs(session, inputs)
+        
         # Use IO Binding for performance, especially on GPU
         try:
             io_binding = session.io_binding()

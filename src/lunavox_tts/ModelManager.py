@@ -52,8 +52,7 @@ class _GSVModelFile:
     T2S_ENCODER_FP16: str = 't2s_encoder_fp16.onnx'
     T2S_FIRST_STAGE_DECODER_FP16: str = 't2s_first_stage_decoder_fp16.onnx'
     T2S_STAGE_DECODER_FP16: str = 't2s_stage_decoder_fp16.onnx'
-    # Use FP32 VITS for stability (FP16 VITS produces silence)
-    VITS_FP16: str = 'vits_fp32.onnx'
+    VITS_FP16: str = 'vits_fp16.onnx'
     
     T2S_ENCODER_FP32: str = 't2s_encoder_fp32.onnx'
     T2S_FIRST_STAGE_DECODER_FP32: str = 't2s_first_stage_decoder_fp32.onnx'
@@ -167,14 +166,14 @@ class ModelManager:
         model_dict: dict[str, InferenceSession] = {}
         
         # Check for FP16 models first
-        if os.path.exists(os.path.join(model_dir, _GSVModelFile.VITS_FP16)):
+        if os.path.exists(os.path.join(model_dir, _GSVModelFile.T2S_ENCODER_FP16)):
             logger.info("Using FP16 models.")
             files_to_load = {
                 "T2S_ENCODER": _GSVModelFile.T2S_ENCODER_FP16,
                 "T2S_FIRST_STAGE_DECODER": _GSVModelFile.T2S_FIRST_STAGE_DECODER_FP16,
                 "T2S_STAGE_DECODER": _GSVModelFile.T2S_STAGE_DECODER_FP16,
-                # Force VITS FP32 for debugging
-                "VITS": _GSVModelFile.VITS_FP32,
+                # Try FP32 VITS first for stability, fallback to FP16 if not found
+                "VITS": _GSVModelFile.VITS_FP32 if os.path.exists(os.path.join(model_dir, _GSVModelFile.VITS_FP32)) else _GSVModelFile.VITS_FP16,
             }
         else:
             logger.info("Using FP32 models.")
