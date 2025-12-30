@@ -40,7 +40,8 @@ class T2SModelConverter:
         self.relinked_encoder_path: str = os.path.join(self.output_dir, "t2s_encoder_fp32.onnx")
         self.relinked_stage_decoder_path: str = os.path.join(self.output_dir, "t2s_stage_decoder_fp32.onnx")
         self.relinked_first_stage_decoder_path: str = os.path.join(self.output_dir, "t2s_first_stage_decoder_fp32.onnx")
-        self.reconstructed_fp32_bin_path = os.path.join(self.output_dir, "t2s_shared_fp32.bin")
+        # 虚拟文件名
+        self.virtual_fp32_bin_name = "t2s_shared_fp32.bin"
 
     def step1_create_fp16_bin_with_key_mapping(self):
         """
@@ -80,8 +81,7 @@ class T2SModelConverter:
 
     def step2_relink_onnx_for_fp32(self, old_model: str, new_model: str):
         """
-        (2) 根据 fp32 索引表，修改 ONNX 模型，使其链接到未来的全精度 .bin。
-            (使用与第一个脚本相同的、更稳定的底层方法)
+        (2) 根据 fp32 索引表，修改 ONNX 模型，使其链接到虚拟的全精度 .bin 文件。
         """
         if not os.path.exists(self.index_table_path):
             raise FileNotFoundError(
@@ -92,7 +92,7 @@ class T2SModelConverter:
             index_table = json.load(f)
 
         model = onnx.load_model(old_model, load_external_data=False)
-        reconstructed_bin_filename = os.path.basename(self.reconstructed_fp32_bin_path)
+        reconstructed_bin_filename = self.virtual_fp32_bin_name
 
         for tensor in model.graph.initializer:
             if tensor.name in index_table:
@@ -109,15 +109,6 @@ class T2SModelConverter:
                     entry.value = v
 
         onnx.save(model, new_model)
-
-    @staticmethod
-    def step3_reconstruct_fp32_bin_from_fp16(fp16_bin_path: str, output_fp32_bin_path: str):
-        """
-        (3) 静态工具函数：从半精度 .bin 文件还原出全精度 .bin 文件。
-        """
-        fp16_array = np.fromfile(fp16_bin_path, dtype=np.float16)
-        fp32_array = fp16_array.astype(np.float32)
-        fp32_array.tofile(output_fp32_bin_path)
 
     def run_full_process(self):
         self.step1_create_fp16_bin_with_key_mapping()

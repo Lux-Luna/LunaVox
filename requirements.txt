@@ -18,9 +18,5 @@ pypinyin
 opencc-python-reimplemented
 cn2an
 jieba_fast
-transformers
-torch
-torchaudio
-Gradio
-librosa
-nvidia-ml-py
+tokenizers
+g2pM

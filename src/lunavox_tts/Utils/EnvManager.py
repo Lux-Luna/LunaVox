@@ -9,14 +9,22 @@ logger = logging.getLogger(__name__)
 
 class EnvManager:
     def __init__(self):
-        # Determine the Data directory. 
-        # Check environment variable first, then fallback to current directory's Data folder.
+        # Determine the Data directory relative to the package root.
+        # This ensures the config file stays with the package, not CWD.
+        try:
+            # Use __file__ to resolve paths reliably
+            current_file = Path(__file__).resolve()
+            # Parents: 0=Utils, 1=lunavox_tts, 2=src, 3=LunaVox(repo root)
+            repo_root = current_file.parents[3]
+            self.config_dir = repo_root / "Data"
+        except Exception:
+             # Fallback if path resolution fails
+            self.config_dir = Path("Data")
+
+        # Allow override via env var
         data_dir_env = os.environ.get("LUNAVOX_DATA_DIR")
         if data_dir_env:
             self.config_dir = Path(data_dir_env)
-        else:
-            # Default to repo root / Data if running from source, or just ./Data
-            self.config_dir = Path("./Data")
             
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.config_file = self.config_dir / "env_config.json"

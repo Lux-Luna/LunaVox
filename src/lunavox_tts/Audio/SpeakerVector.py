@@ -19,11 +19,7 @@ _sv_model_path: Optional[str] = None
 
 def _get_fbank_features(waveform_16k: np.ndarray, num_mel_bins: int = 80) -> np.ndarray:
     """
-    Extract Kaldi-style fbank features from 16kHz waveform.
-    
-    This is a simplified NumPy-based implementation that approximates Kaldi's fbank.
-    For production use, consider using torchaudio.compliance.kaldi.fbank or porting
-    the full kaldi.py implementation.
+    Extract Kaldi-style fbank features from 16kHz waveform using pure NumPy.
     
     Args:
         waveform_16k: Audio waveform at 16kHz, shape (n_samples,)
@@ -32,46 +28,71 @@ def _get_fbank_features(waveform_16k: np.ndarray, num_mel_bins: int = 80) -> np.
     Returns:
         Fbank features, shape (n_frames, num_mel_bins)
     """
-    try:
-        import torch
-        import torchaudio.compliance.kaldi as kaldi
+    # Ensure waveform is 1D
+    if waveform_16k.ndim > 1:
+        waveform_16k = waveform_16k.flatten()
+
+    sample_rate = 16000
+    frame_length_ms = 25.0
+    frame_shift_ms = 10.0
+    
+    frame_length = int(sample_rate * frame_length_ms / 1000)
+    frame_shift = int(sample_rate * frame_shift_ms / 1000)
+    
+    # Pre-emphasis (simplistic)
+    # waveform_16k = np.append(waveform_16k[0], waveform_16k[1:] - 0.97 * waveform_16k[:-1])
+
+    # Framing
+    num_samples = len(waveform_16k)
+    num_frames = 1 + int((num_samples - frame_length) / frame_shift)
+    
+    if num_frames <= 0:
+        # Handle very short audio by padding
+        pad_len = frame_length - num_samples
+        waveform_16k = np.pad(waveform_16k, (0, pad_len), mode='constant')
+        num_frames = 1
+    
+    # Povey window approximation (Hanning is usually close enough for typical use, or Hamming)
+    # Kaldi's Povey window is pow(0.5 - 0.5*cos(2*pi*n/(N-1)), 0.85)
+    window = np.hanning(frame_length)
+    # window = np.power(0.5 - 0.5 * np.cos(2 * np.pi * np.arange(frame_length) / (frame_length - 1)), 0.85)
+
+    frames = np.zeros((num_frames, frame_length))
+    for i in range(num_frames):
+        start = i * frame_shift
+        frames[i] = waveform_16k[start:start+frame_length] * window
         
-        # Convert to torch tensor and ensure correct shape
-        if isinstance(waveform_16k, np.ndarray):
-            # Ensure 2D: (1, n_samples) for Kaldi compliance
-            if waveform_16k.ndim == 1:
-                waveform_16k = waveform_16k[np.newaxis, :]
-            elif waveform_16k.ndim == 2 and waveform_16k.shape[0] > 1:
-                # Take first channel if multi-channel
-                waveform_16k = waveform_16k[0:1, :]
-            
-            waveform_tensor = torch.from_numpy(waveform_16k).float()
-        else:
-            waveform_tensor = waveform_16k
-        
-        # Extract fbank features using Kaldi-compatible function
-        # Parameters match GPT-SoVITS/GPT_SoVITS/eres2net/kaldi.py::fbank defaults
-        fbank = kaldi.fbank(
-            waveform_tensor,
-            num_mel_bins=num_mel_bins,
-            sample_frequency=16000,
-            dither=0.0,  # No dithering for consistency
-            window_type='povey',
-            frame_length=25.0,
-            frame_shift=10.0,
-        )
-        
-        return fbank.numpy()
-        
-    except ImportError:
-        logger.error(
-            "torchaudio is required for fbank extraction. "
-            "Please install it: pip install torchaudio"
-        )
-        raise
-    except Exception as e:
-        logger.error(f"Failed to extract fbank features: {e}")
-        raise
+    # FFT
+    n_fft = 512
+    mag_frames = np.absolute(np.fft.rfft(frames, n_fft))
+    pow_frames = ((mag_frames ** 2) / n_fft)
+    
+    # Mel Filterbank
+    low_freq_mel = 0
+    high_freq_mel = (2595 * np.log10(1 + (sample_rate / 2) / 700))  # Convert Hz to Mel
+    mel_points = np.linspace(low_freq_mel, high_freq_mel, num_mel_bins + 2)  # Equally spaced in Mel scale
+    hz_points = (700 * (10**(mel_points / 2595) - 1))  # Convert Mel to Hz
+    bin = np.floor((n_fft + 1) * hz_points / sample_rate)
+
+    fbank = np.zeros((num_mel_bins, int(n_fft / 2 + 1)))
+    for m in range(1, num_mel_bins + 1):
+        f_m_minus = int(bin[m - 1])   # left
+        f_m = int(bin[m])             # center
+        f_m_plus = int(bin[m + 1])    # right
+
+        for k in range(f_m_minus, f_m):
+            fbank[m - 1, k] = (k - bin[m - 1]) / (bin[m] - bin[m - 1])
+        for k in range(f_m, f_m_plus):
+            fbank[m - 1, k] = (bin[m + 1] - k) / (bin[m + 1] - bin[m])
+
+    filter_banks = np.dot(pow_frames, fbank.T)
+    filter_banks = np.where(filter_banks == 0, np.finfo(float).eps, filter_banks)  # Numerical stability
+    filter_banks = np.log(filter_banks)  # dB
+
+    # Mean normalization (optional, depending on model training)
+    # filter_banks -= (np.mean(filter_banks, axis=0) + 1e-8)
+    
+    return filter_banks.astype(np.float32)
 
 
 def load_sv_model(model_path: Optional[str] = None) -> bool:
@@ -209,4 +230,3 @@ def average_sv_embeddings(sv_embs: list[np.ndarray]) -> Optional[np.ndarray]:
     except Exception as e:
         logger.error(f"Failed to average speaker embeddings: {e}")
         return None
-

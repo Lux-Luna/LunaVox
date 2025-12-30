@@ -5,7 +5,7 @@ import os
 import logging
 import onnxruntime
 from onnxruntime import InferenceSession
-from typing import Optional
+from typing import Optional, List
 import numpy as np
 # from importlib.resources import files
 from huggingface_hub import hf_hub_download
@@ -75,10 +75,12 @@ class _GSVModelFile:
     VITS_FP32: str = 'vits_fp32.onnx'
 
     # Binaries for weight conversion (CPU mode)
-    T2S_DECODER_WEIGHT_FP32: str = 't2s_shared_fp32.bin'
     T2S_DECODER_WEIGHT_FP16: str = 't2s_shared_fp16.bin'
-    VITS_WEIGHT_FP32: str = 'vits_fp32.bin'
     VITS_WEIGHT_FP16: str = 'vits_fp16.bin'
+    PROMPT_ENCODER_WEIGHT_FP16: str = 'prompt_encoder_fp16.bin'
+
+    PROMPT_ENCODER_FP16: str = 'prompt_encoder_fp16.onnx'
+    PROMPT_ENCODER_FP32: str = 'prompt_encoder_fp32.onnx'
 
 
 @dataclass
@@ -87,6 +89,7 @@ class GSVModel:
     T2S_FIRST_STAGE_DECODER: InferenceSession
     T2S_STAGE_DECODER: InferenceSession
     VITS: InferenceSession
+    PROMPT_ENCODER: Optional[InferenceSession] = None
 
 
 def download_model(filename: str, repo_id: str = 'Lux-Luna/LunaVox') -> Optional[str]:
@@ -100,29 +103,62 @@ def download_model(filename: str, repo_id: str = 'Lux-Luna/LunaVox') -> Optional
         logger.error(f"Failed to download model {filename}: {str(e)}", exc_info=True)
 
 
-def convert_bin_to_fp32(fp16_bin_path: str, output_fp32_bin_path: str) -> None:
-    """Converts FP16 binary weight file to FP32 for better CPU performance."""
-    fp16_array = np.fromfile(fp16_bin_path, dtype=np.float16)
-    fp32_array = fp16_array.astype(np.float32)
-    fp32_array.tofile(output_fp32_bin_path)
+def load_session_with_fp16_conversion(
+    onnx_path: str,
+    fp16_bin_path: str,
+    providers: List[str],
+    sess_options: Optional[onnxruntime.SessionOptions] = None
+) -> InferenceSession:
+    """
+    Reads ONNX and FP16 weights, converts to FP32 in memory, 
+    injects into ONNX model, and creates InferenceSession without temp files.
+    """
+    import onnx
 
+    if not os.path.exists(onnx_path):
+        raise FileNotFoundError(f"ONNX Model not found: {onnx_path}")
+    if not os.path.exists(fp16_bin_path):
+        raise FileNotFoundError(f"FP16 Weight file not found: {fp16_bin_path}")
 
-def convert_bins_to_fp32(model_dir: str) -> None:
-    """Scans for FP16 weights and converts to FP32 if missing."""
-    fp16_fp32_pairs = [
-        (_GSVModelFile.T2S_DECODER_WEIGHT_FP16, _GSVModelFile.T2S_DECODER_WEIGHT_FP32),
-        (_GSVModelFile.VITS_WEIGHT_FP16, _GSVModelFile.VITS_WEIGHT_FP32),
-    ]
+    model_proto = onnx.load(onnx_path, load_external_data=False)
+    fp16_data = np.fromfile(fp16_bin_path, dtype=np.float16)
+    fp32_data = fp16_data.astype(np.float32)
+    fp32_bytes = fp32_data.tobytes()
 
-    for fp16_name, fp32_name in fp16_fp32_pairs:
-        fp16_bin = os.path.normpath(os.path.join(model_dir, fp16_name))
-        fp32_bin = os.path.normpath(os.path.join(model_dir, fp32_name))
+    # Iterate and patch external data initializers
+    for tensor in model_proto.graph.initializer:
+        if tensor.data_location == onnx.TensorProto.EXTERNAL:
+            offset = 0
+            length = 0
+            for entry in tensor.external_data:
+                if entry.key == 'offset':
+                    offset = int(entry.value)
+                elif entry.key == 'length':
+                    length = int(entry.value)
 
-        if os.path.exists(fp16_bin) and not os.path.exists(fp32_bin):
-            logger.info(f"Converting weights {fp16_name} to FP32 for CPU performance...")
-            convert_bin_to_fp32(fp16_bin, fp32_bin)
+            if offset + length > len(fp32_bytes):
+                logger.warning(
+                    f"Tensor {tensor.name} requested a data range that exceeds the size of the provided bin file. "
+                    f"Offset: {offset}, Length: {length}, Buffer: {len(fp32_bytes)}"
+                )
+                continue
 
-    logger.info("Successfully checked/generated FP32 weights.")
+            tensor_data = fp32_bytes[offset: offset + length]
+            tensor.raw_data = tensor_data
+
+            del tensor.external_data[:]
+            tensor.data_location = onnx.TensorProto.DEFAULT
+
+    try:
+        session = InferenceSession(
+            model_proto.SerializeToString(),
+            providers=providers,
+            sess_options=sess_options
+        )
+        return session
+    except Exception as e:
+        logger.error(f"Failed to load in-memory model {os.path.basename(onnx_path)}: {e}")
+        raise e
 
 
 class ModelManager:
@@ -130,8 +166,8 @@ class ModelManager:
         capacity_str = os.getenv('Max_Cached_Character_Models', '3')
         self.character_to_model: dict[str, dict[str, InferenceSession]] = LRUCacheDict(
             capacity=int(capacity_str))
-        self.character_model_paths: dict[str, str] = {}  # 创建一个持久化字典来存储角色模型路径
-        self.character_versions: dict[str, str] = {}  # 存储每个角色的模型版本
+        self.character_model_paths: dict[str, str] = {}  # Persistence dict for model paths
+        self.character_versions: dict[str, str] = {}  # Store model versions
         self.providers = _resolve_providers()
 
         self.cn_hubert: Optional[InferenceSession] = None
@@ -147,7 +183,18 @@ class ModelManager:
         logger.info(f"Found existing Chinese HuBERT model at: {os.path.abspath(model_path)}")
 
         try:
-            self.cn_hubert = onnxruntime.InferenceSession(model_path,
+            # Check for FP16 weights for HuBERT
+            # Assuming standard naming if we want to support patching here too.
+            # But for now, stick to standard loading unless requested.
+            hubert_dir = os.path.dirname(model_path)
+            hubert_fp16 = os.path.join(hubert_dir, "chinese-hubert-base_weights_fp16.bin")
+            
+            if os.path.exists(hubert_fp16):
+                 self.cn_hubert = load_session_with_fp16_conversion(
+                    model_path, hubert_fp16, self.providers, SESS_OPTIONS
+                )
+            else:
+                self.cn_hubert = onnxruntime.InferenceSession(model_path,
                                                           providers=self.providers,
                                                           sess_options=SESS_OPTIONS)
             logger.info("Successfully loaded CN_HuBERT model.")
@@ -166,14 +213,15 @@ class ModelManager:
                 T2S_ENCODER=model_map["T2S_ENCODER"],
                 T2S_FIRST_STAGE_DECODER=model_map["T2S_FIRST_STAGE_DECODER"],
                 T2S_STAGE_DECODER=model_map["T2S_STAGE_DECODER"],
-                VITS=model_map["VITS"]
+                VITS=model_map["VITS"],
+                PROMPT_ENCODER=model_map.get("PROMPT_ENCODER")
             )
         if character_name in self.character_model_paths:
             model_dir = self.character_model_paths[character_name]
             if self.load_character(character_name, model_dir):
                 return self.get(character_name)
             else:
-                del self.character_model_paths[character_name]  # 如果重载失败，可以考虑从路径记录中移除，防止反复失败
+                del self.character_model_paths[character_name]
                 return None
         return None
 
@@ -185,7 +233,7 @@ class ModelManager:
         character_name = character_name.lower()
         if character_name in self.character_to_model:
             logger.info(f"Character '{character_name}' is already in cache; no need to reload.")
-            _ = self.character_to_model[character_name]  # 访问一次以更新其在LRU缓存中的位置
+            _ = self.character_to_model[character_name]
             return True
         
         # Load model version metadata
@@ -208,59 +256,67 @@ class ModelManager:
         from .Utils.EnvManager import env_manager
         # Refresh providers to reflect any mode changes (CPU/GPU switch)
         self.providers = _resolve_providers()
-        is_cpu_mode = env_manager.get_mode() == "cpu"
 
-        if is_cpu_mode:
-            # CPU mode: Try to use FP32 files and ensure converted weights
-            convert_bins_to_fp32(model_dir)
-            if os.path.exists(os.path.join(model_dir, _GSVModelFile.T2S_ENCODER_FP32)):
-                logger.info("CPU Mode: Using FP32 models for better performance.")
-                files_to_load = {
-                    "T2S_ENCODER": _GSVModelFile.T2S_ENCODER_FP32,
-                    "T2S_FIRST_STAGE_DECODER": _GSVModelFile.T2S_FIRST_STAGE_DECODER_FP32,
-                    "T2S_STAGE_DECODER": _GSVModelFile.T2S_STAGE_DECODER_FP32,
-                    "VITS": _GSVModelFile.VITS_FP32,
-                }
-            else:
-                logger.warning("CPU Mode: FP32 models not found, falling back to FP16 models.")
-                files_to_load = {
-                    "T2S_ENCODER": _GSVModelFile.T2S_ENCODER_FP16,
-                    "T2S_FIRST_STAGE_DECODER": _GSVModelFile.T2S_FIRST_STAGE_DECODER_FP16,
-                    "T2S_STAGE_DECODER": _GSVModelFile.T2S_STAGE_DECODER_FP16,
-                    "VITS": _GSVModelFile.VITS_FP16,
-                }
-        else:
-            # GPU/Auto mode: Prefer FP16 models for speed/memory efficiency
-            if os.path.exists(os.path.join(model_dir, _GSVModelFile.T2S_ENCODER_FP16)):
-                logger.info("GPU Mode: Using FP16 models.")
-                files_to_load = {
-                    "T2S_ENCODER": _GSVModelFile.T2S_ENCODER_FP16,
-                    "T2S_FIRST_STAGE_DECODER": _GSVModelFile.T2S_FIRST_STAGE_DECODER_FP16,
-                    "T2S_STAGE_DECODER": _GSVModelFile.T2S_STAGE_DECODER_FP16,
-                    "VITS": _GSVModelFile.VITS_FP16,
-                }
-            else:
-                logger.info("GPU Mode: FP16 models not found, using FP32 models.")
-                files_to_load = {
-                    "T2S_ENCODER": _GSVModelFile.T2S_ENCODER_FP32,
-                    "T2S_FIRST_STAGE_DECODER": _GSVModelFile.T2S_FIRST_STAGE_DECODER_FP32,
-                    "T2S_STAGE_DECODER": _GSVModelFile.T2S_STAGE_DECODER_FP32,
-                    "VITS": _GSVModelFile.VITS_FP32,
-                }
+        # Define model files and their corresponding weights
+        model_load_plan = [
+            ("T2S_ENCODER", _GSVModelFile.T2S_ENCODER_FP32, None),
+            ("T2S_FIRST_STAGE_DECODER", _GSVModelFile.T2S_FIRST_STAGE_DECODER_FP32, _GSVModelFile.T2S_DECODER_WEIGHT_FP16),
+            ("T2S_STAGE_DECODER", _GSVModelFile.T2S_STAGE_DECODER_FP32, _GSVModelFile.T2S_DECODER_WEIGHT_FP16),
+            ("VITS", _GSVModelFile.VITS_FP32, _GSVModelFile.VITS_WEIGHT_FP16),
+        ]
+        
+        if model_version == 'v2ProPlus':
+            model_load_plan.append(("PROMPT_ENCODER", _GSVModelFile.PROMPT_ENCODER_FP32, _GSVModelFile.PROMPT_ENCODER_WEIGHT_FP16))
 
-        for key, filename in files_to_load.items():
-            model_path: str = os.path.join(model_dir, filename)
-            model_path = os.path.normpath(model_path)
-            try:
-                # In CPU mode, if we are loading an FP32 model that expects a .bin file, 
-                # ORT will pick up the converted _fp32.bin automatically if it's in the same dir.
-                model_dict[key] = onnxruntime.InferenceSession(model_path,
-                                                                      providers=self.providers,
-                                                                      sess_options=SESS_OPTIONS)
-                logger.info(f"Model loaded successfully: {model_path}")
-            except Exception as e:
-                logger.error(f"Failed to load ONNX model '{model_path}' for key '{key}': {e}", exc_info=True)
-                return False
+        try:
+            for key, onnx_file, bin_file in model_load_plan:
+                onnx_path = os.path.join(model_dir, onnx_file)
+                
+                # Check for native FP16 model first (if GPU and available)
+                # But prioritize skeleton + bin if bin exists as per user request
+                bin_path = os.path.join(model_dir, bin_file) if bin_file else None
+                
+                if bin_path and os.path.exists(bin_path) and os.path.exists(onnx_path):
+                    # In-memory patching
+                    logger.info(f"Loading {key} with in-memory FP16 patching...")
+                    model_dict[key] = load_session_with_fp16_conversion(
+                        onnx_path, bin_path, self.providers, SESS_OPTIONS
+                    )
+                else:
+                    # Fallback to standard loading
+                    # Check if there's an FP16 version of the ONNX file
+                    fp16_onnx_name = getattr(_GSVModelFile, f"{key}_FP16", None)
+                    fp16_onnx_path = os.path.join(model_dir, fp16_onnx_name) if fp16_onnx_name else None
+                    
+                    if fp16_onnx_path and os.path.exists(fp16_onnx_path):
+                        logger.info(f"Loading {key} from native FP16 ONNX: {fp16_onnx_name}")
+                        model_dict[key] = onnxruntime.InferenceSession(
+                            fp16_onnx_path, providers=self.providers, sess_options=SESS_OPTIONS
+                        )
+                    elif os.path.exists(onnx_path):
+                        logger.info(f"Loading {key} from standard FP32 ONNX: {onnx_file}")
+                        model_dict[key] = onnxruntime.InferenceSession(
+                            onnx_path, providers=self.providers, sess_options=SESS_OPTIONS
+                        )
+                    elif key == "PROMPT_ENCODER":
+                        continue # Optional
+                    else:
+                        raise FileNotFoundError(f"Required model file not found: {onnx_file}")
+
+            is_v2pp = model_dict.get("PROMPT_ENCODER") is not None
+            if is_v2pp:
+                model_version = 'v2ProPlus'
+
+            logger.info(
+                f"Character '{character_name.capitalize()}' loaded successfully.\n"
+                f"- Model Path: {model_dir}\n"
+                f"- Model Type: {model_version}\n"
+                f"- Providers: {self.providers}"
+            )
+
+        except Exception as e:
+            logger.error(f"Error loading character '{character_name}': {e}", exc_info=True)
+            return False
 
         self.character_to_model[character_name] = model_dict
         self.character_model_paths[character_name] = model_dir
@@ -286,21 +342,7 @@ class ModelManager:
         logger.info(f"Character {character_name.capitalize()} removed successfully.")
 
     def clean_cache(self) -> None:
-        """Deletes temporary FP32 weight files created for CPU mode."""
-        temp_weights: list[str] = [_GSVModelFile.T2S_DECODER_WEIGHT_FP32, _GSVModelFile.VITS_WEIGHT_FP32]
-        deleted_any: bool = False
-        try:
-            for character, model_dir in self.character_model_paths.items():
-                for filename in temp_weights:
-                    filepath: str = os.path.join(model_dir, filename)
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
-                        deleted_any = True
-            if deleted_any:
-                logger.info("Temporary FP32 weight files have been cleaned up.")
-        except Exception as e:
-            logger.error(f"Failed to delete temporary weight file: {e}")
+        pass
 
 
 model_manager: ModelManager = ModelManager()
-atexit.register(model_manager.clean_cache)

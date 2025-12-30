@@ -50,6 +50,8 @@ class ReferenceAudio:
         self.phonemes_seq: Optional[np.ndarray] = None
         self.text_bert: Optional[np.ndarray] = None
         self.sv_emb: Optional[np.ndarray] = None
+        self.global_emb: Optional[np.ndarray] = None
+        self.global_emb_advanced: Optional[np.ndarray] = None
         self.set_text(prompt_text, language)
 
         self.audio_32k: Optional[np.ndarray] = load_audio(
@@ -132,6 +134,34 @@ class ReferenceAudio:
     @classmethod
     def clear_cache(cls) -> None:
         cls._prompt_cache.clear()
+
+    def update_global_emb(self, prompt_encoder: "onnxruntime.InferenceSession") -> None:
+        """Extract global embeddings for v2ProPlus using Prompt Encoder."""
+        if self.global_emb is not None:
+            return
+        
+        if self.sv_emb is None:
+            import logging
+            logging.getLogger(__name__).warning("sv_emb is None, cannot update global_emb")
+            return
+
+        try:
+            # Ensure audio_32k has batch dimension (1, N)
+            audio_input = self.audio_32k
+            if audio_input.ndim == 1:
+                audio_input = np.expand_dims(audio_input, axis=0)
+
+            # Prompt Encoder expects: ref_audio (B, N), sv_emb (B, 20480)
+            # Output: ge (B, 512), ge_advanced (B, 512, 1) or similar
+            self.global_emb, self.global_emb_advanced = prompt_encoder.run(None, {
+                'ref_audio': audio_input.astype(np.float32),
+                'sv_emb': self.sv_emb.astype(np.float32),
+            })
+            import logging
+            logging.getLogger(__name__).debug(f"✓ Global embeddings updated: ge={self.global_emb.shape}, ge_adv={self.global_emb_advanced.shape}")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to update global embeddings: {e}")
 
 
 def _decide_language(text: str, language: Optional[str]) -> str:

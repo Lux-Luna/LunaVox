@@ -22,7 +22,7 @@ from lunavox_tts.Utils.EnvManager import env_manager
 
 # --- OPTIONAL: Environment Configuration ---
 # Uncomment to force a specific runtime mode. Default is "cpu".
-env_manager.set_mode("cpu")
+# env_manager.set_mode("cpu")
 # env_manager.set_mode("gpu")
 
 if not env_manager.ensure_environment():
@@ -41,7 +41,7 @@ def resolve_reference(language: str):
     return str(wav_file), wav_file.stem
 
 # 1. Load v2 Pro Plus Model
-model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2_pro_plus' / 'pretrained_fp16')
+model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2_pro_plus' / 'pretrained')
 lunavox.load_character('pretrained_v2pp', model_dir)
 
 # 2. Set Reference Audio

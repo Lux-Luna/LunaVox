@@ -1,8 +1,9 @@
 import os
 import logging
+import re
 import onnxruntime as ort
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, Literal
 import threading
 import time
 
@@ -21,6 +22,21 @@ class LunaVoxEngine:
     def __init__(self):
         self.stop_event: threading.Event = threading.Event()
 
+    def split_language(self, text: str) -> List[dict]:
+        """从文本中提取中文和英文部分，返回一个包含语言和内容的列表。"""
+        pattern_eng = re.compile(r"[a-zA-Z]+")
+        split = re.split(pattern_eng, text)
+        matches = pattern_eng.findall(text)
+
+        result = []
+        for i, part in enumerate(split):
+            if part.strip():
+                result.append({'language': 'zh', 'content': part})
+            if i < len(matches):
+                result.append({'language': 'en', 'content': matches[i]})
+
+        return result
+
     def tts(
             self,
             text: str,
@@ -29,9 +45,15 @@ class LunaVoxEngine:
             first_stage_decoder: ort.InferenceSession,
             stage_decoder: ort.InferenceSession,
             vocoder: ort.InferenceSession,
+            prompt_encoder: Optional[ort.InferenceSession] = None,
             language: str = "ja",
     ) -> Optional[np.ndarray]:
         t0 = time.time()
+        
+        # 文本前端补符策略：防止漏第一句
+        if not text.startswith("。") and not text.startswith("."):
+            text = "。" + text
+
         if language == "en":
             ids = english_to_phones(text)
             text_seq: np.ndarray = np.array([ids], dtype=np.int64)
@@ -46,6 +68,29 @@ class LunaVoxEngine:
                 text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
             else:
                 text_bert = bert_phone
+        elif language == "hybrid":
+            # 混合语言支持 (中英混合)
+            chunks = self.split_language(text)
+            all_ids = []
+            all_berts = []
+            for chunk in chunks:
+                if chunk['language'] == 'en':
+                    ids = english_to_phones(chunk['content'])
+                    all_ids.extend(ids)
+                    all_berts.append(np.zeros((len(ids), BERT_FEATURE_DIM), dtype=np.float32))
+                else:
+                    ids, word2ph, norm_text = chinese_clean_g2p_and_norm(chunk['content'])
+                    all_ids.extend(ids)
+                    bert_phone = compute_bert_phone_features(norm_text, word2ph, return_tensor=False)
+                    if bert_phone.shape[0] != len(ids):
+                        all_berts.append(np.zeros((len(ids), BERT_FEATURE_DIM), dtype=np.float32))
+                    else:
+                        all_berts.append(bert_phone)
+            text_seq = np.array([all_ids], dtype=np.int64)
+            if all_berts:
+                text_bert = np.concatenate(all_berts, axis=0)
+            else:
+                text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
         else:
             text_seq: np.ndarray = np.array([japanese_to_phones(text)], dtype=np.int64)
             text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
@@ -149,11 +194,24 @@ class LunaVoxEngine:
         vocoder_inputs = {
             "text_seq": text_seq,
             "pred_semantic": semantic_tokens,
-            "ref_audio": ref_audio_features
         }
         
-        # Add speaker vector for v2Pro/v2ProPlus
-        if prompt_audio.sv_emb is not None:
+        # v2: uses raw audio
+        # v2Pro: uses STFT spectrogram
+        # v2ProPlus: uses Prompt Encoder features (no ref_audio)
+        if model_version != 'v2ProPlus':
+            vocoder_inputs["ref_audio"] = ref_audio_features
+        
+        # v2ProPlus: Use Prompt Encoder to extract global embeddings
+        if model_version == 'v2ProPlus' and prompt_encoder is not None:
+            self._run_prompt_encoder(prompt_encoder, prompt_audio)
+            if prompt_audio.global_emb is not None:
+                vocoder_inputs["ge"] = prompt_audio.global_emb
+            if prompt_audio.global_emb_advanced is not None:
+                vocoder_inputs["ge_advanced"] = prompt_audio.global_emb_advanced
+        
+        # Add speaker vector for v2Pro (v2ProPlus uses ge/ge_advanced instead)
+        if model_version == 'v2Pro' and prompt_audio.sv_emb is not None:
             vocoder_inputs["sv_emb"] = prompt_audio.sv_emb
         
         # Validate inputs before calling vocoder
@@ -175,6 +233,56 @@ class LunaVoxEngine:
         )
         
         return vits_output
+
+    def _run_prompt_encoder(self, session: ort.InferenceSession, prompt_audio: ReferenceAudio) -> None:
+        """Extract global embeddings using Prompt Encoder with IO Binding support."""
+        logger.info("Running Prompt Encoder to extract global embeddings...")
+        if prompt_audio.global_emb is not None:
+            logger.debug("Using cached global embeddings.")
+            return
+
+        if prompt_audio.sv_emb is None:
+            logger.warning("sv_emb is None, cannot update global_emb")
+            return
+
+        audio_input = prompt_audio.audio_32k
+        if audio_input.ndim == 1:
+            audio_input = np.expand_dims(audio_input, axis=0)
+
+        inputs = {
+            'ref_audio': audio_input.astype(np.float32),
+            'sv_emb': prompt_audio.sv_emb.astype(np.float32),
+        }
+        
+        inputs = self._cast_inputs(session, inputs)
+        device = "cuda" if "CUDAExecutionProvider" in session.get_providers() else "cpu"
+        
+        try:
+            io_binding = session.io_binding()
+            for name, value in inputs.items():
+                ort_value = ort.OrtValue.ortvalue_from_numpy(value, device, 0)
+                io_binding.bind_ortvalue_input(name, ort_value)
+            
+            for output in session.get_outputs():
+                io_binding.bind_output(output.name, device)
+            
+            session.run_with_iobinding(io_binding)
+            outputs = io_binding.get_outputs() # These are OrtValues on GPU if device is cuda
+            
+            # We store them as OrtValues to avoid CPU roundtrip if vocoder also on GPU
+            prompt_audio.global_emb = outputs[0]
+            prompt_audio.global_emb_advanced = outputs[1]
+            
+            # Log output shapes for debugging
+            ge_shape = prompt_audio.global_emb.shape()
+            ge_adv_shape = prompt_audio.global_emb_advanced.shape()
+            logger.info(f"✓ Global embeddings extracted (IO Binding): ge={ge_shape}, ge_adv={ge_adv_shape}, device={device}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to run prompt_encoder with IO binding ({e}). Falling back to regular execution.")
+            prompt_audio.update_global_emb(session)
+            if prompt_audio.global_emb is not None:
+                logger.info(f"✓ Global embeddings extracted (Standard): ge={prompt_audio.global_emb.shape}, ge_adv={prompt_audio.global_emb_advanced.shape}")
 
     def _run_vocoder(self, session: ort.InferenceSession, inputs: dict) -> np.ndarray:
         # Automatically cast inputs to match model precision
@@ -216,17 +324,25 @@ class LunaVoxEngine:
                 new_inputs[name] = value
                 continue
             
+            # Skip casting if it's already an OrtValue
+            if isinstance(value, ort.OrtValue):
+                new_inputs[name] = value
+                continue
+
             # If it's a torch tensor, we might need to cast it on GPU
             if hasattr(value, 'dtype') and not isinstance(value, np.ndarray):
                 # Assume it's a torch tensor
-                import torch
-                expected_type = input_meta[name]
-                if expected_type == 'tensor(float16)' and value.dtype == torch.float32:
-                    new_inputs[name] = value.to(torch.float16)
-                elif expected_type == 'tensor(float)' and value.dtype == torch.float16:
-                    new_inputs[name] = value.to(torch.float32)
-                else:
-                    new_inputs[name] = value
+                try:
+                    import torch
+                    expected_type = input_meta[name]
+                    if expected_type == 'tensor(float16)' and value.dtype == torch.float32:
+                        new_inputs[name] = value.to(torch.float16)
+                    elif expected_type == 'tensor(float)' and value.dtype == torch.float16:
+                        new_inputs[name] = value.to(torch.float32)
+                    else:
+                        new_inputs[name] = value
+                except ImportError:
+                    pass
                 continue
 
             expected_type = input_meta[name]
@@ -257,6 +373,12 @@ class LunaVoxEngine:
                         f"This model requires v2Pro/v2ProPlus with speaker vector. "
                         f"Please ensure the model was converted with correct version detection."
                     )
+                elif name in ['ge', 'ge_advanced']:
+                    logger.error(
+                        f"Missing '{name}' input for vocoder. "
+                        f"This model requires v2ProPlus with Prompt Encoder features. "
+                        f"Please ensure the character was loaded as v2ProPlus."
+                    )
                 else:
                     logger.error(f"Missing required input: {name}")
                 raise ValueError(f"Missing required input: {name}")
@@ -267,19 +389,21 @@ class LunaVoxEngine:
                 continue  # Skip extra inputs
             
             expected = expected_inputs[name]
-            actual_shape = value.shape
-            actual_dtype = value.dtype
             
-            # Validate dtype
-            if expected.type == 'tensor(int64)' and actual_dtype != np.int64:
-                logger.error(
-                    f"Input '{name}' has wrong dtype: {actual_dtype}, expected int64"
-                )
-                raise TypeError(f"Input '{name}' dtype mismatch: {actual_dtype} != int64")
-            elif expected.type == 'tensor(float)' and actual_dtype != np.float32:
-                pass # Allow float mismatch, will be cast later
-            elif expected.type == 'tensor(float16)' and actual_dtype != np.float16:
-                pass # Allow mismatch, will be cast later
+            # Handle both numpy and OrtValue
+            if isinstance(value, ort.OrtValue):
+                actual_shape = value.shape()
+                # Type validation for OrtValue is skiped for now
+            else:
+                actual_shape = value.shape
+                actual_dtype = value.dtype
+                
+                # Validate dtype
+                if expected.type == 'tensor(int64)' and actual_dtype != np.int64:
+                    logger.error(
+                        f"Input '{name}' has wrong dtype: {actual_dtype}, expected int64"
+                    )
+                    raise TypeError(f"Input '{name}' dtype mismatch: {actual_dtype} != int64")
             
             # Validate specific shapes
             if name == 'sv_emb':
@@ -289,6 +413,16 @@ class LunaVoxEngine:
                         f"Please check ERes2NetV2 model output."
                     )
                     raise ValueError(f"Speaker embedding shape mismatch: {actual_shape} != (1, 20480)")
+            elif name == 'ge':
+                # v2ProPlus ge shape can be (1, 512) or (1, 1024, 1) depending on export
+                if len(actual_shape) not in [2, 3] or actual_shape[0] != 1:
+                    logger.error(f"Global embedding (ge) has wrong shape: {actual_shape}")
+                    raise ValueError(f"ge shape invalid: {actual_shape}")
+            elif name == 'ge_advanced':
+                # v2ProPlus ge_advanced shape is usually (1, 512, 1)
+                if len(actual_shape) not in [2, 3] or actual_shape[0] != 1:
+                    logger.error(f"Advanced global embedding (ge_advanced) has wrong shape: {actual_shape}")
+                    raise ValueError(f"ge_advanced shape invalid: {actual_shape}")
             elif name == 'text_seq':
                 if len(actual_shape) != 2 or actual_shape[0] != 1:
                     logger.error(

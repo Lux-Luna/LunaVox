@@ -1,128 +1,75 @@
 import logging
 import os
 import sys
-import types
 from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
+import onnxruntime as ort
+from tokenizers import Tokenizer
 
-try:
-    import torch  # type: ignore
-except ImportError:  # pragma: no cover - optional dependency
-    torch = None  # type: ignore
+logger = logging.getLogger(__name__)
 
-try:
-    from transformers import AutoTokenizer, BertForMaskedLM  # type: ignore
-except ImportError:  # pragma: no cover - optional dependency
-    AutoTokenizer = None  # type: ignore
-    BertForMaskedLM = None  # type: ignore
+_tokenizer: Optional[Tokenizer] = None
+_ort_session: Optional[ort.InferenceSession] = None
+_model_dir: Optional[Path] = None
 
-from ..Utils.GPTSoVITS import ensure_default_bert_env, find_repo_root
-
-if "torchvision" not in sys.modules:
-    tv_stub = types.ModuleType("torchvision")
-    tv_stub.__all__ = []
-    tv_transforms = types.ModuleType("torchvision.transforms")
-    tv_transforms.InterpolationMode = object
-    sys.modules["torchvision"] = tv_stub
-    sys.modules["torchvision.transforms"] = tv_transforms
-
-os.environ.setdefault("TRANSFORMERS_NO_TORCHVISION", "1")
-os.environ.setdefault("DISABLE_TRANSFORMERS_IMAGE_TRANSFORMS", "1")
-
-_tokenizer: Optional["AutoTokenizer"] = None
-_model: Optional["BertForMaskedLM"] = None
-_logger = logging.getLogger(__name__)
-
-
-def _resolve_bert_base_path() -> Optional[str]:
-    env_path = os.getenv("ZH_BERT_BASE_PATH")
-    if env_path and os.path.exists(env_path):
-        return env_path
-
+def _resolve_bert_paths() -> tuple[Path, Path]:
+    """
+    Resolve paths for RoBERTa ONNX model and tokenizer.
+    Returns (model_path, tokenizer_path).
+    """
+    global _model_dir
+    
+    # Define local storage path
     repo_root = Path(__file__).resolve().parents[3]
-    local_root = repo_root / "Data" / "chinese-roberta-wwm-ext-large"
-    candidate = _locate_snapshot(local_root)
-    if candidate:
-        return str(candidate)
+    base_dir = repo_root / "Data" / "chinese-roberta-wwm-ext-large"
+    
+    if not base_dir.exists():
+        base_dir.mkdir(parents=True, exist_ok=True)
+        
+    _model_dir = base_dir
+    
+    model_path = base_dir / "RoBERTa.onnx"
+    tokenizer_path = base_dir / "tokenizer.json"
+    
+    return model_path, tokenizer_path
 
-    gpt_root = find_repo_root()
-    if gpt_root:
-        candidate = _locate_snapshot(gpt_root / "pretrained_models" / "chinese-roberta-wwm-ext-large")
-        if candidate:
-            return str(candidate)
-
-    return None
-
-
-def _locate_snapshot(root: Path) -> Optional[Path]:
-    if not root.exists():
-        return None
-    if (root / "config.json").exists():
-        return root
-    snapshots_dir = root / "snapshots"
-    if snapshots_dir.exists():
-        for child in sorted(snapshots_dir.iterdir()):
-            if (child / "config.json").exists():
-                return child
-    for child in root.glob("models--*--*"):
-        snapshots = child / "snapshots"
-        if snapshots.exists():
-            for snap in sorted(snapshots.iterdir()):
-                if (snap / "config.json").exists():
-                    return snap
-    return None
-
+def _ensure_model_exists():
+    model_path, tokenizer_path = _resolve_bert_paths()
+    
+    if not (model_path.exists() and tokenizer_path.exists()):
+        logger.error(f"Chinese RoBERTa ONNX model or tokenizer not found at {model_path.parent}.")
+        logger.error("Please ensure 'RoBERTa.onnx' and 'tokenizer.json' are present in the 'Data/chinese-roberta-wwm-ext-large' directory.")
+        raise FileNotFoundError(f"Missing RoBERTa components in {model_path.parent}")
 
 def _load_model() -> None:
-    global _tokenizer, _model
-    if _tokenizer is not None and _model is not None:
+    global _tokenizer, _ort_session
+    
+    if _tokenizer is not None and _ort_session is not None:
         return
-    if torch is None or AutoTokenizer is None or BertForMaskedLM is None:
-        raise ImportError(
-            "Chinese BERT backend requires the optional dependencies 'torch' and 'transformers'. "
-            "Install with `pip install lunavox-tts[zh]` to enable Chinese text features."
+
+    _ensure_model_exists()
+    model_path, tokenizer_path = _resolve_bert_paths()
+
+    try:
+        _tokenizer = Tokenizer.from_file(str(tokenizer_path))
+        
+        sess_options = ort.SessionOptions()
+        sess_options.log_severity_level = 3
+        _ort_session = ort.InferenceSession(
+            str(model_path),
+            providers=["CPUExecutionProvider"],
+            sess_options=sess_options
         )
-
-    ensure_default_bert_env()
-    base_path = _resolve_bert_base_path()
-
-    if base_path:
-        _tokenizer = AutoTokenizer.from_pretrained(base_path)
-        _model = BertForMaskedLM.from_pretrained(base_path)
-    else:
-        # Lazy download implementation using huggingface_hub
-        try:
-            from huggingface_hub import snapshot_download
-        except ImportError:
-            raise ImportError(
-                "huggingface_hub is required for lazy loading Chinese BERT. "
-                "Install it with `pip install huggingface_hub`."
-            )
-            
-        repo_root = Path(__file__).resolve().parents[3]
-        base_dir = repo_root / "Data" / "chinese-roberta-wwm-ext-large"
-        
-        _logger.info("Chinese RoBERTa model not found. Starting lazy download of 'hfl/chinese-roberta-wwm-ext-large' to %s...", base_dir)
-        
-        try:
-            download_path = snapshot_download(
-                repo_id="hfl/chinese-roberta-wwm-ext-large",
-                local_dir=str(base_dir),
-                local_dir_use_symlinks=False,
-            )
-            _tokenizer = AutoTokenizer.from_pretrained(download_path)
-            _model = BertForMaskedLM.from_pretrained(download_path)
-            _logger.info("Chinese RoBERTa model download and loading successful.")
-        except Exception as e:
-            _logger.error("Failed to download or load Chinese RoBERTa model: %s", e)
-            raise RuntimeError(f"Could not prepare Chinese BERT model: {e}")
-
-    _model.eval()
-
+    except Exception as e:
+        logger.error(f"Failed to load RoBERTa ONNX session: {e}")
+        raise RuntimeError(f"RoBERTa load failed: {e}")
 
 def compute_bert_phone_features(norm_text: str, word2ph: List[int], return_tensor: bool = False) -> np.ndarray:
+    """
+    Compute BERT features for Chinese text using ONNX Runtime.
+    """
     if not norm_text:
         return np.zeros((sum(word2ph), 1024), dtype=np.float32)
     if len(word2ph) != len(norm_text):
@@ -130,45 +77,38 @@ def compute_bert_phone_features(norm_text: str, word2ph: List[int], return_tenso
 
     try:
         _load_model()
-    except Exception as e:  # pragma: no cover - optional feature path
-        _logger.warning(
-            "Chinese BERT features are unavailable (%s). Returning zero embeddings. "
-            "Install optional dependencies via `pip install lunavox-tts[zh]` if needed.",
-            e,
-        )
+    except Exception as e:
+        logger.warning(f"Chinese BERT features unavailable: {e}. Returning zeros.")
         return np.zeros((sum(word2ph), 1024), dtype=np.float32)
 
-    assert _tokenizer is not None and _model is not None
-    if torch is None:
-        return np.zeros((sum(word2ph), 1024), dtype=np.float32)
+    assert _tokenizer is not None and _ort_session is not None
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if _model.device != device:
-        _model.to(device)
-
-    with torch.no_grad():
-        inputs = _tokenizer(norm_text, return_tensors="pt")
-        for key in inputs:
-            inputs[key] = inputs[key].to(device)
-        outputs = _model(**inputs, output_hidden_states=True)
-        # Keep on GPU if return_tensor is True
-        hidden = torch.cat(outputs["hidden_states"][-3:-2], dim=-1)[0][1:-1]
-
-    phone_features = []
-    for idx, repeat in enumerate(word2ph):
-        if repeat <= 0:
-            continue
-        phone_features.append(hidden[idx].repeat(repeat, 1))
-
-    if not phone_features:
-        if return_tensor:
-            return torch.zeros((0, 1024), dtype=torch.float32, device=device)
-        return np.zeros((0, 1024), dtype=np.float32)
-
-    stacked = torch.cat(phone_features, dim=0)
+    # Tokenize
+    encoding = _tokenizer.encode(norm_text)
+    input_ids = encoding.ids
+    attention_mask = encoding.attention_mask
     
-    if return_tensor:
-        return stacked
+    # Prepare inputs
+    # Shape: (1, seq_len)
+    inputs = {
+        'input_ids': np.array([input_ids], dtype=np.int64),
+        'attention_mask': np.array([attention_mask], dtype=np.int64),
+        'token_type_ids': np.zeros((1, len(input_ids)), dtype=np.int64) 
+    }
     
-    return stacked.cpu().numpy().astype(np.float32)
+    # The RoBERTa.onnx usually takes 'input_ids', 'attention_mask', 'token_type_ids'
+    # And outputs 'last_hidden_state' or similar. 
+    # Let's verify input names dynamically if possible, or assume standard BERT export.
+    
+    # The model *does* take 'repeats'. This means it's a custom exported model that does the repeat logic inside ONNX.
+    
+    inputs['repeats'] = np.array(word2ph, dtype=np.int64)
+    
+    # If the model expects 'token_type_ids', we should provide it. 
+    if 'token_type_ids' in inputs:
+        del inputs['token_type_ids']
 
+    outputs = _ort_session.run(None, inputs)
+    text_bert = outputs[0].astype(np.float32)
+    
+    return text_bert

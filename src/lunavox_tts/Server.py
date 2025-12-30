@@ -93,7 +93,7 @@ def run_tts_in_background(
             prompt_text=_reference_audios[character_name]['audio_text'],
         )
         session_language = language.lower()
-        if session_language not in {"ja", "en", "zh"}:
+        if session_language not in {"ja", "en", "zh", "hybrid"}:
             session_language = "ja"
         tts_player.start_session(
             play=False,

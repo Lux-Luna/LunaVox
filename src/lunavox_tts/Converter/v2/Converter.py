@@ -1,6 +1,7 @@
 from .VITSConverter import VITSConverter
 from .T2SConverter import T2SModelConverter
 from .EncoderConverter import EncoderConverter
+from ..v2ProPlus.PromptEncoderConverter import PromptEncoderConverter
 from ..version_detector import detect_version, is_v2pro_variant
 from ...Utils.Constants import PACKAGE_NAME
 
@@ -23,6 +24,8 @@ _ENCODER_RESOURCE_PATH = "Data/v2/Models/t2s_encoder_fp32.onnx"
 _STAGE_DECODER_RESOURCE_PATH = "Data/v2/Models/t2s_stage_decoder_fp32.onnx"
 _FIRST_STAGE_DECODER_RESOURCE_PATH = "Data/v2/Models/t2s_first_stage_decoder_fp32.onnx"
 _T2S_KEYS_RESOURCE_PATH = "Data/v2/Keys/t2s_onnx_keys.txt"
+_PROMPT_ENCODER_RESOURCE_PATH = "Data/v2ProPlus/Models/prompt_encoder_fp32.onnx"
+_PROMPT_ENCODER_KEYS_RESOURCE_PATH = "Data/v2ProPlus/Keys/prompt_encoder_weights.txt"
 
 # Version-specific VITS paths
 _VERSION_PATHS = {
@@ -239,6 +242,12 @@ def convert(torch_ckpt_path: str,
             t2s_keys_path = stack.enter_context(importlib.resources.as_file(files.joinpath(_T2S_KEYS_RESOURCE_PATH)))
             vits_keys_path = stack.enter_context(importlib.resources.as_file(files.joinpath(vits_keys_resource_path)))
 
+            if model_version == 'v2ProPlus':
+                prompt_encoder_path = stack.enter_context(
+                    importlib.resources.as_file(files.joinpath(_PROMPT_ENCODER_RESOURCE_PATH)))
+                prompt_encoder_keys_path = stack.enter_context(
+                    importlib.resources.as_file(files.joinpath(_PROMPT_ENCODER_KEYS_RESOURCE_PATH)))
+
             converter_1 = T2SModelConverter(
                 torch_ckpt_path=torch_ckpt_path,
                 stage_decoder_onnx_path=str(stage_decoder_path),
@@ -262,10 +271,22 @@ def convert(torch_ckpt_path: str,
                 output_dir=output_dir,
             )
 
+            if model_version == 'v2ProPlus':
+                converter_4 = PromptEncoderConverter(
+                    torch_pth_path=torch_pth_path,
+                    prompt_encoder_onnx_path=str(prompt_encoder_path),
+                    key_list_file=str(prompt_encoder_keys_path),
+                    output_dir=output_dir,
+                    cache_dir=CACHE_DIR,
+                )
+
             try:
                 converter_1.run_full_process()
                 converter_2.run_full_process()
                 converter_3.convert()
+                
+                if model_version == 'v2ProPlus':
+                    converter_4.run_full_process()
                 
                 # Save model version metadata
                 model_info = {
