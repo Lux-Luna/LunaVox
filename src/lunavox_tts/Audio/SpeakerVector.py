@@ -111,10 +111,12 @@ def load_sv_model(model_path: Optional[str] = None) -> bool:
         return True
     
     if model_path is None:
-        # Default location within package
+        # Default location: LunaVox/TTSData/sv/eres2netv2.onnx
         from pathlib import Path
-        pkg_root = Path(__file__).resolve().parents[1]
-        model_path = str(pkg_root / "Data" / "sv" / "eres2netv2.onnx")
+        from ..Utils.EnvManager import env_manager
+        from ..Utils.ResourceManager import resource_manager
+        resource_manager.ensure_tts_data(v2pp=True)
+        model_path = str(env_manager.repo_root / "TTSData" / "sv" / "eres2netv2.onnx")
     
     if not os.path.exists(model_path):
         logger.error(

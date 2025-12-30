@@ -14,10 +14,6 @@ REPO_ROOT = SCRIPT_DIR.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(SCRIPT_DIR.parent))
 
-# データ依存関係の確認
-import data_setup
-data_setup.ensure_data_from_hf()
-
 from lunavox_tts.Utils.EnvManager import env_manager
 
 # --- オプション: 環境設定 ---
@@ -32,15 +28,15 @@ if not env_manager.ensure_environment():
 import lunavox_tts as lunavox
 
 # ローカル環境設定
-os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'Data' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
+os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
 def resolve_reference(language: str):
-    audio_dir = REPO_ROOT / 'Data' / 'audio_resources' / language
+    audio_dir = REPO_ROOT / 'CharacterData' / 'audio_resources' / language
     wav_file = next(audio_dir.glob("*.wav"))
     return str(wav_file), wav_file.stem
 
 # 1. キャラクタモデルのロード
-model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2' / 'pretrained')
+model_dir = str(REPO_ROOT / 'CharacterData' / 'character_model' / 'v2' / 'pretrained')
 lunavox.load_character('pretrained', model_dir)
 
 # 2. 参照オーディオの設定 (Japanese フォルダ内の最初の .wav ファイル)

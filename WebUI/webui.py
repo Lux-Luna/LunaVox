@@ -476,7 +476,7 @@ def build_ui() -> gr.Blocks:
             characters = list_character_folders(version)
             if not characters:
                 return (
-                    "No characters found. Please put models under Data/character_model/v2.",
+                    "No characters found. Please put models under CharacterData/character_model/v2.",
                     version,
                     "",
                     "",
@@ -528,7 +528,7 @@ def build_ui() -> gr.Blocks:
             
             characters = list_character_folders(new_version)
             if not characters:
-                version_dir = "Data/character_model/v2_pro_plus" if new_version == "v2_pro_plus" else "Data/character_model/v2"
+                version_dir = "CharacterData/character_model/v2_pro_plus" if new_version == "v2_pro_plus" else "CharacterData/character_model/v2"
                 return (
                     f"No {new_version} characters found. Put models under {version_dir}.",
                     new_version,

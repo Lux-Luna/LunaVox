@@ -40,7 +40,7 @@ pip install lunavox-tts
 
 ### ⚡️ 快速体验 (Quick Tryout)
 
-所有示例脚本都位于 `Tutorial/` 目录，并会在启动时调用 `Tutorial/data_setup.py` 自动补齐缺失的模型/词典，同时设置好 `HUBERT_MODEL_PATH` 与 `OPEN_JTALK_DICT_DIR`。在仓库根目录执行以下命令即可：
+所有示例脚本都位于 `Tutorial/` 目录，并在启动时会自动按需拉取缺失的模型/词典，同时设置好 `HUBERT_MODEL_PATH` 与 `OPEN_JTALK_DICT_DIR`。在仓库根目录执行以下命令即可：
 
 #### GPT-SoVITS v2 预设（无需说话人向量）
 
@@ -58,11 +58,11 @@ python Tutorial/v2_pro_plus_quick_tryout/quick_tryout_v2proplus_zh.py
 python Tutorial/v2_pro_plus_quick_tryout/quick_tryout_v2proplus_ja.py
 ```
 
-> 运行 v2 Pro Plus 脚本前，请先按文档将 ERes2NetV2 导出为 `Data/sv/eres2netv2.onnx`，否则无法生成必需的说话人嵌入。
+> 运行 v2 Pro Plus 脚本前，请先按文档将 ERes2NetV2 导出为 `TTSData/sv/eres2netv2.onnx`，否则无法生成必需的说话人嵌入。
 
 ### 🔗 依赖项下载
 
-对于中国大陆用户，我们强烈建议您手动下载必要的依赖项，并将模型与字典文件放置在根目录Data文件夹下。
+对于中国大陆用户，我们强烈建议您手动下载必要的依赖项，并将模型与字典文件放置在根目录的 `CharacterData`, `TTSData` 与 `RoBERTa` 文件夹下。
 
 | 下载渠道         | 链接                                                                                           |
 |:-------------|:---------------------------------------------------------------------------------------------|
@@ -193,7 +193,7 @@ python WebUI/webui.py
 
 ### 功能特性
 
-- **🎭 角色管理**: 自动扫描 `Data/character_model` 下的角色模型
+- **🎭 角色管理**: 自动扫描 `CharacterData/character_model` 下的角色模型
 - **🎵 参考音频**: 支持上传自定义参考音频或使用预设音频资源
 - **📝 文本合成**: 输入日文文本，一键生成语音
 - **🎧 在线试听**: 生成的音频可直接在浏览器中播放

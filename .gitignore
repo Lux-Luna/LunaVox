@@ -1,4 +1,7 @@
-# Data folder - contains large model files and audio resources
+# Data folders - contain large model files and audio resources
+CharacterData/
+TTSData/
+RoBERTa/
 Data/
 
 # Python cache files
@@ -134,8 +137,3 @@ tmp/
 # Documentation folders
 description/
 docs/
-
-# Ignore src/lunavox_tts/Data (tracked on Hugging Face instead)
-src/lunavox_tts/Data/
-# Exception: track v2ProPlus folder
-!src/lunavox_tts/Data/v2ProPlus/

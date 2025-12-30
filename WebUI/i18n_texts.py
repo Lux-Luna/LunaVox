@@ -8,7 +8,7 @@ GUIDE_TEXTS = {
 - Select Model Version: choose `v2` or `v2 Pro Plus`.
 - Pick a Character: select from scanned folders, then click "Load Character".
 - Reference Audio (optional but recommended):
-  - Choose from preset audio under `Data/audio_resources/<character>/` or upload your own `.wav`. (MP3 is NOT supported)
+  - Choose from preset audio under `CharacterData/audio_resources/<character>/` or upload your own `.wav`. (MP3 is NOT supported)
   - Provide the matching transcript and set the prompt language.
 - Synthesis:
   - Choose Output Language (ja/en/zh), enter text, click "Synthesize".
@@ -25,7 +25,7 @@ Tips:
 - 选择模型版本：`v2` 或 `v2 Pro Plus`。
 - 选择角色：从扫描到的文件夹中选择角色，然后点击“加载角色”。
 - 参考音频（可选但推荐）：
-  - 从 `Data/audio_resources/<character>/` 选择预设 `.wav`，或上传自己的 `.wav`。（不支持 MP3 格式）
+  - 从 `CharacterData/audio_resources/<character>/` 选择预设 `.wav`，或上传自己的 `.wav`。（不支持 MP3 格式）
   - 填写与音频匹配的文本，并设置提示语言。
 - 文本合成：
   - 选择输出语言（ja/en/zh），输入文本，点击“开始合成”。
@@ -101,7 +101,7 @@ UI_STRINGS = {
             "status_ready": "Ready.",
             "ref_section_title": "### Reference Audio",
             "preset_ref_label": "Preset Reference Audio (WAV only)",
-            "preset_ref_info": "Choose from Data/audio_resources",
+            "preset_ref_info": "Choose from CharacterData/audio_resources",
             "ref_lang_label": "Prompt Language",
             "or": "**or**",
             "upload_ref_label": "Upload Reference Audio (WAV only)",
@@ -135,7 +135,7 @@ UI_STRINGS = {
             "status_ready": "准备就绪。",
             "ref_section_title": "### 参考音频",
             "preset_ref_label": "预设参考音频（仅支持 WAV）",
-            "preset_ref_info": "从 Data/audio_resources 中选择预设参考音频",
+            "preset_ref_info": "从 CharacterData/audio_resources 中选择预设参考音频",
             "ref_lang_label": "参考音频语言",
             "or": "**或**",
             "upload_ref_label": "上传参考音频（仅支持 WAV）",

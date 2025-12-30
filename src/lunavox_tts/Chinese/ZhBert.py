@@ -22,16 +22,19 @@ def _resolve_bert_paths() -> tuple[Path, Path]:
     global _model_dir
     
     # Define local storage path
-    repo_root = Path(__file__).resolve().parents[3]
-    base_dir = repo_root / "Data" / "chinese-roberta-wwm-ext-large"
+    from ..Utils.EnvManager import env_manager
+    base_dir = env_manager.repo_root / "RoBERTa"
     
+    from ..Utils.ResourceManager import resource_manager
+    resource_manager.ensure_roberta()
+
     if not base_dir.exists():
         base_dir.mkdir(parents=True, exist_ok=True)
         
     _model_dir = base_dir
     
     model_path = base_dir / "RoBERTa.onnx"
-    tokenizer_path = base_dir / "tokenizer.json"
+    tokenizer_path = base_dir / "roberta_tokenizer" / "tokenizer.json"
     
     return model_path, tokenizer_path
 
@@ -40,7 +43,7 @@ def _ensure_model_exists():
     
     if not (model_path.exists() and tokenizer_path.exists()):
         logger.error(f"Chinese RoBERTa ONNX model or tokenizer not found at {model_path.parent}.")
-        logger.error("Please ensure 'RoBERTa.onnx' and 'tokenizer.json' are present in the 'Data/chinese-roberta-wwm-ext-large' directory.")
+        logger.error("Please ensure 'RoBERTa.onnx' is in the root 'RoBERTa' folder and 'tokenizer.json' is in 'RoBERTa/roberta_tokenizer'.")
         raise FileNotFoundError(f"Missing RoBERTa components in {model_path.parent}")
 
 def _load_model() -> None:

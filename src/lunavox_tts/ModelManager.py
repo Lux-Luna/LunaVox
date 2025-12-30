@@ -173,21 +173,20 @@ class ModelManager:
         self.cn_hubert: Optional[InferenceSession] = None
 
     def load_cn_hubert(self) -> bool:
+        from .Utils.ResourceManager import resource_manager
+        resource_manager.ensure_tts_data()
+        
         model_path: Optional[str] = os.getenv("HUBERT_MODEL_PATH")
         
-        # If env var not set or invalid, check default location in Data folder
+        # If env var not set or invalid, check default location in TTSData folder
         if not (model_path and os.path.isfile(model_path)):
             # Try the new folder structure first
-            potential_path = os.path.join("Data", "chinese-hubert-base", "chinese-hubert-base.onnx")
+            potential_path = os.path.join("TTSData", "chinese-hubert-base", "chinese-hubert-base.onnx")
             if os.path.isfile(potential_path):
                 model_path = potential_path
             else:
-                logger.info("Chinese HuBERT model not found locally. Starting download of 'chinese-hubert-base.onnx'...")
-                model_path = download_model('chinese-hubert-base.onnx')
-                logger.info(f"Chinese HuBERT model download completed. Saved to: {os.path.abspath(model_path)}")
-        
-        if not model_path:
-            return False
+                logger.error("Chinese HuBERT model not found in TTSData.")
+                return False
         logger.info(f"Found existing Chinese HuBERT model at: {os.path.abspath(model_path)}")
 
         try:
@@ -244,6 +243,11 @@ class ModelManager:
             _ = self.character_to_model[character_name]
             return True
         
+        # Determine if we are loading a v2ProPlus model to ensure resources
+        is_v2pp_attempt = "v2_pro_plus" in model_dir or "v2pp" in model_dir.lower()
+        from .Utils.ResourceManager import resource_manager
+        resource_manager.ensure_character_data(v2pp=is_v2pp_attempt)
+
         # Load model version metadata
         model_version = 'v2'  # Default
         model_info_path = os.path.join(model_dir, 'model_info.json')

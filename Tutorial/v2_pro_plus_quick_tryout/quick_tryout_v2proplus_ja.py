@@ -19,17 +19,15 @@ if str(TUTORIAL_DIR) not in sys.path:
     sys.path.insert(0, str(TUTORIAL_DIR))
 
 import lunavox_tts as lunavox
-import data_setup
-data_setup.ensure_data_from_hf()
-os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'Data' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
+os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
 
 def _resolve_reference_audio(language_folder: str):
     """
-    Locate the first .wav file inside Data/audio_resources/<language_folder>.
+    Locate the first .wav file inside CharacterData/audio_resources/<language_folder>.
     Returns the file path and an inferred transcript (filename stem).
     """
-    audio_dir = REPO_ROOT / 'Data' / 'audio_resources' / language_folder
+    audio_dir = REPO_ROOT / 'CharacterData' / 'audio_resources' / language_folder
     if not audio_dir.is_dir():
         raise FileNotFoundError(f"Reference audio directory not found: {audio_dir}")
     wav_files = sorted(audio_dir.glob("*.wav"))
@@ -38,13 +36,13 @@ def _resolve_reference_audio(language_folder: str):
     audio_file = wav_files[0]
     return str(audio_file), audio_file.stem
 
-model_dir = str(REPO_ROOT / 'Data' / 'character_model' / 'v2_pro_plus' / 'pretrained')
+model_dir = str(REPO_ROOT / 'CharacterData' / 'character_model' / 'v2_pro_plus' / 'pretrained')
 lunavox.load_character('pretrained', model_dir)
 
 # Check model version
 # No extra version/output checks to keep parity with quick_tryout_ja.py
 
-# 设置参考音频（自动查找 Data/audio_resources/Japanese 下的 .wav 文件）
+# 设置参考音频（自动查找 CharacterData/audio_resources/Japanese 下的 .wav 文件）
 audio_path, reference_text = _resolve_reference_audio('Japanese')
 lunavox.set_reference_audio(
     'pretrained',

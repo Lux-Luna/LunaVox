@@ -5,18 +5,16 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 def get_chinese_g2p_dir() -> str:
-    # Resolve path to LunaVox/Data/G2P/Chinese
+    # Resolve path to LunaVox/TTSData/G2P/Chinese
     # Current file: src/lunavox_tts/Chinese/Resources.py
     # Root: src/lunavox_tts/../../ (LunaVox root) -> Data
     
-    current_file = Path(__file__).resolve()
-    # Parents: 0=Chinese, 1=lunavox_tts, 2=src, 3=LunaVox(repo root)
-    repo_root = current_file.parents[3]
+    from ..Utils.EnvManager import env_manager
+    from ..Utils.ResourceManager import resource_manager
+    resource_manager.ensure_tts_data()
+    repo_root = env_manager.repo_root
     
-    # Check EnvManager? Or just stick to standard structure.
-    # We want persistent data.
-    
-    g2p_dir = repo_root / "Data" / "G2P" / "Chinese"
+    g2p_dir = repo_root / "TTSData" / "G2P" / "Chinese"
     if not g2p_dir.exists():
         g2p_dir.mkdir(parents=True, exist_ok=True)
         

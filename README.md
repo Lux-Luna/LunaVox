@@ -33,7 +33,7 @@ pip install lunavox-tts
 
 ### Quick Tryout
 
-All demo scripts live under `Tutorial/` and will first call `Tutorial/data_setup.py` to download any missing assets plus set `HUBERT_MODEL_PATH` / `OPEN_JTALK_DICT_DIR` for you. Run them from the repo root:
+All demo scripts live under `Tutorial/` and will automatically pull missing models and dictionaries on demand.
 
 #### GPT-SoVITS v2 preset (no speaker vector required)
 
@@ -51,11 +51,11 @@ python Tutorial/v2_pro_plus_quick_tryout/quick_tryout_v2proplus_zh.py
 python Tutorial/v2_pro_plus_quick_tryout/quick_tryout_v2proplus_ja.py
 ```
 
-> The v2 Pro Plus scripts need the ERes2NetV2 speaker embedding model exported to `Data/sv/eres2netv2.onnx`; follow the documentation’s export steps before running them.
+> The v2 Pro Plus scripts need the ERes2NetV2 speaker embedding model exported to `TTSData/sv/eres2netv2.onnx`; follow the documentation’s export steps before running them.
 
 ### Recommended Downloads
 
-For users in mainland China we recommend downloading the required models and dictionaries manually and placing them inside the root `Data` directory.
+For users in mainland China we recommend downloading the required models and dictionaries manually and placing them inside the root `CharacterData`, `TTSData`, and `RoBERTa` directories.
 
 | Source        | Link                                                                                           |
 |:--------------|:-----------------------------------------------------------------------------------------------|
@@ -183,7 +183,7 @@ python WebUI/webui.py
 
 ### Features
 
-- Character management: automatically scans `Data/character_model`
+- Character management: automatically scans `CharacterData/character_model`
 - Reference audio: upload custom prompts or reuse the included samples
 - Text synthesis: enter Japanese text and generate speech with one click
 - In-browser playback: listen instantly within the UI
