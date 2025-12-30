@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 MIN_DURATION_S = 3
 MAX_DURATION_S = 10
 # 在音频末尾追加的静音时长 (秒)
-SILENCE_TO_APPEND_S = 0.1  # 减少停顿时长（从0.3改为0.1）
+SILENCE_TO_APPEND_S = 0.3
 # 模型期望的目标采样率
 TARGET_SAMPLING_RATE = 16000
 
@@ -39,9 +39,9 @@ def load_audio(
         return None
 
     # Ensure array is contiguous and float32
-    wav = np.ascontiguousarray(wav, dtype=np.float32)
+    # wav = np.ascontiguousarray(wav, dtype=np.float32)
     # Clip to valid range to avoid potential issues with MP3 decoding artifacts > 1.0
-    wav = np.clip(wav, -1.0, 1.0)
+    # wav = np.clip(wav, -1.0, 1.0)
 
     # 检查音频长度是否在建议范围之外
     min_samples = int(MIN_DURATION_S * target_sampling_rate)

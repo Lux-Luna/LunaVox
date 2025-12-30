@@ -30,6 +30,20 @@ CACHE_PATH = os.path.join(English_G2P_DIR, "engdict_cache.pickle")
 NAMECACHE_PATH = os.path.join(English_G2P_DIR, "namedict_cache.pickle")
 MODEL_PATH = os.path.join(English_G2P_DIR, "checkpoint20.npz")
 
+# Punctuation mapping to match Genie
+REP_MAP = {
+    "[;:：，；]": ",",
+    '["’]': "'",
+    "。": ".",
+    "！": "!",
+    "？": "?",
+}
+REP_MAP_PATTERN = re.compile("|".join(re.escape(p) for p in REP_MAP.keys()))
+
+def text_normalize(text: str) -> str:
+    text = REP_MAP_PATTERN.sub(lambda x: REP_MAP[x.group()], text)
+    text = normalize(text)
+    return text
 
 def _read_cmu_dict(file_path: str) -> Dict[str, List[List[str]]]:
     g2p_dict = {}
@@ -81,6 +95,9 @@ class CleanG2p:
     """
 
     def __init__(self):
+        # 0. Ensure NLTK data
+        ensure_nltk_data()
+
         # 1. Initialize standard components
         self.cmu = _load_and_cache_dict()
         self.namedict = self._load_name_dict()
@@ -198,9 +215,10 @@ class CleanG2p:
 
     def __call__(self, text: str) -> List[str]:
         # Ensure NLTK data before usage
-        ensure_nltk_data()
+        # ensure_nltk_data()
         
-        words = word_tokenize(text)
+        normalized_text = text_normalize(text)
+        words = word_tokenize(normalized_text)
         if not words: return []
 
         tokens = pos_tag(words)
@@ -265,11 +283,7 @@ def g2p(text: str) -> List[str]:
 
 
 def english_to_phones(text: str) -> List[int]:
-    text = normalize(text)
     phone_list = g2p(text)
     # Filter unknowns and non-symbols. Map to IDs via symbols_v2.
     phones = [ph for ph in phone_list if ph in symbols_v2]
-    # Stability patch from LunaVox: if too short, prepend comma
-    if len(phones) < 4:
-        phones = [","] + phones
     return [symbol_to_id_v2[ph] for ph in phones]

@@ -84,13 +84,9 @@ class EnvManager:
             return False
         
         if target_mode == "cpu" and current_is_gpu:
-            # If user explicitly wants CPU, but GPU is installed, we should probably stick to CPU execution provider
-            # but if they want "cpu environment cleaned", we might want to uninstall GPU.
-            # For now, let's just log it. ORT-GPU can run CPU just fine.
-            # But the user specifically asked to "confirm cpu environment correctly cleaned".
-            logger.info("Target mode is CPU but onnxruntime-gpu is currently installed.")
-            # self.install_cpu_runtime() # Optional: active cleanup
-            # return False
+            logger.info("Target mode is CPU but onnxruntime-gpu is currently installed. Switching back to CPU runtime...")
+            self.install_cpu_runtime()
+            return False
             
         return True
 
@@ -102,8 +98,9 @@ class EnvManager:
             subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "onnxruntime", "-y"])
             subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "onnxruntime-gpu", "-y"])
             
-            logger.info("Installing onnxruntime-gpu...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "onnxruntime-gpu"])
+            # Using 1.22.0 as it's the closest to the optimized 1.22.1 CPU version
+            logger.info("Installing onnxruntime-gpu==1.22.0...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "onnxruntime-gpu==1.22.0"])
             logger.info("onnxruntime-gpu installed successfully.")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to install GPU runtime: {e}")
@@ -116,8 +113,9 @@ class EnvManager:
             subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "onnxruntime-gpu", "-y"])
             subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "onnxruntime", "-y"])
             
-            logger.info("Installing onnxruntime...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "onnxruntime"])
+            # Explicitly lock to 1.22.1 for optimized CPU performance
+            logger.info("Installing onnxruntime==1.22.1...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "onnxruntime==1.22.1"])
             logger.info("onnxruntime installed successfully.")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to install CPU runtime: {e}")
