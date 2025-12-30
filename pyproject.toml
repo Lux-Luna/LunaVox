@@ -27,17 +27,16 @@ classifiers = [
 
 dependencies = [
     "onnx",
-    "onnxruntime-gpu",
+    "onnxruntime",
     "numpy",
     "librosa",
-    "pyopenjtalk",
+    "pyopenjtalk-plus",
     "soundfile",
     "soxr",
     "pyyaml",
     "rich",
-    "pyaudio",
-    "torchaudio",
-    "huggingface_hub[hf_xet]==0.35.3",
+    "sounddevice",
+    "huggingface_hub[hf_xet]",
     "fastapi",
     "uvicorn[standard]",
     "pydantic",
@@ -52,6 +51,8 @@ dependencies = [
     "inflect",
     "torch",
     "transformers",
+    "tokenizers",
+    "g2pM",
 ]
 
 [project.urls]
