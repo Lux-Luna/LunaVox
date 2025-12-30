@@ -137,3 +137,5 @@ docs/
 
 # Ignore src/lunavox_tts/Data (tracked on Hugging Face instead)
 src/lunavox_tts/Data/
+# Exception: track v2ProPlus folder
+!src/lunavox_tts/Data/v2ProPlus/
