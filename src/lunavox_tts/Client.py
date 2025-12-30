@@ -1,13 +1,18 @@
 import argparse
 import shlex
-from rich.table import Table
+import logging
 from typing import Optional, Callable
 from .Audio.ReferenceAudio import ReferenceAudio
-from .Utils.Shared import console, context
+from .Utils.Shared import context
 from .Utils.UserData import userdata_manager
 from .ModelManager import model_manager
 from .Core.TTSPlayer import tts_player
 
+# Use print for CLI output, or logger if preferred.
+# For a CLI shell, print is standard.
+# If we want to support the user's request of "standard logging", we could use logger,
+# but for an interactive shell, print is expected.
+# I will use print for interaction, and logger for internal logs.
 
 class Client:
     def __init__(self):
@@ -39,21 +44,21 @@ class Client:
             # If the user didn't provide a path, try loading from cache
             if model_path is None:
                 if not all_cached_paths or args.character not in all_cached_paths:
-                    console.print("[bold red]Error:[/bold red] You did not provide a model folder path.")
+                    print("Error: You did not provide a model folder path.")
                     return
                 model_path = all_cached_paths[args.character]
-                console.print(f"No path provided, using cached path: [green]{model_path}[/green]")
+                print(f"No path provided, using cached path: {model_path}")
 
             # Load and update cache
             model_manager.load_character(character_name=args.character, model_dir=model_path)
             all_cached_paths[args.character] = model_path
             userdata_manager.set('last_model_paths', all_cached_paths)
-            console.print(f"Character '{args.character}' loaded successfully!")
+            print(f"Character '{args.character}' loaded successfully!")
 
         except SystemExit:
             pass  # Catch argparse -h or errors to prevent program exit
         except Exception as e:
-            console.print(f"[bold red]An unknown error occurred while loading:[/bold red] {e}")
+            print(f"An unknown error occurred while loading: {e}")
 
     def _handle_unload(self, args_list: list):
         """
@@ -65,7 +70,7 @@ class Client:
         try:
             args = parser.parse_args(args_list)
             model_manager.remove_character(character_name=args.character)
-            console.print(f"Character '{args.character}' has been unloaded.")
+            print(f"Character '{args.character}' has been unloaded.")
         except SystemExit:
             pass
 
@@ -79,11 +84,10 @@ class Client:
         try:
             args = parser.parse_args(args_list)
             if not model_manager.has_character(args.character):
-                console.print(
-                    "[bold red]Error:[/bold red] The character does not exist. Please load the character first.")
+                print("Error: The character does not exist. Please load the character first.")
                 return
             context.current_speaker = args.character
-            console.print(f"Current speaker set to '{args.character}'.")
+            print(f"Current speaker set to '{args.character}'.")
         except SystemExit:
             pass
 
@@ -98,7 +102,7 @@ class Client:
         try:
             args = parser.parse_args(args_list)
             context.current_prompt_audio = ReferenceAudio(prompt_wav=args.audio_path, prompt_text=args.text)
-            console.print("Reference audio set successfully.")
+            print("Reference audio set successfully.")
         except SystemExit:
             pass
 
@@ -130,7 +134,7 @@ class Client:
         """
         try:
             tts_player.stop()
-            console.print("All tasks have been stopped.")
+            print("All tasks have been stopped.")
         except SystemExit:
             pass
 
@@ -138,41 +142,37 @@ class Client:
         """
         Display help information for all commands.
         """
-        console.print("\nAvailable commands:", justify="left")
-
-        table = Table(box=None, show_header=False, pad_edge=False)
-        table.add_column("Command", style="bold cyan", width=15)
-        table.add_column("Description")
+        print("\nAvailable commands:")
+        print(f"{'Command':<15} Description")
+        print("-" * 40)
 
         for cmd, handler in self.commands.items():
             doc = handler.__doc__
             if not doc:
-                description = "[italic]No description[/italic]"
+                description = "No description"
             else:
                 # Clean and split docstring
                 doc_lines = [line.strip() for line in doc.strip().split('\n')]
-                description = "\n".join(doc_lines) + "\n"
+                description = doc_lines[0] # Take first line for summary
 
-            table.add_row(f"/{cmd}", description)
-
-        console.print(table)
+            print(f"/{cmd:<14} {description}")
 
     def run(self):
         """
         Start the interactive main loop of the client.
         """
-        console.print(
-            "Welcome to the [bold cyan]LunaVox[/bold cyan] CLI. Type [bold blue]/help[/bold blue] for help, press Ctrl+C to exit."
+        print(
+            "Welcome to the LunaVox CLI. Type /help for help, press Ctrl+C to exit."
         )
 
         while True:
             try:
-                raw_input = console.input("[bold]>> [/bold]")
+                raw_input = input(">> ")
 
                 if not raw_input:
                     continue
                 if not raw_input.startswith('/'):
-                    console.print("[bold red]Error:[/bold red] Commands must start with '/'. Use /help for assistance.")
+                    print("Error: Commands must start with '/'. Use /help for assistance.")
                     continue
 
                 parts = shlex.split(raw_input[1:])
@@ -186,7 +186,7 @@ class Client:
                 if handler:
                     handler(command_args)
                 else:
-                    console.print(f"[bold red]Error:[/bold red] Unknown command '[yellow]/{command_name}[/yellow]'.")
+                    print(f"Error: Unknown command '/{command_name}'.")
 
             except (KeyboardInterrupt, EOFError):
                 break

@@ -5,10 +5,8 @@ import numpy as np
 import soxr
 
 from ..Audio.Audio import load_audio
-from ..Chinese.ChineseG2P import chinese_clean_g2p_and_norm
+from ..Core.TextFrontend import get_text_frontend
 from ..Chinese.ZhBert import compute_bert_phone_features
-from ..English.EnglishG2P import english_to_phones
-from ..Japanese.JapaneseG2P import japanese_to_phones
 from ..ModelManager import model_manager
 from ..Utils.Constants import BERT_FEATURE_DIM
 from ..Utils.Shared import context
@@ -24,7 +22,7 @@ except ImportError:
 
 class ReferenceAudio:
     _prompt_cache: dict[tuple[str, str, str], "ReferenceAudio"] = LRUCacheDict(
-        capacity=int(os.getenv("Max_Cached_Reference_Audio", "10"))
+        capacity=int(os.getenv("Max_Cached_Reference_Audio", "5"))
     )
 
     def __new__(cls, prompt_wav: str, prompt_text: str, language: str = "auto", model_version: str = 'v2'):
@@ -102,25 +100,34 @@ class ReferenceAudio:
             else:
                 import logging
                 logging.getLogger(__name__).warning(
-                    f"Speaker vector extraction not available for {model_version}. "
-                    f"Please ensure torchaudio is installed."
+                    f"Speaker vector extraction is not available for {model_version}. "
+                    f"This may be due to missing dependencies in SpeakerVector.py."
                 )
 
         self._initialized = True
 
+        # Optimization: Clear audio_32k to save memory if not needed for v2ProPlus global embedding update
+        # For v2, audio_32k is required for VITS inference (ref_audio).
+        # For v2Pro, audio_32k is required for STFT extraction (ref_audio).
+        # For v2ProPlus, audio_32k is required for Prompt Encoder (global_emb).
+        # We cannot clear it immediately in __init__ as it's needed for inference.
+        # Ideally we clear it after feature extraction, but ReferenceAudio doesn't control that lifecycle.
+        
     def set_text(self, prompt_text: str, language: str = "auto") -> None:
         self.text = prompt_text
         lang = _decide_language(prompt_text, language)
         self.language = lang
+        
+        frontend = get_text_frontend()
 
         if lang == "en":
-            ids = english_to_phones(prompt_text)
+            ids = frontend.process_en(prompt_text)
             word2ph: list[int] = []
             norm_text = ""
         elif lang == "zh":
-            ids, word2ph, norm_text = chinese_clean_g2p_and_norm(prompt_text)
+            ids, word2ph, norm_text = frontend.process_zh(prompt_text)
         else:
-            ids = japanese_to_phones(prompt_text)
+            ids = frontend.process_ja(prompt_text)
             word2ph = []
             norm_text = ""
 

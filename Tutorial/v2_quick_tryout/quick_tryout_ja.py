@@ -46,7 +46,7 @@ lunavox.set_reference_audio('pretrained', audio_path, reference_text, audio_lang
 # 3. テキスト読み上げ (TTS)
 lunavox.tts(
     character_name='pretrained',
-    text='こんにちは、ルナヴォックスです。日本語の音声合成テストを開始します。',
+    text='こんにちは、ルナヴォックスです。',
     play=True,
     language='ja'
 )

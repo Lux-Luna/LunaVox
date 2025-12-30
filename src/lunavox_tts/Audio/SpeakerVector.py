@@ -135,7 +135,7 @@ def load_sv_model(model_path: Optional[str] = None) -> bool:
             sess_options=sess_options
         )
         _sv_model_path = model_path
-        logger.info(f"✓ Loaded speaker embedding model from {model_path}")
+        logger.debug(f"✓ Loaded speaker embedding model from {model_path}")
         return True
         
     except Exception as e:
@@ -169,19 +169,24 @@ def extract_sv_embedding(waveform_16k: np.ndarray) -> Optional[np.ndarray]:
             else:
                 waveform_16k = waveform_16k.mean(axis=0)
         
-        # Extract fbank features (n_frames, 80)
-        fbank_feat = _get_fbank_features(waveform_16k, num_mel_bins=80)
+        # Determine model input type
+        input_info = _sv_model.get_inputs()[0]
+        input_name = input_info.name
+        input_shape = input_info.shape
         
-        # Add batch dimension and convert to (B, T, F) format
-        fbank_feat = np.expand_dims(fbank_feat, axis=0)  # (1, n_frames, 80)
-        
-        # Run ONNX inference
-        # Expected input: (B, T, F) where B=batch, T=time frames, F=80 mel bins
-        # Expected output: (B, 20480) flattened speaker embedding
-        input_name = _sv_model.get_inputs()[0].name
-        output_name = _sv_model.get_outputs()[0].name
-        
-        sv_emb = _sv_model.run([output_name], {input_name: fbank_feat.astype(np.float32)})[0]
+        # If model expects 'waveform' or last dim is not 80, send raw audio
+        # Modern SV models (like CAM++ or ERes2Net) often take (B, SAMPLES)
+        if input_name == "waveform" or (len(input_shape) == 2):
+            logger.debug(f"Sending raw waveform to SV model (input_name={input_name}, shape={input_shape})")
+            # Ensure shape (1, SAMPLES)
+            waveform_input = np.expand_dims(waveform_16k, axis=0).astype(np.float32)
+            sv_emb = _sv_model.run(None, {input_name: waveform_input})[0]
+        else:
+            # Fallback to Fbank extraction
+            logger.debug(f"Extracting Fbank features for SV model (input_name={input_name}, shape={input_shape})")
+            fbank_feat = _get_fbank_features(waveform_16k, num_mel_bins=80)
+            fbank_feat = np.expand_dims(fbank_feat, axis=0)  # (1, n_frames, 80)
+            sv_emb = _sv_model.run(None, {input_name: fbank_feat.astype(np.float32)})[0]
         
         # Ensure output shape is (1, 20480)
         if sv_emb.shape != (1, 20480):

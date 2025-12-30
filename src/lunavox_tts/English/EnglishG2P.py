@@ -277,7 +277,7 @@ def get_g2p():
 def g2p(text: str) -> List[str]:
     instance = get_g2p()
     raw_phonemes = instance(text)
-    undesired = {" ", "<pad>", "UW", "</s>", "<s>"}
+    undesired = {" ", "<pad>", "</s>", "<s>"}
     phones = ["UNK" if ph == "<unk>" else ph for ph in raw_phonemes if ph not in undesired]
     return replace_phs(phones)
 

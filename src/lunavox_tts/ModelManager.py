@@ -26,7 +26,7 @@ def _get_default_sess_options() -> onnxruntime.SessionOptions:
     # opts.intra_op_num_threads = 0
     # opts.inter_op_num_threads = 0
     
-    # opts.add_session_config_entry("session.use_env_allocators", "1")
+    opts.add_session_config_entry("session.use_env_allocators", "1")
     return opts
 
 # Global default options (legacy support)
@@ -48,7 +48,7 @@ def _resolve_providers() -> list[str]:
     
     # If user explicitly wants CPU, we only return CPU provider
     if target_mode == "cpu":
-        logger.info("LunaVox is running in CPU mode as configured.")
+        logger.debug("LunaVox is running in CPU mode as configured.")
         return ["CPUExecutionProvider"]
 
     # 2. Handle GPU/Auto mode
@@ -62,7 +62,7 @@ def _resolve_providers() -> list[str]:
         requested = [item.strip() for item in env_value.split(",") if item.strip()]
         resolved = [provider for provider in requested if provider in available]
         if resolved:
-            logger.info("Using ONNXRuntime providers from LUNAVOX_ORT_PROVIDERS: %s", ",".join(resolved))
+            logger.debug("Using ONNXRuntime providers from LUNAVOX_ORT_PROVIDERS: %s", ",".join(resolved))
             return resolved
         logger.warning(
             "Requested providers '%s' are not available in this environment. Falling back to auto detection.",
@@ -72,10 +72,10 @@ def _resolve_providers() -> list[str]:
     # Filter preferred providers by availability
     resolved = [provider for provider in _DEFAULT_PROVIDER_ORDER if provider in available]
     if resolved:
-        logger.info("Auto-detected ONNXRuntime providers: %s", ",".join(resolved))
+        logger.debug("Auto-detected ONNXRuntime providers: %s", ",".join(resolved))
         return resolved
     
-    logger.info("No preferred providers available or found; falling back to CPUExecutionProvider.")
+    logger.debug("No preferred providers available or found; falling back to CPUExecutionProvider.")
     return ["CPUExecutionProvider"]
 
 
@@ -216,7 +216,7 @@ class ModelManager:
             else:
                 logger.error("Chinese HuBERT model not found in TTSData.")
                 return False
-        logger.info(f"Found existing Chinese HuBERT model at: {os.path.abspath(model_path)}")
+        logger.debug(f"Found existing Chinese HuBERT model at: {os.path.abspath(model_path)}")
 
         try:
             # Check for FP16 weights for HuBERT
@@ -233,7 +233,7 @@ class ModelManager:
                 self.cn_hubert = onnxruntime.InferenceSession(model_path,
                                                           providers=self.providers,
                                                           sess_options=_get_default_sess_options())
-            logger.info("Successfully loaded CN_HuBERT model.")
+            logger.debug("Successfully loaded CN_HuBERT model.")
             return True
         except Exception as e:
             logger.error(
@@ -266,9 +266,11 @@ class ModelManager:
         return character_name in self.character_model_paths
 
     def load_character(self, character_name: str, model_dir: str) -> bool:
+        import time
+        t_start = time.time()
         character_name = character_name.lower()
         if character_name in self.character_to_model:
-            logger.info(f"Character '{character_name}' is already in cache; no need to reload.")
+            logger.debug(f"Character '{character_name}' is already in cache; no need to reload.")
             _ = self.character_to_model[character_name]
             return True
         
@@ -286,11 +288,11 @@ class ModelManager:
                 with open(model_info_path, 'r', encoding='utf-8') as f:
                     model_info = json.load(f)
                     model_version = model_info.get('version', 'v2')
-                logger.info(f"Loaded model version metadata: {model_version}")
+                logger.debug(f"Loaded model version metadata: {model_version}")
             except Exception as e:
                 logger.warning(f"Failed to load model metadata, defaulting to v2: {e}")
         else:
-            logger.info(f"No model_info.json found, assuming v2")
+            logger.debug(f"No model_info.json found, assuming v2")
 
         model_dict: dict[str, InferenceSession] = {}
         
@@ -310,7 +312,11 @@ class ModelManager:
             model_load_plan.append(("PROMPT_ENCODER", _GSVModelFile.PROMPT_ENCODER_FP32, _GSVModelFile.PROMPT_ENCODER_WEIGHT_FP16))
 
         try:
-            for key, onnx_file, bin_file in model_load_plan:
+            total_steps = len(model_load_plan)
+            for i, (key, onnx_file, bin_file) in enumerate(model_load_plan):
+                # Simple progress hint
+                logger.info(f"Loading character model '{character_name}'... ({i+1}/{total_steps})")
+                
                 onnx_path = os.path.join(model_dir, onnx_file)
                 
                 # Check for native FP16 model first (if GPU and available)
@@ -319,7 +325,7 @@ class ModelManager:
                 
                 if bin_path and os.path.exists(bin_path) and os.path.exists(onnx_path):
                     # In-memory patching
-                    logger.info(f"Loading {key} with in-memory FP16 patching...")
+                    logger.debug(f"Loading {key} with in-memory FP16 patching...")
                     model_dict[key] = load_session_with_fp16_conversion(
                         onnx_path, bin_path, self.providers, _get_default_sess_options()
                     )
@@ -330,12 +336,12 @@ class ModelManager:
                     fp16_onnx_path = os.path.join(model_dir, fp16_onnx_name) if fp16_onnx_name else None
                     
                     if fp16_onnx_path and os.path.exists(fp16_onnx_path):
-                        logger.info(f"Loading {key} from native FP16 ONNX: {fp16_onnx_name}")
+                        logger.debug(f"Loading {key} from native FP16 ONNX: {fp16_onnx_name}")
                         model_dict[key] = onnxruntime.InferenceSession(
                             fp16_onnx_path, providers=self.providers, sess_options=_get_default_sess_options()
                         )
                     elif os.path.exists(onnx_path):
-                        logger.info(f"Loading {key} from standard FP32 ONNX: {onnx_file}")
+                        logger.debug(f"Loading {key} from standard FP32 ONNX: {onnx_file}")
                         model_dict[key] = onnxruntime.InferenceSession(
                             onnx_path, providers=self.providers, sess_options=_get_default_sess_options()
                         )
@@ -348,11 +354,11 @@ class ModelManager:
             if is_v2pp:
                 model_version = 'v2ProPlus'
 
+            t_end = time.time()
             logger.info(
-                f"Character '{character_name.capitalize()}' loaded successfully.\n"
-                f"- Model Path: {model_dir}\n"
-                f"- Model Type: {model_version}\n"
-                f"- Providers: {self.providers}"
+                f"✓ Character '{character_name.capitalize()}' loaded successfully in {t_end - t_start:.2f}s.\n"
+                f"  - Model Type: {model_version}\n"
+                f"  - Providers: {self.providers}"
             )
 
         except Exception as e:
@@ -382,7 +388,7 @@ class ModelManager:
         if character_name in self.character_versions:
             del self.character_versions[character_name]
         gc.collect()
-        logger.info(f"Character {character_name.capitalize()} removed successfully.")
+        logger.debug(f"Character {character_name.capitalize()} removed successfully.")
 
     def clean_cache(self) -> None:
         pass

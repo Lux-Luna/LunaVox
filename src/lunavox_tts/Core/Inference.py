@@ -8,9 +8,7 @@ import threading
 import time
 
 from ..Audio.ReferenceAudio import ReferenceAudio
-from ..Japanese.JapaneseG2P import japanese_to_phones
-from ..English.EnglishG2P import english_to_phones
-from ..Chinese.ChineseG2P import chinese_clean_g2p_and_norm
+from ..Core.TextFrontend import get_text_frontend
 from ..Chinese.ZhBert import compute_bert_phone_features
 from ..Utils.Constants import BERT_FEATURE_DIM
 
@@ -54,16 +52,18 @@ class LunaVoxEngine:
         if not text.startswith("。") and not text.startswith("."):
             text = "。" + text
 
+        frontend = get_text_frontend()
+
         if language == "en":
-            ids = english_to_phones(text)
+            ids = frontend.process_en(text)
             from ..Japanese.SymbolsV2 import symbols_v2
             phones = [symbols_v2[i] for i in ids]
-            logger.info(f"LunaVox phones: {phones}")
+            logger.debug(f"LunaVox phones: {phones}")
             text_seq: np.ndarray = np.array([ids], dtype=np.int64)
-            logger.info(f"LunaVox text_seq length: {text_seq.shape[1]}")
+            logger.debug(f"LunaVox text_seq length: {text_seq.shape[1]}")
             text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
         elif language == "zh":
-            ids, word2ph, norm_text = chinese_clean_g2p_and_norm(text)
+            ids, word2ph, norm_text = frontend.process_zh(text)
             text_seq: np.ndarray = np.array([ids], dtype=np.int64)
             # Full zh-BERT parity: compute 1024-d features and align to phones
             # Keep BERT on GPU but return numpy for ORT compatibility
@@ -79,11 +79,11 @@ class LunaVoxEngine:
             all_berts = []
             for chunk in chunks:
                 if chunk['language'] == 'en':
-                    ids = english_to_phones(chunk['content'])
+                    ids = frontend.process_en(chunk['content'])
                     all_ids.extend(ids)
                     all_berts.append(np.zeros((len(ids), BERT_FEATURE_DIM), dtype=np.float32))
                 else:
-                    ids, word2ph, norm_text = chinese_clean_g2p_and_norm(chunk['content'])
+                    ids, word2ph, norm_text = frontend.process_zh(chunk['content'])
                     all_ids.extend(ids)
                     bert_phone = compute_bert_phone_features(norm_text, word2ph, return_tensor=False)
                     if bert_phone.shape[0] != len(ids):
@@ -96,7 +96,7 @@ class LunaVoxEngine:
             else:
                 text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
         else:
-            text_seq: np.ndarray = np.array([japanese_to_phones(text)], dtype=np.int64)
+            text_seq: np.ndarray = np.array([frontend.process_ja(text)], dtype=np.int64)
             text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
         t_frontend = time.time()
         logger.info(f"Frontend ({language}) took: {(t_frontend - t0) * 1000:.2f}ms")
@@ -131,10 +131,17 @@ class LunaVoxEngine:
         if self.stop_event.is_set():
             return None
 
+        if semantic_tokens is None or semantic_tokens.size == 0:
+            return None
+
         eos_indices = np.where(semantic_tokens >= 1024)  # 剔除不合法的元素，例如 EOS Token。
         if len(eos_indices[0]) > 0:
             first_eos_index = eos_indices[-1][0]
             semantic_tokens = semantic_tokens[..., :first_eos_index]
+
+        # Ensure we still have tokens after EOS removal
+        if semantic_tokens.size == 0:
+            return None
 
         # Ensure semantic_tokens has correct shape (1, 1, N) for VITS
         if semantic_tokens.ndim == 2:
@@ -149,11 +156,13 @@ class LunaVoxEngine:
             # Extract STFT spectrogram for v2Pro/v2ProPlus (matches GPT-SoVITS get_spepc)
             try:
                 from ..Audio.SpectrogramExtractor import extract_stft_spectrogram
+                # IMPORTANT: GPT-SoVITS v2 Pro/ProPlus typically uses filter_length=1406 (704 bins)
+                # Overriding the 2048 default which might cause mismatch
                 ref_audio_features = extract_stft_spectrogram(
                     prompt_audio.audio_32k,
-                    n_fft=2048,  # filter_length → 1025 bins (2048//2+1)
+                    n_fft=1406,  
                     hop_length=640,
-                    win_length=2048,
+                    win_length=1406,
                     center=False
                 )
             except Exception as e:
@@ -214,8 +223,14 @@ class LunaVoxEngine:
         # self._validate_vocoder_inputs(vocoder, vocoder_inputs)
         
         # Run VITS
-        # Simplified for CPU performance
-        vits_output = vocoder.run(None, vocoder_inputs)[0]
+        # Use IOBinding via _run_vocoder
+        vits_output = self._run_vocoder(vocoder, vocoder_inputs)
+        
+        if vits_output is not None:
+            # Final safety check: clip output to avoid pops/noise from overflow
+            # and handle NaNs if any slipped through
+            vits_output = np.nan_to_num(vits_output)
+            vits_output = np.clip(vits_output, -1.0, 1.0)
         
         t_vits = time.time()
         logger.info(f"VITS Inference took: {(t_vits - t_t2s) * 1000:.2f}ms")
@@ -233,7 +248,7 @@ class LunaVoxEngine:
 
     def _run_prompt_encoder(self, session: ort.InferenceSession, prompt_audio: ReferenceAudio) -> None:
         """Extract global embeddings using Prompt Encoder with IO Binding support."""
-        logger.info("Running Prompt Encoder to extract global embeddings...")
+        logger.debug("Running Prompt Encoder to extract global embeddings...")
         if prompt_audio.global_emb is not None:
             logger.debug("Using cached global embeddings.")
             return
@@ -273,13 +288,13 @@ class LunaVoxEngine:
             # Log output shapes for debugging
             ge_shape = prompt_audio.global_emb.shape()
             ge_adv_shape = prompt_audio.global_emb_advanced.shape()
-            logger.info(f"✓ Global embeddings extracted (IO Binding): ge={ge_shape}, ge_adv={ge_adv_shape}, device={device}")
+            logger.debug(f"✓ Global embeddings extracted (IO Binding): ge={ge_shape}, ge_adv={ge_adv_shape}, device={device}")
             
         except Exception as e:
             logger.warning(f"Failed to run prompt_encoder with IO binding ({e}). Falling back to regular execution.")
             prompt_audio.update_global_emb(session)
             if prompt_audio.global_emb is not None:
-                logger.info(f"✓ Global embeddings extracted (Standard): ge={prompt_audio.global_emb.shape}, ge_adv={prompt_audio.global_emb_advanced.shape}")
+                logger.debug(f"✓ Global embeddings extracted (Standard): ge={prompt_audio.global_emb.shape}, ge_adv={prompt_audio.global_emb_advanced.shape}")
 
     def _run_vocoder(self, session: ort.InferenceSession, inputs: dict) -> np.ndarray:
         # Automatically cast inputs to match model precision
@@ -313,8 +328,30 @@ class LunaVoxEngine:
         return session.run(None, inputs)[0]
 
     def _cast_inputs(self, session: ort.InferenceSession, inputs: dict) -> dict:
-        """Disabled for CPU performance optimization - avoid double casting"""
-        return inputs
+        """Cast inputs to match model precision requirements."""
+        casted_inputs = {}
+        for input_meta in session.get_inputs():
+            name = input_meta.name
+            if name not in inputs:
+                continue
+            
+            val = inputs[name]
+            if isinstance(val, ort.OrtValue):
+                casted_inputs[name] = val
+                continue
+
+            target_dtype = input_meta.type
+            if target_dtype == 'tensor(float)':
+                casted_inputs[name] = val.astype(np.float32)
+            elif target_dtype == 'tensor(float16)':
+                casted_inputs[name] = val.astype(np.float16)
+            elif target_dtype == 'tensor(int64)':
+                casted_inputs[name] = val.astype(np.int64)
+            elif target_dtype == 'tensor(int32)':
+                casted_inputs[name] = val.astype(np.int32)
+            else:
+                casted_inputs[name] = val
+        return casted_inputs
 
     def _validate_vocoder_inputs(self, vocoder: ort.InferenceSession, 
                                  inputs: dict) -> None:
@@ -532,7 +569,8 @@ class LunaVoxEngine:
                     if processed_shape and processed_shape[-1] == 0:
                         processed_shape[-1] = 512
                     
-                    return np.zeros(processed_shape, dtype=np.float16)
+                    # Use float32 to match model precision
+                    return np.zeros(processed_shape, dtype=np.float32)
             return None
 
         if n_layers > 0:
@@ -586,7 +624,9 @@ class LunaVoxEngine:
         d_iy_emb = d_y_emb
 
         # Collected output tokens
-        out_tokens = []
+        # IMPORTANT: The first stage decoder already produced the first token (T1) in d_y.
+        # We must include it to avoid "swallowing" the beginning of the sentence.
+        out_tokens = [int(d_y.numpy().flat[0])]
 
         # Create IO Binding once outside the loop
         io_binding = stage_decoder.io_binding()

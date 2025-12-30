@@ -13,6 +13,11 @@ try:
     import sounddevice as sd
 except Exception:  # optional dependency for playback
     sd = None
+
+try:
+    import pyaudio
+except Exception:
+    pyaudio = None
 import logging
 
 from ..Japanese.Split import split_japanese_text
@@ -43,6 +48,9 @@ class TTSPlayer:
 
         self._tts_worker: Optional[threading.Thread] = None
         self._playback_worker: Optional[threading.Thread] = None
+
+        self._pa: Optional[pyaudio.PyAudio] = None
+        self._pa_stream: Optional[pyaudio.Stream] = None
 
         self._play: bool = False
         self._current_save_path: Optional[str] = None
@@ -87,6 +95,10 @@ class TTSPlayer:
                     # 在TTS工作线程完成时，通过回调发送结束信号
                     if self._chunk_callback:
                         self._chunk_callback(None)
+
+                    if self._start_time:
+                        total_duration = time.time() - self._start_time
+                        logger.info(f"Total TTS session time: {total_duration:.3f} seconds.")
 
                     self._tts_done_event.set()
                     self._session_speaker = None
@@ -156,6 +168,10 @@ class TTSPlayer:
                         # sounddevice handles float32 directly and is often easier to use
                         sd.play(audio_chunk, self.sample_rate)
                         sd.wait()  # wait for chunk to finish playing
+                    elif pyaudio is not None:
+                        self._play_with_pyaudio(audio_chunk)
+                    else:
+                        logger.warning("No audio playback backend (sounddevice or pyaudio) found. Audio synthesis completed but cannot play.")
                 except queue.Empty:
                     continue
                 except Exception as e:
@@ -163,6 +179,29 @@ class TTSPlayer:
         finally:
             if sd is not None:
                 sd.stop()
+            if self._pa_stream is not None:
+                self._pa_stream.stop_stream()
+                self._pa_stream.close()
+                self._pa_stream = None
+            if self._pa is not None:
+                self._pa.terminate()
+                self._pa = None
+
+    def _play_with_pyaudio(self, audio_chunk: np.ndarray):
+        if self._pa is None:
+            logger.info("Using PyAudio for playback fallback.")
+            self._pa = pyaudio.PyAudio()
+        
+        if self._pa_stream is None:
+            self._pa_stream = self._pa.open(
+                format=pyaudio.paInt16,
+                channels=self.channels,
+                rate=self.sample_rate,
+                output=True
+            )
+        
+        audio_data = self._preprocess_for_playback(audio_chunk)
+        self._pa_stream.write(audio_data)
 
     def _save_session_audio(self):
         try:

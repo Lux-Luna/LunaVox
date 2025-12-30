@@ -1,21 +1,20 @@
 import os
 import re
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 import logging
-
-from pypinyin.contrib.tone_convert import to_finals_tone3, to_initials
-import jieba_fast
-import jieba_fast.posseg as psg
-from g2pM import G2pM
 
 from .Resources import Chinese_G2P_DIR, ensure_g2p_resources
 from ..Japanese.SymbolsV2 import symbols_v2, symbol_to_id_v2
-from .ToneSandhi import ToneSandhi
-from .Normalization.text_normlization import TextNormalizer
-from .CorrectPronunciation import correct_pronunciation
-from .Erhua import ErhuaProcessor
 
-jieba_fast.setLogLevel(logging.ERROR)
+# Delay heavy imports to avoid memory overhead when Chinese is not used
+# import jieba_fast
+# import jieba_fast.posseg as psg
+# from g2pM import G2pM
+# from pypinyin.contrib.tone_convert import to_finals_tone3, to_initials
+# from .ToneSandhi import ToneSandhi
+# from .Normalization.text_normlization import TextNormalizer
+# from .CorrectPronunciation import correct_pronunciation
+# from .Erhua import ErhuaProcessor
 
 PUNCTUATION = ["!", "?", "…", ",", ".", "-"]
 PUNCTUATION_REPLACEMENTS = {
@@ -28,11 +27,31 @@ SPECIAL_REPLACEMENTS = {"...": "…"}  # 特殊的多字符替换
 
 class ChineseG2P:
     def __init__(self):
+        # --- Lazy Load Heavy Dependencies ---
+        import jieba_fast
+        import jieba_fast.posseg as psg
+        from g2pM import G2pM
+        from pypinyin.contrib.tone_convert import to_finals_tone3, to_initials
+        
+        from .ToneSandhi import ToneSandhi
+        from .Normalization.text_normlization import TextNormalizer
+        from .CorrectPronunciation import correct_pronunciation
+        from .Erhua import ErhuaProcessor
+
+        # Make these available to instance methods
+        self.jieba_fast = jieba_fast
+        self.psg = psg
+        self.to_finals_tone3 = to_finals_tone3
+        self.to_initials = to_initials
+        self.correct_pronunciation = correct_pronunciation
+        
+        self.jieba_fast.setLogLevel(logging.ERROR)
+
         # --- 资源加载 ---
-        self.g2pm: G2pM = G2pM()
-        self.tone_modifier: ToneSandhi = ToneSandhi()
-        self.erhua_processor: ErhuaProcessor = ErhuaProcessor()
-        self.text_normalizer: TextNormalizer = TextNormalizer()
+        self.g2pm = G2pM()
+        self.tone_modifier = ToneSandhi()
+        self.erhua_processor = ErhuaProcessor()
+        self.text_normalizer = TextNormalizer()
         self.pinyin_to_symbol_map: Dict[str, str] = {}
 
         # 预编译正则
@@ -122,7 +141,7 @@ class ChineseG2P:
             # 移除英文
             seg = self.pattern_eng.sub("", seg)
             # 分词
-            seg_cut = psg.lcut(seg)
+            seg_cut = self.psg.lcut(seg)
             seg_cut = self.tone_modifier.pre_merge_for_modify(seg_cut)
             initials = []
             finals = []
@@ -137,13 +156,13 @@ class ChineseG2P:
                     continue
                 word_pinyins = pinyins[pre_word_length:now_word_length]
                 # 多音字修正
-                word_pinyins = correct_pronunciation(word, word_pinyins)
+                word_pinyins = self.correct_pronunciation(word, word_pinyins)
                 sub_initials = []
                 sub_finals = []
                 for pinyin in word_pinyins:
                     if pinyin[0].isalpha():
-                        sub_initials.append(to_initials(pinyin))
-                        sub_finals.append(to_finals_tone3(pinyin, neutral_tone_with_five=True))
+                        sub_initials.append(self.to_initials(pinyin))
+                        sub_finals.append(self.to_finals_tone3(pinyin, neutral_tone_with_five=True))
                     else:
                         # 处理非字母（如标点）
                         sub_initials.append(pinyin)
@@ -182,21 +201,28 @@ class ChineseG2P:
         return normalized_text, phones, phones_ids, word2ph
 
 
-processor: ChineseG2P = ChineseG2P()
+# Singleton management
+_processor_instance: Optional[ChineseG2P] = None
+
+def get_chinese_processor() -> ChineseG2P:
+    global _processor_instance
+    if _processor_instance is None:
+        _processor_instance = ChineseG2P()
+    return _processor_instance
 
 
 def chinese_to_phones(text: str) -> Tuple[str, List[str], List[int], List[int]]:
-    return processor.process(text)
+    return get_chinese_processor().process(text)
 
 # Compatibility wrappers for LunaVox legacy calls if any
 def chinese_clean_and_g2p(text: str) -> Tuple[List[str], List[int], str]:
-    normalized_text, phones, phones_ids, _ = processor.process(text)
+    normalized_text, phones, phones_ids, _ = get_chinese_processor().process(text)
     return phones, phones_ids, normalized_text
 
 def chinese_to_phones_and_word2ph(text: str) -> Tuple[List[int], List[int]]:
-    _, _, phones_ids, word2ph = processor.process(text)
+    _, _, phones_ids, word2ph = get_chinese_processor().process(text)
     return phones_ids, word2ph
 
 def chinese_clean_g2p_and_norm(text: str) -> Tuple[List[int], List[int], str]:
-    normalized_text, _, phones_ids, word2ph = processor.process(text)
+    normalized_text, _, phones_ids, word2ph = get_chinese_processor().process(text)
     return phones_ids, word2ph, normalized_text

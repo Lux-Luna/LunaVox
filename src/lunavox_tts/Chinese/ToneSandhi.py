@@ -18,13 +18,14 @@
 
 from typing import List
 from typing import Tuple
-import jieba_fast as jieba
 from pypinyin import lazy_pinyin
 from pypinyin import Style
 
 
 class ToneSandhi:
     def __init__(self):
+        import jieba_fast as jieba
+        self.jieba = jieba
         self.must_neural_tone_words = {
             "麻烦", "麻利", "鸳鸯", "高粱", "骨头", "骆驼", "马虎", "首饰", "馒头", "馄饨",
             "风筝", "难为", "队伍", "阔气", "闺女", "门道", "锄头", "铺盖", "铃铛", "铁匠",
@@ -161,9 +162,8 @@ class ToneSandhi:
                             finals[i] = finals[i][:-1] + "4"
         return finals
 
-    @staticmethod
-    def _split_word(word: str) -> List[str]:
-        word_list = jieba.cut_for_search(word)
+    def _split_word(self, word: str) -> List[str]:
+        word_list = self.jieba.cut_for_search(word)
         word_list = sorted(word_list, key=lambda i: len(i), reverse=False)
         first_subword = word_list[0]
         first_begin_idx = word.find(first_subword)

@@ -46,7 +46,7 @@ lunavox.set_reference_audio('pretrained', audio_path, reference_text, audio_lang
 # 3. Text-to-Speech
 lunavox.tts(
     character_name='pretrained',
-    text='This is LunaVox speaking English. Welcome to the unified CPU and GPU experience.',
+    text='Hi, This is LunaVox speaking English.',
     play=True,
     language='en'
 )

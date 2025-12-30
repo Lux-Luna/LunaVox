@@ -18,7 +18,7 @@ from lunavox_tts.Utils.EnvManager import env_manager
 
 # --- OPTIONAL: Environment Configuration ---
 # Uncomment to force a specific runtime mode. Default is "cpu".
-# env_manager.set_mode("cpu")
+env_manager.set_mode("cpu")
 # env_manager.set_mode("gpu")
 
 if not env_manager.ensure_environment():
@@ -46,7 +46,7 @@ lunavox.set_reference_audio('pretrained_v2pp', audio_path, reference_text, audio
 # 3. Text-to-Speech
 lunavox.tts(
     character_name='pretrained_v2pp',
-    text='This is the LunaVox v2 Pro Plus model speaking English using FP16 models on CPU.',
+    text='Hi, This is the LunaVox speaking English.',
     play=True,
     language='en'
 )

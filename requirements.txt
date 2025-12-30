@@ -5,7 +5,6 @@ pyopenjtalk-plus
 soundfile
 soxr
 pyyaml
-rich
 sounddevice
 huggingface_hub[hf_xet]
 fastapi

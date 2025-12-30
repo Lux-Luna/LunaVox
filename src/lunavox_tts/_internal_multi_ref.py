@@ -98,7 +98,7 @@ def create_multi_reference_audio(
                 model_version=model_version,
             )
             ref_audios.append(ref_audio)
-            logger.info(f"Loaded reference audio {i+1}/{len(audio_paths)}")
+            logger.debug(f"Loaded reference audio {i+1}/{len(audio_paths)}")
         except Exception as e:
             logger.error(f"Failed to load reference audio {i+1}: {e}")
             return None
@@ -135,7 +135,7 @@ def create_multi_reference_audio(
         logger.error("Failed to average speaker vectors")
         return ref_audios[0]
     
-    logger.info(f"✓ Averaged speaker vectors from {len(sv_embs)} references")
+    logger.debug(f"✓ Averaged speaker vectors from {len(sv_embs)} references")
     
     # Use first reference audio as base, but replace sv_emb with average
     base_ref = ref_audios[0]
@@ -185,7 +185,7 @@ def set_multi_reference_audio(
     }
     _internal.context.current_prompt_audio = ref_audio
     
-    logger.info(
+    logger.debug(
         f"✓ Set {len(audio_paths)} reference audios for {character_name} "
         f"(model: {model_version})"
     )
