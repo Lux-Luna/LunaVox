@@ -153,8 +153,8 @@ The converter decomposes the GPT-SoVITS pipeline into multiple ONNX graphs: `t2s
 ```python
 import os
 
-os.environ['HUBERT_MODEL_PATH'] = r"C:\path\to\your\chinese-hubert-base.onnx"
-os.environ['OPEN_JTALK_DICT_DIR'] = r"C:\path\to\your\open_jtalk_dic_utf_8-1.11"
+os.environ['HUBERT_MODEL_PATH'] = r"C:\path\to\your\chinese-hubert-base\chinese-hubert-base.onnx"
+# No need to set OPEN_JTALK_DICT_DIR as it's now handled by pyopenjtalk-plus
 
 import lunavox_tts as lunavox
 

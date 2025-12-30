@@ -10,9 +10,9 @@ import numpy as np
 import wave
 from typing import Optional, List, Callable
 try:
-    import pyaudio
+    import sounddevice as sd
 except Exception:  # optional dependency for playback
-    pyaudio = None
+    sd = None
 import logging
 
 from ..Japanese.Split import split_japanese_text
@@ -145,41 +145,24 @@ class TTSPlayer:
                 self._session_prompt_audio = None
 
     def _playback_worker_loop(self):
-        p = None
-        stream = None
         try:
-            if pyaudio is not None:
-                p = pyaudio.PyAudio()
             while not self._stop_event.is_set():
                 try:
                     audio_chunk = self._audio_queue.get(timeout=1)
                     if audio_chunk is None:
                         break
-                    if stream is None and p is not None:
-                        stream = p.open(format=p.get_format_from_width(self.bytes_per_sample),
-                                        channels=self.channels,
-                                        rate=self.sample_rate,
-                                        output=True)
-                    audio_data = self._preprocess_for_playback(audio_chunk)
-                    if stream is not None:
-                        stream.write(audio_data)
+                    
+                    if sd is not None:
+                        # sounddevice handles float32 directly and is often easier to use
+                        sd.play(audio_chunk, self.sample_rate)
+                        sd.wait()  # wait for chunk to finish playing
                 except queue.Empty:
-                    if stream is not None:
-                        stream.stop_stream()
-                        stream.close()
-                        stream = None
+                    continue
                 except Exception as e:
                     logger.error(f"A critical error occurred while playing audio: {e}", exc_info=True)
-                    if stream:
-                        stream.stop_stream()
-                        stream.close()
-                        stream = None
         finally:
-            if stream:
-                stream.stop_stream()
-                stream.close()
-            if p:
-                p.terminate()
+            if sd is not None:
+                sd.stop()
 
     def _save_session_audio(self):
         try:

@@ -21,8 +21,7 @@ if str(TUTORIAL_DIR) not in sys.path:
 import lunavox_tts as lunavox
 import data_setup
 data_setup.ensure_data_from_hf()
-os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'Data' / 'chinese-hubert-base.onnx')
-os.environ['OPEN_JTALK_DICT_DIR'] = str(REPO_ROOT / 'Data' / 'open_jtalk_dic_utf_8-1.11')
+os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'Data' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
 
 def _resolve_reference_audio(language_folder: str):

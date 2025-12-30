@@ -1,12 +1,12 @@
 onnx
 onnxruntime
 numpy
-pyopenjtalk
+pyopenjtalk-plus
 soundfile
 soxr
 pyyaml
 rich
-pyaudio
+sounddevice
 huggingface_hub[hf_xet]
 fastapi
 uvicorn[standard]

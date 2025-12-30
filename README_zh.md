@@ -162,8 +162,8 @@ LunaVox 内置了一个简单的 FastAPI 服务器。
 ```python
 import os
 
-os.environ['HUBERT_MODEL_PATH'] = r"C:\path\to\your\chinese-hubert-base.onnx"
-os.environ['OPEN_JTALK_DICT_DIR'] = r"C:\path\to\your\open_jtalk_dic_utf_8-1.11"
+os.environ['HUBERT_MODEL_PATH'] = r"C:\path\to\your\chinese-hubert-base\chinese-hubert-base.onnx"
+# 不再需要设置 OPEN_JTALK_DICT_DIR，因为 pyopenjtalk-plus 已内置字典
 
 import lunavox_tts as lunavox
 

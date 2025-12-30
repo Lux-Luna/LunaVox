@@ -54,8 +54,7 @@ LANG_CODE_TO_AUDIO_DIR = {
 }
 
 # Prefer local dependencies to avoid downloads
-os.environ.setdefault("HUBERT_MODEL_PATH", str(DATA_DIR / "chinese-hubert-base.onnx"))
-os.environ.setdefault("OPEN_JTALK_DICT_DIR", str(DATA_DIR / "open_jtalk_dic_utf_8-1.11"))
+os.environ.setdefault("HUBERT_MODEL_PATH", str(DATA_DIR / "chinese-hubert-base" / "chinese-hubert-base.onnx"))
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 

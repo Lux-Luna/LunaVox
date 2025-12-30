@@ -174,10 +174,18 @@ class ModelManager:
 
     def load_cn_hubert(self) -> bool:
         model_path: Optional[str] = os.getenv("HUBERT_MODEL_PATH")
+        
+        # If env var not set or invalid, check default location in Data folder
         if not (model_path and os.path.isfile(model_path)):
-            logger.info("Chinese HuBERT model not found locally. Starting download of 'chinese-hubert-base.onnx'...")
-            model_path = download_model('chinese-hubert-base.onnx')
-            logger.info(f"Chinese HuBERT model download completed. Saved to: {os.path.abspath(model_path)}")
+            # Try the new folder structure first
+            potential_path = os.path.join("Data", "chinese-hubert-base", "chinese-hubert-base.onnx")
+            if os.path.isfile(potential_path):
+                model_path = potential_path
+            else:
+                logger.info("Chinese HuBERT model not found locally. Starting download of 'chinese-hubert-base.onnx'...")
+                model_path = download_model('chinese-hubert-base.onnx')
+                logger.info(f"Chinese HuBERT model download completed. Saved to: {os.path.abspath(model_path)}")
+        
         if not model_path:
             return False
         logger.info(f"Found existing Chinese HuBERT model at: {os.path.abspath(model_path)}")

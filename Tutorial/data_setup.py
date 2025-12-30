@@ -19,8 +19,7 @@ AUDIO_LANGUAGE_FOLDERS = ["Chinese", "English", "Japanese"]
 SRC_DATA_DIR = REPO_ROOT / "src" / "lunavox_tts" / "Data"
 SRC_DATA_FOLDERS = ["sv", "v2", "v2ProPlus"]
 
-REQUIRED_CN_HUBERT = DATA_DIR / "chinese-hubert-base.onnx"
-REQUIRED_OPENJTALK_DIR = DATA_DIR / "open_jtalk_dic_utf_8-1.11"
+REQUIRED_CN_HUBERT = DATA_DIR / "chinese-hubert-base" / "chinese-hubert-base.onnx"
 REQUIRED_CHINESE_ROBERTA_DIR = DATA_DIR / "chinese-roberta-wwm-ext-large"
 
 CHAR_REQUIRED_FILES = [
@@ -173,8 +172,6 @@ def need_download() -> Tuple[bool, List[Tuple[str, List[str]]]]:
     base_missing: List[str] = []
     if not REQUIRED_CN_HUBERT.exists():
         base_missing.append(str(REQUIRED_CN_HUBERT.relative_to(REPO_ROOT)))
-    if not REQUIRED_OPENJTALK_DIR.exists():
-        base_missing.append(str(REQUIRED_OPENJTALK_DIR.relative_to(REPO_ROOT)) + "/")
     # Chinese RoBERTa is excluded from base_missing to support lazy loading for Chinese-only TTS.
     if base_missing:
         missing_summary.append(("base", base_missing))
@@ -255,7 +252,6 @@ __all__ = [
     "SRC_DATA_DIR",
     "SRC_DATA_FOLDERS",
     "REQUIRED_CN_HUBERT",
-    "REQUIRED_OPENJTALK_DIR",
     "REQUIRED_CHINESE_ROBERTA_DIR",
     "CHAR_REQUIRED_FILES",
     "list_existing_characters",

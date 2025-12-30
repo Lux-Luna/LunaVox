@@ -32,8 +32,7 @@ if not env_manager.ensure_environment():
 import lunavox_tts as lunavox
 
 # ローカル環境設定
-os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'Data' / 'chinese-hubert-base.onnx')
-os.environ['OPEN_JTALK_DICT_DIR'] = str(REPO_ROOT / 'Data' / 'open_jtalk_dic_utf_8-1.11')
+os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'Data' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
 def resolve_reference(language: str):
     audio_dir = REPO_ROOT / 'Data' / 'audio_resources' / language

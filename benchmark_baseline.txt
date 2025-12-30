@@ -1,7 +1,0 @@
-Benchmark Results (5 iterations)
-----------------------------------------
-Script: Tutorial\v2_quick_tryout\quick_tryout_en.py
-Average Latency: 0.93 seconds
-Average Peak Memory: 81.09 MB
-Latencies: ['0.91', '0.90', '1.01', '0.91', '0.90']
-Memories: ['79.70', '80.84', '81.15', '81.99', '81.76']
