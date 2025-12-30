@@ -12,7 +12,6 @@ uvicorn[standard]
 pydantic
 nltk
 pypinyin
-opencc-python-reimplemented
 cn2an
 jieba_fast
 tokenizers

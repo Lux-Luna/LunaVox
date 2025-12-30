@@ -3,12 +3,12 @@ import os
 
 sys.path.append(os.path.dirname(__file__))
 
-import torch
 from io import BytesIO
 import utils
 
 
 def load_sovits_model(pth_path: str, device: str = 'cpu'):
+    import torch
     f = open(pth_path, "rb")
     meta = f.read(2)
     if meta != b"PK":
@@ -23,4 +23,5 @@ def load_sovits_model(pth_path: str, device: str = 'cpu'):
 
 
 def load_gpt_model(ckpt_path: str, device: str = 'cpu'):
+    import torch
     return torch.load(ckpt_path, map_location=device, weights_only=True)

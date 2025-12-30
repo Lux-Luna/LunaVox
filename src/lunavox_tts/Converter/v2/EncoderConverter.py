@@ -1,4 +1,3 @@
-import torch
 import onnx
 import os
 
@@ -36,6 +35,7 @@ class EncoderConverter:
                 raise FileNotFoundError(f"Error: Input file not found! Path: {path}")
 
     def convert(self):
+        import torch
         # 1. 定义固定的 ONNX 权重键列表 (此顺序决定了 .bin 文件的布局)
         onnx_keys = [
             "encoder.ar_text_embedding.word_embeddings.weight",

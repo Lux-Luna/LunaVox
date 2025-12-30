@@ -286,11 +286,9 @@ def convert_to_onnx(
         torch_pth_path (str | PathLike): The path to the VITS model (.pth) file.
         output_dir (str | PathLike): The directory where the ONNX models will be saved.
     """
-    try:
-        import torch
-    except ImportError:
-        logger.error("❌ PyTorch is not installed. Please run `pip install torch` first.")
-        return
+    from .Converter.version_detector import ensure_torch
+    ensure_torch()
+    import torch
 
     from .Converter.v2.Converter import convert
 

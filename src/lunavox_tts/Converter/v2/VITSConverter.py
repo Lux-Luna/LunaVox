@@ -1,4 +1,3 @@
-import torch
 import onnx
 import numpy as np
 import json
@@ -50,6 +49,7 @@ class VITSConverter:
         (1) 创建一个半精度 (fp16) 的 .bin 文件，但生成一个
             描述全精度 (fp32) 布局的索引表。
         """
+        import torch
         # 加载 key 列表（过滤空行）
         with open(self.key_list_file, 'r') as f:
             onnx_keys = [line.strip() for line in f.readlines() if line.strip()]

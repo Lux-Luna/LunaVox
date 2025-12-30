@@ -4,7 +4,6 @@ STFT Spectrogram extraction for reference audio (VITS input).
 This matches the GPT-SoVITS spectrogram_torch function.
 """
 import numpy as np
-import librosa
 
 
 def extract_stft_spectrogram(audio_32k: np.ndarray,
@@ -14,6 +13,7 @@ def extract_stft_spectrogram(audio_32k: np.ndarray,
                             center: bool = False) -> np.ndarray:
     """
     Extract STFT spectrogram from audio using parameters matching GPT-SoVITS.
+    Pure NumPy implementation to replace librosa.
     
     Args:
         audio_32k: Audio waveform at 32kHz, shape (samples,)
@@ -38,19 +38,31 @@ def extract_stft_spectrogram(audio_32k: np.ndarray,
         else:
             audio_padded = audio_32k
         
-        # Compute STFT
-        D = librosa.stft(
-            audio_padded,
-            n_fft=n_fft,
-            hop_length=hop_length,
-            win_length=win_length,
-            window='hann',
-            center=center,
-            pad_mode='reflect'
-        )
+        # Windowing (Hann window)
+        window = np.hanning(win_length)
+        
+        # Framing using sliding_window_view (Efficient NumPy)
+        # Note: sliding_window_view is available in NumPy 1.20+
+        try:
+            from numpy.lib.stride_tricks import sliding_window_view
+            frames = sliding_window_view(audio_padded, win_length)[::hop_length]
+        except ImportError:
+            # Fallback for older NumPy
+            num_frames = 1 + (len(audio_padded) - win_length) // hop_length
+            frames = np.zeros((num_frames, win_length))
+            for i in range(num_frames):
+                start = i * hop_length
+                frames[i] = audio_padded[start:start+win_length]
+        
+        # Apply window
+        frames = frames * window
+        
+        # RFFT
+        stft_matrix = np.fft.rfft(frames, n=n_fft)
         
         # Get magnitude (sqrt(real^2 + imag^2))
-        magnitude = np.abs(D) + 1e-8
+        magnitude = np.abs(stft_matrix).T  # (n_fft//2+1, n_frames)
+        magnitude = magnitude + 1e-8
         
         # Add batch dimension: (n_fft//2+1, n_frames) -> (1, n_fft//2+1, n_frames)
         spec = np.expand_dims(magnitude, axis=0).astype(np.float32)
@@ -59,6 +71,6 @@ def extract_stft_spectrogram(audio_32k: np.ndarray,
         
     except Exception as e:
         import logging
-        logging.getLogger(__name__).error(f"Failed to extract STFT spectrogram: {e}")
+        logging.getLogger(__name__).error(f"Failed to extract STFT spectrogram (NumPy): {e}")
         raise
 

@@ -26,6 +26,7 @@ from ..ModelManager import model_manager
 from ..Utils.Shared import context
 from ..Utils.Utils import clear_queue
 from ..Audio.ReferenceAudio import ReferenceAudio
+from ..Utils.PerformanceMonitor import monitor
 
 logger = logging.getLogger(__name__)
 
@@ -97,8 +98,8 @@ class TTSPlayer:
                         self._chunk_callback(None)
 
                     if self._start_time:
-                        total_duration = time.time() - self._start_time
-                        logger.info(f"Total TTS session time: {total_duration:.3f} seconds.")
+                        total_duration = time.perf_counter() - self._start_time
+                        monitor.log_metric("Total TTS session time", f"{total_duration:.3f}", "s")
 
                     self._tts_done_event.set()
                     self._session_speaker = None
@@ -132,10 +133,10 @@ class TTSPlayer:
 
                 if audio_chunk is not None:
                     if self._end_time is None:
-                        self._end_time = time.time()
+                        self._end_time = time.perf_counter()
                         if self._start_time:
                             duration: float = self._end_time - self._start_time
-                            logger.info(f"First packet latency: {duration:.3f} seconds.")
+                            monitor.log_metric("First packet latency", f"{duration:.3f}", "s")
 
                     if self._play:
                         self._audio_queue.put(audio_chunk)
@@ -268,7 +269,7 @@ class TTSPlayer:
             if not text_chunk:
                 return
             if self._start_time is None:
-                self._start_time = time.time()
+                self._start_time = time.perf_counter()
 
             if self._split:
                 lang = self._session_language or context.current_language or 'ja'

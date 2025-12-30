@@ -11,6 +11,7 @@ from ..Audio.ReferenceAudio import ReferenceAudio
 from ..Core.TextFrontend import get_text_frontend
 from ..Chinese.ZhBert import compute_bert_phone_features
 from ..Utils.Constants import BERT_FEATURE_DIM
+from ..Utils.PerformanceMonitor import monitor
 
 USE_IO_BINDING = os.getenv("LUNAVOX_USE_IO_BINDING", "0") == "1"
 logger = logging.getLogger(__name__)
@@ -46,205 +47,178 @@ class LunaVoxEngine:
             prompt_encoder: Optional[ort.InferenceSession] = None,
             language: str = "ja",
     ) -> Optional[np.ndarray]:
-        t0 = time.time()
         
-        # 文本前端补符策略：防止漏第一句
-        if not text.startswith("。") and not text.startswith("."):
-            text = "。" + text
+        with monitor.measure("Total TTS Latency"):
+            # 文本前端补符策略：防止漏第一句
+            if not text.startswith("。") and not text.startswith("."):
+                text = "。" + text
 
-        frontend = get_text_frontend()
-
-        if language == "en":
-            ids = frontend.process_en(text)
-            from ..Japanese.SymbolsV2 import symbols_v2
-            phones = [symbols_v2[i] for i in ids]
-            logger.debug(f"LunaVox phones: {phones}")
-            text_seq: np.ndarray = np.array([ids], dtype=np.int64)
-            logger.debug(f"LunaVox text_seq length: {text_seq.shape[1]}")
-            text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
-        elif language == "zh":
-            ids, word2ph, norm_text = frontend.process_zh(text)
-            text_seq: np.ndarray = np.array([ids], dtype=np.int64)
-            # Full zh-BERT parity: compute 1024-d features and align to phones
-            # Keep BERT on GPU but return numpy for ORT compatibility
-            bert_phone = compute_bert_phone_features(norm_text, word2ph, return_tensor=False)
-            if bert_phone.shape[0] != text_seq.shape[1]:
-                text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
-            else:
-                text_bert = bert_phone
-        elif language == "hybrid":
-            # 混合语言支持 (中英混合)
-            chunks = self.split_language(text)
-            all_ids = []
-            all_berts = []
-            for chunk in chunks:
-                if chunk['language'] == 'en':
-                    ids = frontend.process_en(chunk['content'])
-                    all_ids.extend(ids)
-                    all_berts.append(np.zeros((len(ids), BERT_FEATURE_DIM), dtype=np.float32))
-                else:
-                    ids, word2ph, norm_text = frontend.process_zh(chunk['content'])
-                    all_ids.extend(ids)
+            with monitor.measure(f"Frontend ({language})"):
+                frontend = get_text_frontend()
+                if language == "en":
+                    ids = frontend.process_en(text)
+                    from ..Japanese.SymbolsV2 import symbols_v2
+                    phones = [symbols_v2[i] for i in ids]
+                    monitor.log_data("LunaVox phones", phones)
+                    text_seq: np.ndarray = np.array([ids], dtype=np.int64)
+                    monitor.log_data("LunaVox text_seq", text_seq)
+                    text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
+                elif language == "zh":
+                    ids, word2ph, norm_text = frontend.process_zh(text)
+                    text_seq: np.ndarray = np.array([ids], dtype=np.int64)
+                    # Full zh-BERT parity: compute 1024-d features and align to phones
+                    # Keep BERT on GPU but return numpy for ORT compatibility
                     bert_phone = compute_bert_phone_features(norm_text, word2ph, return_tensor=False)
-                    if bert_phone.shape[0] != len(ids):
-                        all_berts.append(np.zeros((len(ids), BERT_FEATURE_DIM), dtype=np.float32))
+                    if bert_phone.shape[0] != text_seq.shape[1]:
+                        text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
                     else:
-                        all_berts.append(bert_phone)
-            text_seq = np.array([all_ids], dtype=np.int64)
-            if all_berts:
-                text_bert = np.concatenate(all_berts, axis=0)
-            else:
-                text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
-        else:
-            text_seq: np.ndarray = np.array([frontend.process_ja(text)], dtype=np.int64)
-            text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
-        t_frontend = time.time()
-        logger.info(f"Frontend ({language}) took: {(t_frontend - t0) * 1000:.2f}ms")
+                        text_bert = bert_phone
+                elif language == "hybrid":
+                    # 混合语言支持 (中英混合)
+                    chunks = self.split_language(text)
+                    all_ids = []
+                    all_berts = []
+                    for chunk in chunks:
+                        if chunk['language'] == 'en':
+                            ids = frontend.process_en(chunk['content'])
+                            all_ids.extend(ids)
+                            all_berts.append(np.zeros((len(ids), BERT_FEATURE_DIM), dtype=np.float32))
+                        else:
+                            ids, word2ph, norm_text = frontend.process_zh(chunk['content'])
+                            all_ids.extend(ids)
+                            bert_phone = compute_bert_phone_features(norm_text, word2ph, return_tensor=False)
+                            if bert_phone.shape[0] != len(ids):
+                                all_berts.append(np.zeros((len(ids), BERT_FEATURE_DIM), dtype=np.float32))
+                            else:
+                                all_berts.append(bert_phone)
+                    text_seq = np.array([all_ids], dtype=np.int64)
+                    if all_berts:
+                        text_bert = np.concatenate(all_berts, axis=0)
+                    else:
+                        text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
+                else:
+                    text_seq: np.ndarray = np.array([frontend.process_ja(text)], dtype=np.int64)
+                    text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
 
-        ref_seq = prompt_audio.phonemes_seq
-        if ref_seq is None:
-            return None
-        ref_bert = prompt_audio.text_bert
-        if ref_bert is None or ref_bert.shape[0] != ref_seq.shape[1]:
-            ref_bert = np.zeros((ref_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
+            ref_seq = prompt_audio.phonemes_seq
+            if ref_seq is None:
+                return None
+            ref_bert = prompt_audio.text_bert
+            if ref_bert is None or ref_bert.shape[0] != ref_seq.shape[1]:
+                ref_bert = np.zeros((ref_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
 
-        from ..Utils.EnvManager import env_manager
-        device_mode = env_manager.get_mode()
-        device_name = "cuda" if device_mode == "gpu" else "cpu"
-        
-        # Use optimized IO Binding for both CPU and GPU to avoid Python<->C++ data copy overhead in the loop
-        semantic_tokens: np.ndarray = self._t2s_iobinding(
-            ref_seq=ref_seq,
-            ref_bert=ref_bert,
-            text_seq=text_seq,
-            text_bert=text_bert,
-            ssl_content=prompt_audio.ssl_content,
-            encoder=encoder,
-            first_stage_decoder=first_stage_decoder,
-            stage_decoder=stage_decoder,
-            device=device_name
-        )
-        t_t2s = time.time()
-
-        logger.info(f"T2S Inference took: {(t_t2s - t_frontend) * 1000:.2f}ms")
-
-        if self.stop_event.is_set():
-            return None
-
-        if semantic_tokens is None or semantic_tokens.size == 0:
-            return None
-
-        eos_indices = np.where(semantic_tokens >= 1024)  # 剔除不合法的元素，例如 EOS Token。
-        if len(eos_indices[0]) > 0:
-            first_eos_index = eos_indices[-1][0]
-            semantic_tokens = semantic_tokens[..., :first_eos_index]
-
-        # Ensure we still have tokens after EOS removal
-        if semantic_tokens.size == 0:
-            return None
-
-        # Ensure semantic_tokens has correct shape (1, 1, N) for VITS
-        if semantic_tokens.ndim == 2:
-            semantic_tokens = np.expand_dims(semantic_tokens, axis=1)  # (1, M) -> (1, 1, M)
-        
-        # Prepare ref_audio based on model version
-        # v2: uses raw audio (2D)
-        # v2Pro/v2ProPlus: uses STFT spectrogram (3D)
-        model_version = prompt_audio.model_version if hasattr(prompt_audio, 'model_version') else 'v2'
-        
-        if model_version in ['v2Pro', 'v2ProPlus']:
-            # Extract STFT spectrogram for v2Pro/v2ProPlus (matches GPT-SoVITS get_spepc)
-            try:
-                from ..Audio.SpectrogramExtractor import extract_stft_spectrogram
-                # IMPORTANT: GPT-SoVITS v2 Pro/ProPlus typically uses filter_length=1406 (704 bins)
-                # Overriding the 2048 default which might cause mismatch
-                ref_audio_features = extract_stft_spectrogram(
-                    prompt_audio.audio_32k,
-                    n_fft=1406,  
-                    hop_length=640,
-                    win_length=1406,
-                    center=False
-                )
-            except Exception as e:
-                # Fallback: try mel-spectrogram
-                import logging
-                logging.getLogger(__name__).warning(
-                    f"STFT spectrogram extraction failed ({e}), trying mel-spectrogram fallback"
-                )
-                try:
-                    from ..Audio.MelExtractor import extract_mel_spectrogram
-                    ref_audio_features = extract_mel_spectrogram(prompt_audio.audio_32k, n_mels=704)
-                except:
-                    # Last resort: use SSL features
-                    logging.getLogger(__name__).warning(
-                        "All feature extraction failed, using SSL features (may cause issues)"
-                    )
-                    ref_audio_features = prompt_audio.ssl_content
-                    if ref_audio_features.ndim == 3:
-                        ref_audio_features = np.transpose(ref_audio_features, (0, 2, 1))
-        else:
-            # v2: use raw audio (2D: batch, samples)
-            ref_audio_features = np.expand_dims(prompt_audio.audio_32k, axis=0)
+            from ..Utils.EnvManager import env_manager
+            device_mode = env_manager.get_mode()
+            device_name = "cuda" if device_mode == "gpu" else "cpu"
             
-            # WORKAROUND: Truncate reference audio for VITS if too long.
-            # Long raw audio inputs (> ~4-5s) can cause FP16 overflow in VITS models, resulting in NaN output.
-            # T2S encoder still uses the full length audio for context.
-            # 128000 samples @ 32k = 4.0 seconds.
-            MAX_VITS_AUDIO_SAMPLES = 128000
-            if ref_audio_features.shape[1] > MAX_VITS_AUDIO_SAMPLES:
-                logger.warning(f"Truncating VITS ref_audio from {ref_audio_features.shape[1]} to {MAX_VITS_AUDIO_SAMPLES} to avoid FP16 overflow.")
-                ref_audio_features = ref_audio_features[:, :MAX_VITS_AUDIO_SAMPLES]
-        
-        # Build vocoder inputs
-        vocoder_inputs = {
-            "text_seq": text_seq,
-            "pred_semantic": semantic_tokens,
-        }
-        
-        # v2: uses raw audio
-        # v2Pro: uses STFT spectrogram
-        # v2ProPlus: uses Prompt Encoder features (no ref_audio)
-        if model_version != 'v2ProPlus':
-            vocoder_inputs["ref_audio"] = ref_audio_features
-        
-        # v2ProPlus: Use Prompt Encoder to extract global embeddings
-        if model_version == 'v2ProPlus' and prompt_encoder is not None:
-            self._run_prompt_encoder(prompt_encoder, prompt_audio)
-            if prompt_audio.global_emb is not None:
-                vocoder_inputs["ge"] = prompt_audio.global_emb
-            if prompt_audio.global_emb_advanced is not None:
-                vocoder_inputs["ge_advanced"] = prompt_audio.global_emb_advanced
-        
-        # Add speaker vector for v2Pro (v2ProPlus uses ge/ge_advanced instead)
-        if model_version == 'v2Pro' and prompt_audio.sv_emb is not None:
-            vocoder_inputs["sv_emb"] = prompt_audio.sv_emb
-        
-        # Validate inputs before calling vocoder
-        # self._validate_vocoder_inputs(vocoder, vocoder_inputs)
-        
-        # Run VITS
-        # Use IOBinding via _run_vocoder
-        vits_output = self._run_vocoder(vocoder, vocoder_inputs)
-        
-        if vits_output is not None:
-            # Final safety check: clip output to avoid pops/noise from overflow
-            # and handle NaNs if any slipped through
-            vits_output = np.nan_to_num(vits_output)
-            vits_output = np.clip(vits_output, -1.0, 1.0)
-        
-        t_vits = time.time()
-        logger.info(f"VITS Inference took: {(t_vits - t_t2s) * 1000:.2f}ms")
-        logger.info(f"Total TTS Latency: {(t_vits - t0) * 1000:.2f}ms")
+            # Use optimized IO Binding for both CPU and GPU to avoid Python<->C++ data copy overhead in the loop
+            with monitor.measure("T2S Inference"):
+                semantic_tokens: np.ndarray = self._t2s_iobinding(
+                    ref_seq=ref_seq,
+                    ref_bert=ref_bert,
+                    text_seq=text_seq,
+                    text_bert=text_bert,
+                    ssl_content=prompt_audio.ssl_content,
+                    encoder=encoder,
+                    first_stage_decoder=first_stage_decoder,
+                    stage_decoder=stage_decoder,
+                    device=device_name
+                )
 
-        logger.debug(
-            "VITS output: shape=%s, range=[%.6f, %.6f], RMS=%.6f",
-            vits_output.shape,
-            float(vits_output.min()),
-            float(vits_output.max()),
-            float(np.sqrt(np.mean(vits_output**2))),
-        )
-        
-        return vits_output
+            if self.stop_event.is_set():
+                return None
+
+            if semantic_tokens is None or semantic_tokens.size == 0:
+                return None
+
+            eos_indices = np.where(semantic_tokens >= 1024)  # 剔除不合法的元素，例如 EOS Token。
+            if len(eos_indices[0]) > 0:
+                first_eos_index = eos_indices[-1][0]
+                semantic_tokens = semantic_tokens[..., :first_eos_index]
+
+            # Ensure we still have tokens after EOS removal
+            if semantic_tokens.size == 0:
+                return None
+
+            # Ensure semantic_tokens has correct shape (1, 1, N) for VITS
+            if semantic_tokens.ndim == 2:
+                semantic_tokens = np.expand_dims(semantic_tokens, axis=1)  # (1, M) -> (1, 1, M)
+            
+            # Prepare ref_audio based on model version
+            # v2: uses raw audio (2D)
+            # v2Pro: uses STFT spectrogram (3D)
+            # v2ProPlus: uses Prompt Encoder features (no ref_audio needed for VITS)
+            model_version = prompt_audio.model_version if hasattr(prompt_audio, 'model_version') else 'v2'
+            
+            if model_version == 'v2Pro':
+                # Extract STFT spectrogram for v2Pro (matches GPT-SoVITS get_spec)
+                try:
+                    with monitor.measure("Reference Audio Feature Extraction"):
+                        from ..Audio.SpectrogramExtractor import extract_stft_spectrogram
+                        # IMPORTANT: GPT-SoVITS v2 Pro typically uses filter_length=1406 (704 bins)
+                        ref_audio_features = extract_stft_spectrogram(
+                            prompt_audio.audio_32k,
+                            n_fft=1406,  
+                            hop_length=640,
+                            win_length=1406,
+                            center=False
+                        )
+                except Exception as e:
+                    logger.warning(f"STFT spectrogram extraction failed ({e}), using raw audio as last resort")
+                    ref_audio_features = np.expand_dims(prompt_audio.audio_32k, axis=0)
+            elif model_version == 'v2ProPlus':
+                # v2ProPlus uses ge/ge_advanced from Prompt Encoder, ref_audio is not required for vocoder
+                ref_audio_features = None
+            else:
+                # v2: use raw audio (2D: batch, samples)
+                ref_audio_features = np.expand_dims(prompt_audio.audio_32k, axis=0)
+                
+                # WORKAROUND: Truncate reference audio for VITS if too long.
+                # Long raw audio inputs (> ~4-5s) can cause FP16 overflow in VITS models, resulting in NaN output.
+                MAX_VITS_AUDIO_SAMPLES = 128000
+                if ref_audio_features.shape[1] > MAX_VITS_AUDIO_SAMPLES:
+                    logger.warning(f"Truncating VITS ref_audio from {ref_audio_features.shape[1]} to {MAX_VITS_AUDIO_SAMPLES} to avoid FP16 overflow.")
+                    ref_audio_features = ref_audio_features[:, :MAX_VITS_AUDIO_SAMPLES]
+            
+            # Build vocoder inputs
+            vocoder_inputs = {
+                "text_seq": text_seq,
+                "pred_semantic": semantic_tokens,
+            }
+            
+            if ref_audio_features is not None:
+                vocoder_inputs["ref_audio"] = ref_audio_features
+            
+            # v2ProPlus: Use Prompt Encoder to extract global embeddings
+            if model_version == 'v2ProPlus' and prompt_encoder is not None:
+                with monitor.measure("Prompt Encoder"):
+                    self._run_prompt_encoder(prompt_encoder, prompt_audio)
+                if prompt_audio.global_emb is not None:
+                    vocoder_inputs["ge"] = prompt_audio.global_emb
+                if prompt_audio.global_emb_advanced is not None:
+                    vocoder_inputs["ge_advanced"] = prompt_audio.global_emb_advanced
+            
+            # Add speaker vector for v2Pro (v2ProPlus uses ge/ge_advanced instead)
+            if model_version == 'v2Pro' and prompt_audio.sv_emb is not None:
+                vocoder_inputs["sv_emb"] = prompt_audio.sv_emb
+            
+            # Validate inputs before calling vocoder
+            # self._validate_vocoder_inputs(vocoder, vocoder_inputs)
+            
+            # Run VITS
+            # Use IOBinding via _run_vocoder
+            with monitor.measure("VITS Inference"):
+                vits_output = self._run_vocoder(vocoder, vocoder_inputs)
+            
+            if vits_output is not None:
+                # Final safety check: clip output to avoid pops/noise from overflow
+                # and handle NaNs if any slipped through
+                vits_output = np.nan_to_num(vits_output)
+                vits_output = np.clip(vits_output, -1.0, 1.0)
+            
+            monitor.log_data("VITS output", vits_output)
+            
+            return vits_output
 
     def _run_prompt_encoder(self, session: ort.InferenceSession, prompt_audio: ReferenceAudio) -> None:
         """Extract global embeddings using Prompt Encoder with IO Binding support."""

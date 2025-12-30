@@ -1,0 +1,70 @@
+{
+    "version": "v2",
+    "language": "en",
+    "mode": "cpu",
+    "dependency_size_mb": 628.23,
+    "dependency_details": {
+        "tts_data": 391.5,
+        "character_model": 236.73
+    },
+    "warmup_rounds": 1,
+    "test_rounds": 5,
+    "reference_audio": "First get into position like this, then move like that. Yep, thats it..wav",
+    "target_text": "Hi, this is lunavox speaking English",
+    "rounds": [
+        {
+            "ram_avg_mb": 5622.56,
+            "ram_peak_mb": 5622.61,
+            "vram_avg_mb": 0,
+            "vram_peak_mb": 0,
+            "time_ms": 1518.2,
+            "round": 1
+        },
+        {
+            "ram_avg_mb": 5622.64,
+            "ram_peak_mb": 5622.67,
+            "vram_avg_mb": 0,
+            "vram_peak_mb": 0,
+            "time_ms": 1344.49,
+            "round": 2
+        },
+        {
+            "ram_avg_mb": 5622.68,
+            "ram_peak_mb": 5622.68,
+            "vram_avg_mb": 0,
+            "vram_peak_mb": 0,
+            "time_ms": 1469.95,
+            "round": 3
+        },
+        {
+            "ram_avg_mb": 5622.69,
+            "ram_peak_mb": 5622.69,
+            "vram_avg_mb": 0,
+            "vram_peak_mb": 0,
+            "time_ms": 1326.49,
+            "round": 4
+        },
+        {
+            "ram_avg_mb": 5623.9,
+            "ram_peak_mb": 5634.05,
+            "vram_avg_mb": 0,
+            "vram_peak_mb": 0,
+            "time_ms": 1327.06,
+            "round": 5
+        }
+    ],
+    "statistics": {
+        "time": {
+            "mean_ms": 1397.24,
+            "min_ms": 1326.49,
+            "max_ms": 1518.2
+        },
+        "memory": {
+            "ram_peak_max_mb": 5634.05,
+            "ram_avg_mean_mb": 5622.89,
+            "vram_peak_max_mb": 0,
+            "vram_avg_mean_mb": 0
+        }
+    },
+    "timestamp": "2025-12-30 11:53:07"
+}

@@ -3,7 +3,6 @@ import os
 from collections import OrderedDict
 import logging
 
-import torch
 import onnx
 
 from ..load_state_dict import load_sovits_model
@@ -48,6 +47,7 @@ class PromptEncoderConverter:
         """
         Create FP16 bin file and FP32 index table.
         """
+        import torch
         with open(self.key_list_file, 'r') as f:
             onnx_keys = [line.strip() for line in f.readlines() if line.strip()]
 

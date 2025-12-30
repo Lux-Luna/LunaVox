@@ -851,6 +851,9 @@ def build_ui() -> gr.Blocks:
 
 
 if __name__ == "__main__":
+    print("The WebUI has been temporarily disabled by the administrator.")
+    print("Please use the CLI (/src/lunavox_tts/Main.py) for TTS inference.")
+    sys.exit(0)
     app = build_ui()
     try:
         server_port = _pick_server_port()

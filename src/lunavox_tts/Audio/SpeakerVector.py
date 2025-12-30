@@ -127,15 +127,19 @@ def load_sv_model(model_path: Optional[str] = None) -> bool:
         return False
     
     try:
+        from ..Utils.EnvManager import env_manager
+        device_mode = env_manager.get_mode()
+        providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if device_mode == "gpu" else ["CPUExecutionProvider"]
+        
         sess_options = ort.SessionOptions()
         sess_options.log_severity_level = 3
         _sv_model = ort.InferenceSession(
             model_path,
-            providers=["CPUExecutionProvider"],
+            providers=providers,
             sess_options=sess_options
         )
         _sv_model_path = model_path
-        logger.debug(f"✓ Loaded speaker embedding model from {model_path}")
+        logger.debug(f"✓ Loaded speaker embedding model from {model_path} (mode={device_mode})")
         return True
         
     except Exception as e:
@@ -174,19 +178,40 @@ def extract_sv_embedding(waveform_16k: np.ndarray) -> Optional[np.ndarray]:
         input_name = input_info.name
         input_shape = input_info.shape
         
-        # If model expects 'waveform' or last dim is not 80, send raw audio
-        # Modern SV models (like CAM++ or ERes2Net) often take (B, SAMPLES)
+        # Prepare input
         if input_name == "waveform" or (len(input_shape) == 2):
             logger.debug(f"Sending raw waveform to SV model (input_name={input_name}, shape={input_shape})")
-            # Ensure shape (1, SAMPLES)
             waveform_input = np.expand_dims(waveform_16k, axis=0).astype(np.float32)
-            sv_emb = _sv_model.run(None, {input_name: waveform_input})[0]
+            model_input = waveform_input
         else:
             # Fallback to Fbank extraction
             logger.debug(f"Extracting Fbank features for SV model (input_name={input_name}, shape={input_shape})")
             fbank_feat = _get_fbank_features(waveform_16k, num_mel_bins=80)
-            fbank_feat = np.expand_dims(fbank_feat, axis=0)  # (1, n_frames, 80)
-            sv_emb = _sv_model.run(None, {input_name: fbank_feat.astype(np.float32)})[0]
+            fbank_feat = np.expand_dims(fbank_feat, axis=0).astype(np.float32)
+            model_input = fbank_feat
+
+        # Inference with optional IO Binding for performance
+        providers = _sv_model.get_providers()
+        if "CUDAExecutionProvider" in providers:
+            try:
+                io_binding = _sv_model.io_binding()
+                device_id = 0 # Default
+                
+                # Bind input
+                input_ort = ort.OrtValue.ortvalue_from_numpy(model_input, 'cuda', device_id)
+                io_binding.bind_ortvalue_input(input_name, input_ort)
+                
+                # Bind output
+                output_name = _sv_model.get_outputs()[0].name
+                io_binding.bind_output(output_name, 'cpu') # Pull back for further processing
+                
+                _sv_model.run_with_iobinding(io_binding)
+                sv_emb = io_binding.copy_outputs_to_cpu()[0]
+            except Exception as e:
+                logger.warning(f"SV IO Binding failed: {e}, falling back to regular run")
+                sv_emb = _sv_model.run(None, {input_name: model_input})[0]
+        else:
+            sv_emb = _sv_model.run(None, {input_name: model_input})[0]
         
         # Ensure output shape is (1, 20480)
         if sv_emb.shape != (1, 20480):

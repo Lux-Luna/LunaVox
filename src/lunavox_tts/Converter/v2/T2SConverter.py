@@ -1,4 +1,3 @@
-import torch
 import onnx
 import numpy as np
 import json
@@ -48,6 +47,7 @@ class T2SModelConverter:
         (1) 根据特定的键映射规则，从 .ckpt 创建 fp16 .bin 和 fp32 索引。
             (已根据用户验证脚本的正确逻辑进行最终修正)
         """
+        import torch
         if not os.path.exists(self.key_list_file):
             raise FileNotFoundError(
                 f"Error: Stage 1 requires the key list file, but it was not found: {self.key_list_file}")

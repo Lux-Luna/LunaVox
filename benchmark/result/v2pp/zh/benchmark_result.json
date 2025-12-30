@@ -1,0 +1,71 @@
+{
+    "version": "v2pp",
+    "language": "zh",
+    "mode": "cpu",
+    "dependency_size_mb": 1283.68,
+    "dependency_details": {
+        "tts_data": 391.5,
+        "roberta": 571.75,
+        "character_model": 320.43
+    },
+    "warmup_rounds": 1,
+    "test_rounds": 5,
+    "reference_audio": "不过我相信，拯救世界树的关键就在其中，所以我一直没有放弃对它的解读。.wav",
+    "target_text": "你好，这是一次中文语音合成测试。",
+    "rounds": [
+        {
+            "ram_avg_mb": 6635.7,
+            "ram_peak_mb": 6671.07,
+            "vram_avg_mb": 0,
+            "vram_peak_mb": 0,
+            "time_ms": 2414.87,
+            "round": 1
+        },
+        {
+            "ram_avg_mb": 6671.74,
+            "ram_peak_mb": 6672.14,
+            "vram_avg_mb": 0,
+            "vram_peak_mb": 0,
+            "time_ms": 2004.62,
+            "round": 2
+        },
+        {
+            "ram_avg_mb": 6672.78,
+            "ram_peak_mb": 6673.16,
+            "vram_avg_mb": 0,
+            "vram_peak_mb": 0,
+            "time_ms": 2409.97,
+            "round": 3
+        },
+        {
+            "ram_avg_mb": 6673.57,
+            "ram_peak_mb": 6674.01,
+            "vram_avg_mb": 0,
+            "vram_peak_mb": 0,
+            "time_ms": 2086.03,
+            "round": 4
+        },
+        {
+            "ram_avg_mb": 6673.64,
+            "ram_peak_mb": 6674.01,
+            "vram_avg_mb": 0,
+            "vram_peak_mb": 0,
+            "time_ms": 2261.37,
+            "round": 5
+        }
+    ],
+    "statistics": {
+        "time": {
+            "mean_ms": 2235.37,
+            "min_ms": 2004.62,
+            "max_ms": 2414.87
+        },
+        "memory": {
+            "ram_peak_max_mb": 6674.01,
+            "ram_avg_mean_mb": 6665.49,
+            "vram_peak_max_mb": 0,
+            "vram_avg_mean_mb": 0
+        }
+    },
+    "timestamp": "2025-12-30 11:53:38"
+}

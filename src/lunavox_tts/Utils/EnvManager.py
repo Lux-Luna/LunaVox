@@ -39,7 +39,7 @@ class EnvManager:
                     return json.load(f)
             except Exception as e:
                 logger.error(f"Failed to load env config: {e}")
-        return {"mode": "cpu"}
+        return {"mode": "cpu", "developer_mode": False}
 
     def _save_config(self):
         try:
@@ -51,6 +51,37 @@ class EnvManager:
     def get_mode(self) -> str:
         """Returns the configured mode ('cpu' or 'gpu')."""
         return self._config.get("mode", "cpu")
+
+    def get_developer_mode(self) -> bool:
+        """Returns True if developer mode is enabled."""
+        val = self._config.get("developer_mode", False)
+        if val:
+            # Check for optional dependencies required for full dev mode experience
+            try:
+                import psutil
+            except ImportError:
+                # Log a warning only once per session ideally, but here works too as it's a getter
+                # But to avoid spamming logs, we might want to be careful.
+                # However, this method is called frequently. Let's move the check to set_developer_mode or init.
+                pass
+        return val
+
+    def set_developer_mode(self, enabled: bool):
+        """Sets the developer mode and saves configuration."""
+        if enabled:
+            try:
+                import psutil
+            except ImportError:
+                logger.warning(
+                    "\n[WARNING] Developer mode enabled, but 'psutil' is missing.\n"
+                    "Memory tracking features will be disabled.\n"
+                    "To enable full monitoring, please run:\n\n"
+                    "    pip install psutil\n"
+                )
+        
+        self._config["developer_mode"] = enabled
+        self._save_config()
+        logger.info(f"Developer mode set to: {enabled}")
 
     def set_mode(self, mode: str):
         """Sets the desired mode and saves configuration."""

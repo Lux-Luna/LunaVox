@@ -13,6 +13,7 @@ from huggingface_hub import hf_hub_download
 from .Utils.Shared import context
 # from .Utils.Constants import PACKAGE_NAME
 from .Utils.Utils import LRUCacheDict
+from .Utils.PerformanceMonitor import monitor
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +131,7 @@ def load_session_with_fp16_conversion(
     injects into ONNX model, and creates InferenceSession without temp files.
     """
     import onnx
+    import numpy as np
 
     if not os.path.exists(onnx_path):
         raise FileNotFoundError(f"ONNX Model not found: {onnx_path}")
@@ -267,7 +269,7 @@ class ModelManager:
 
     def load_character(self, character_name: str, model_dir: str) -> bool:
         import time
-        t_start = time.time()
+        t_start = time.perf_counter()
         character_name = character_name.lower()
         if character_name in self.character_to_model:
             logger.debug(f"Character '{character_name}' is already in cache; no need to reload.")
@@ -354,12 +356,24 @@ class ModelManager:
             if is_v2pp:
                 model_version = 'v2ProPlus'
 
-            t_end = time.time()
+            t_end = time.perf_counter()
+            duration = t_end - t_start
+            
+            # Calculate total model size on disk
+            total_size_mb = 0
+            for filename in os.listdir(model_dir):
+                if filename.endswith(".onnx") or filename.endswith(".bin"):
+                    total_size_mb += os.path.getsize(os.path.join(model_dir, filename))
+            total_size_mb /= (1024 * 1024)
+
             logger.info(
-                f"✓ Character '{character_name.capitalize()}' loaded successfully in {t_end - t_start:.2f}s.\n"
+                f"✓ Character '{character_name.capitalize()}' loaded successfully.\n"
                 f"  - Model Type: {model_version}\n"
-                f"  - Providers: {self.providers}"
+                f"  - Providers: {self.providers}\n"
+                f"  - Total Size: {total_size_mb:.2f} MB"
             )
+            monitor.log_metric(f"Load time ({character_name})", f"{duration:.2f}", "s")
+            monitor.log_metric(f"Model Size ({character_name})", f"{total_size_mb:.2f}", "MB")
 
         except Exception as e:
             logger.error(f"Error loading character '{character_name}': {e}", exc_info=True)

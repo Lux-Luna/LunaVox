@@ -2,7 +2,7 @@ from .VITSConverter import VITSConverter
 from .T2SConverter import T2SModelConverter
 from .EncoderConverter import EncoderConverter
 from ..v2ProPlus.PromptEncoderConverter import PromptEncoderConverter
-from ..version_detector import detect_version, is_v2pro_variant
+from ..version_detector import detect_version, is_v2pro_variant, ensure_torch
 from ...Utils.Constants import PACKAGE_NAME
 
 import logging
@@ -112,6 +112,10 @@ def remove_folder(folder: str) -> None:
 def convert(torch_ckpt_path: str,
             torch_pth_path: str,
             output_dir: str):
+    # Ensure torch is installed for conversion
+    ensure_torch()
+    import torch
+
     # 确保缓存和输出目录存在
     os.makedirs(CACHE_DIR, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
