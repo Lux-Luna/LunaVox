@@ -107,6 +107,10 @@ class ReferenceAudio:
         if np.isnan(audio_16k).any():
              audio_16k = np.nan_to_num(audio_16k)
         
+        # Ensure extractor resources are available (HuBERT, SV)
+        from ..Utils.ResourceManager import resource_manager
+        resource_manager.ensure_extractor()
+        
         # Extract SSL content (always needed)
         audio_16k_batch = np.expand_dims(audio_16k, axis=0)
         if not model_manager.cn_hubert:
@@ -114,6 +118,7 @@ class ReferenceAudio:
         self.ssl_content: Optional[np.ndarray] = model_manager.cn_hubert.run(
             None, {"input_values": audio_16k_batch}
         )[0]
+
         
         # Extract speaker vector (Always extract for full version compatibility in Personas)
         if _SV_AVAILABLE:

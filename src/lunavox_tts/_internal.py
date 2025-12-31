@@ -398,6 +398,13 @@ def tts(
     context.current_speaker = character_name
     normalized_language = _normalize_language(language)
     context.current_language = normalized_language
+    
+    # Lazy load language-specific resources
+    if normalized_language == "zh":
+        resource_manager.ensure_chinese()
+    elif normalized_language == "ja":
+        resource_manager.ensure_japanese()
+    
     ref_info = _reference_audios[character_name]
     model_version = ref_info.get('model_version', model_manager.get_character_version(character_name))
     
@@ -414,6 +421,7 @@ def tts(
             model_version=model_version,
         )
         prompt_audio = context.current_prompt_audio
+
 
     tts_player.start_session(
         play=play,

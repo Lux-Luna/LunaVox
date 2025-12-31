@@ -71,6 +71,10 @@ class PersonaCreator:
         logger.info(f"Source: {audio_path}")
         logger.info(f"Lang: {language} | Version: {self.model_version}")
 
+        # Ensure extractor resources (HuBERT + SV) are available
+        from lunavox_tts.Utils.ResourceManager import resource_manager
+        resource_manager.ensure_extractor()
+
         # Extract features (this runs BERT, SSL, SV, Phonemizer)
         ref = ReferenceAudio(
             prompt_wav=audio_path,
@@ -78,6 +82,7 @@ class PersonaCreator:
             language=language,
             model_version=self.model_version
         )
+
         
         # Save to disk
         final_path = export_persona(
