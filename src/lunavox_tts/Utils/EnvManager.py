@@ -119,19 +119,48 @@ class EnvManager:
     def set_developer_mode(self, enabled: bool):
         """Sets the developer mode and saves configuration."""
         if enabled:
-            try:
-                import psutil
-            except ImportError:
-                logger.warning(
-                    "\n[WARNING] Developer mode enabled, but 'psutil' is missing.\n"
-                    "Memory tracking features will be disabled.\n"
-                    "To enable full monitoring, please run:\n\n"
-                    "    pip install psutil\n"
-                )
+            self._ensure_developer_dependencies()
         
         self._config["developer_mode"] = enabled
         self._save_config()
         logger.info(f"Developer mode set to: {enabled}")
+
+    def _ensure_developer_dependencies(self):
+        """Checks for optional developer dependencies and prompts for installation if missing."""
+        deps = []
+        try:
+            import psutil
+        except ImportError:
+            deps.append(("psutil", "psutil"))
+            
+        try:
+            import pynvml
+        except ImportError:
+            # nvidia-ml-py is the package name for pynvml
+            deps.append(("nvidia-ml-py", "pynvml"))
+            
+        if not deps:
+            return
+
+        logger.info("\n" + "!" * 60)
+        logger.info("[DEVELOPER MODE] Required monitoring dependencies are missing.")
+        logger.info(f"Missing: {', '.join([d[0] for d in deps])}")
+        logger.info("These are required for RAM/VRAM tracking and detailed performance metrics.")
+        
+        try:
+            # We use a raw input here to prompt the user in the terminal
+            # Note: This might block in non-interactive environments
+            choice = input(f"\nWould you like to install {len(deps)} missing developer dependencies now? (y/n): ").strip().lower()
+            if choice == 'y':
+                for pkg_name, _ in deps:
+                    logger.info(f"Installing {pkg_name}...")
+                    subprocess.check_call([sys.executable, "-m", "pip", "install", pkg_name])
+                logger.info("Successfully installed developer dependencies.\n")
+            else:
+                logger.warning("\nSkipping installation. Some monitoring features will be unavailable.")
+        except Exception as e:
+            logger.error(f"Failed to handle developer dependency installation: {e}")
+        logger.info("!" * 60 + "\n")
 
     def set_mode(self, mode: str):
         """Sets the desired mode and saves configuration."""

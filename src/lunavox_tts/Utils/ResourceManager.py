@@ -28,20 +28,20 @@ class ResourceManager:
             self._download(["TTSData/sv/*"])
 
     def ensure_character_data(self, v2pp=False):
-        """Ensure CharacterData (audio_resources and pretrained models) is present."""
-        # 1. Always ensure audio_resources (per user request)
-        if not (self.char_data_dir / "audio_resources").exists():
-            self._download(["CharacterData/audio_resources/*"])
+        """Ensure CharacterData (audio and pretrained models) is present."""
+        # 1. Always ensure audio (per user request)
+        if not (self.char_data_dir / "audio").exists():
+            self._download(["CharacterData/audio/*"])
         
         # 2. Version-specific pretrained model pulling
         if v2pp:
             # v2ProPlus check
-            if not (self.char_data_dir / "character_model" / "v2_pro_plus" / "pretrained").exists():
-                self._download(["CharacterData/character_model/v2_pro_plus/pretrained/*"])
+            if not (self.char_data_dir / "model" / "v2_pro_plus" / "pretrained").exists():
+                self._download(["CharacterData/model/v2_pro_plus/pretrained/*"])
         else:
             # Standard v2 check
-            if not (self.char_data_dir / "character_model" / "v2" / "pretrained").exists():
-                self._download(["CharacterData/character_model/v2/pretrained/*"])
+            if not (self.char_data_dir / "model" / "v2" / "pretrained").exists():
+                self._download(["CharacterData/model/v2/pretrained/*"])
 
     def ensure_roberta(self):
         """Ensure RoBERTa model is present (for Chinese TTS)."""

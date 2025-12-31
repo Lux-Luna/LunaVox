@@ -31,21 +31,26 @@ import lunavox_tts as lunavox
 os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
 def resolve_reference(language: str):
-    audio_dir = REPO_ROOT / 'CharacterData' / 'audio_resources' / language
+    audio_dir = REPO_ROOT / 'CharacterData' / 'audio' / language
     wav_file = next(audio_dir.glob("*.wav"))
     return str(wav_file), wav_file.stem
 
 # 1. Load Character Model
-model_dir = str(REPO_ROOT / 'CharacterData' / 'character_model' / 'v2' / 'pretrained')
-lunavox.load_character('pretrained', model_dir)
+model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2' / 'pretrained')
+lunavox.load_character('luna_en', model_dir)
 
-# 2. Set Reference Audio (First .wav found in English folder)
-audio_path, reference_text = resolve_reference('English')
-lunavox.set_reference_audio('pretrained', audio_path, reference_text, audio_language='en')
+# 2. Use Persona (Solidified Features)
+# Old reference logic commented out as requested:
+# audio_path, reference_text = resolve_reference('English')
+# lunavox.set_reference_audio('luna_en', audio_path, reference_text, audio_language='en')
+
+# Load the persona for luna_en
+persona_dir = str(REPO_ROOT / 'CharacterData' / 'character' / 'luna_en')
+lunavox.load_persona('luna_en', persona_dir)
 
 # 3. Text-to-Speech
 lunavox.tts(
-    character_name='pretrained',
+    character_name='luna_en',
     text='Hi, This is LunaVox speaking English.',
     play=True,
     language='en'

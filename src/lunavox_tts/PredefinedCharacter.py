@@ -30,7 +30,7 @@ def download_predefined_character_model(character_name: str, save_path: Optional
     cache_dir_path: Optional[str] = None  # 用来记录缓存目录
 
     for filename in files_list:
-        repo_path = f"character_model/{character_name}/{filename}"
+        repo_path = f"model/{character_name}/{filename}"
         try:
             local_path = hf_hub_download(
                 repo_id=repo_id,

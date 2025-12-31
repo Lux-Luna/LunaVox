@@ -19,7 +19,8 @@ if sys.platform == 'win32':
                     os.environ['PATH'] = comp_path + os.pathsep + os.environ['PATH']
 
 from ._internal import (load_character, unload_character, set_reference_audio, tts_async, tts, stop, convert_to_onnx,
-                        clear_reference_audio_cache, launch_command_line_client, load_predefined_character)
+                        clear_reference_audio_cache, launch_command_line_client, load_predefined_character,
+                        create_persona, load_persona)
 from ._internal_multi_ref import set_multi_reference_audio, create_multi_reference_audio
 from .Server import start_server
 
@@ -37,4 +38,6 @@ __all__ = [
     "launch_command_line_client",
     "start_server",
     "load_predefined_character",
+    "create_persona",
+    "load_persona",
 ]

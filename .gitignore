@@ -129,8 +129,8 @@ Output/
 *.flac
 
 # Benchmark output
-benchmark/audio_output/
-benchmark/result/
+benchmark/audio_output
+benchmark/result
 
 # Temporary files
 temp/

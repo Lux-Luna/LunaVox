@@ -197,7 +197,7 @@ class ModelManager:
         capacity_str = os.getenv('Max_Cached_Character_Models', '3')
         self.character_to_model: dict[str, dict[str, InferenceSession]] = LRUCacheDict(
             capacity=int(capacity_str))
-        self.character_model_paths: dict[str, str] = {}  # Persistence dict for model paths
+        self.model_paths: dict[str, str] = {}  # Persistence dict for model paths
         self.character_versions: dict[str, str] = {}  # Store model versions
         self.providers = _resolve_providers()
 
@@ -254,18 +254,18 @@ class ModelManager:
                 VITS=model_map["VITS"],
                 PROMPT_ENCODER=model_map.get("PROMPT_ENCODER")
             )
-        if character_name in self.character_model_paths:
-            model_dir = self.character_model_paths[character_name]
+        if character_name in self.model_paths:
+            model_dir = self.model_paths[character_name]
             if self.load_character(character_name, model_dir):
                 return self.get(character_name)
             else:
-                del self.character_model_paths[character_name]
+                del self.model_paths[character_name]
                 return None
         return None
 
     def has_character(self, character_name: str) -> bool:
         character_name = character_name.lower()
-        return character_name in self.character_model_paths
+        return character_name in self.model_paths
 
     def load_character(self, character_name: str, model_dir: str) -> bool:
         import time
@@ -380,7 +380,7 @@ class ModelManager:
             return False
 
         self.character_to_model[character_name] = model_dict
-        self.character_model_paths[character_name] = model_dir
+        self.model_paths[character_name] = model_dir
         self.character_versions[character_name] = model_version
 
         if not context.current_speaker:

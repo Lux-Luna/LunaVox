@@ -126,6 +126,110 @@ def set_reference_audio(
     )
 
 
+def create_persona(
+        character_name: str,
+        audio_path: Union[str, PathLike],
+        audio_text: str,
+        save_dir: Union[str, PathLike],
+        audio_language: Optional[str] = None,
+) -> str:
+    """
+    Create and save a Persona from reference audio for reference-free TTS.
+    
+    After calling this function, you can use `load_persona()` to enable
+    TTS without providing the reference audio again.
+    
+    Args:
+        character_name (str): The name of the character.
+        audio_path (str | PathLike): Path to the reference audio file.
+        audio_text (str): The transcript of the reference audio.
+        save_dir (str | PathLike): Directory to save the persona files.
+        audio_language (str, optional): Language of the reference audio.
+        
+    Returns:
+        str: Path to the saved persona directory.
+        
+    Example:
+        >>> lunavox.create_persona("klee", "ref.wav", "Hello world", "./personas/klee")
+        >>> # Later, without the original audio:
+        >>> lunavox.load_persona("klee", "./personas/klee")
+        >>> lunavox.tts("klee", "Welcome!")
+    """
+    audio_path_str = os.fspath(audio_path)
+    save_dir_str = os.fspath(save_dir)
+    
+    # Validate audio format
+    ext = os.path.splitext(audio_path_str)[1].lower()
+    if ext not in SUPPORTED_AUDIO_EXTS:
+        raise ValueError(
+            f"Audio format '{ext}' is not supported. "
+            f"Supported formats: {SUPPORTED_AUDIO_EXTS}"
+        )
+    
+    # Get model version for the character
+    model_version = model_manager.get_character_version(character_name)
+    
+    # Create ReferenceAudio (this extracts all features)
+    ref = ReferenceAudio(
+        prompt_wav=audio_path_str,
+        prompt_text=audio_text,
+        language=audio_language or 'auto',
+        model_version=model_version,
+    )
+    
+    # Export to persona directory
+    persona_path = ref.export_persona(save_dir_str, character_name, audio_path_str)
+    logger.info(f"✓ Persona created for '{character_name}' at: {persona_path}")
+    
+    return persona_path
+
+
+def load_persona(
+        character_name: str,
+        persona_dir: Union[str, PathLike],
+) -> None:
+    """
+    Load a previously saved Persona for reference-free TTS.
+    
+    After calling this function, `tts()` and `tts_async()` will use
+    the cached features from the Persona, skipping audio preprocessing.
+    
+    Args:
+        character_name (str): The name of the character.
+        persona_dir (str | PathLike): Path to the persona directory.
+        
+    Raises:
+        FileNotFoundError: If the persona directory doesn't exist.
+        ValueError: If the persona data is invalid.
+        
+    Example:
+        >>> lunavox.load_persona("klee", "./personas/klee")
+        >>> lunavox.tts("klee", "Hello!")  # No reference audio needed
+    """
+    persona_dir_str = os.fspath(persona_dir)
+    
+    if not os.path.isdir(persona_dir_str):
+        raise FileNotFoundError(f"Persona directory not found: {persona_dir_str}")
+    
+    # Load persona using ReferenceAudio.from_persona
+    ref = ReferenceAudio.from_persona(persona_dir_str)
+    
+    # Get model version from loaded persona
+    model_version = getattr(ref, 'model_version', 'v2')
+    
+    # Register in reference audios dict
+    _reference_audios[character_name] = {
+        'persona_dir': persona_dir_str,
+        'model_version': model_version,
+        'is_persona': True,
+    }
+    
+    # Set as current prompt audio
+    context.current_prompt_audio = ref
+    
+    logger.info(f"✓ Persona loaded for '{character_name}' from: {persona_dir_str}")
+
+
 async def tts_async(
         character_name: str,
         text: str,
@@ -151,10 +255,10 @@ async def tts_async(
         bytes: A chunk of the generated audio data.
 
     Raises:
-        ValueError: If 'set_reference_audio' has not been called for the character.
+        ValueError: If 'set_reference_audio' or 'load_persona' has not been called for the character.
     """
     if character_name not in _reference_audios:
-        raise ValueError("Please call 'set_reference_audio' first to set the reference audio.")
+        raise ValueError("Please call 'set_reference_audio' or 'load_persona' first.")
 
     if save_path:
         save_path = os.fspath(save_path)
@@ -176,13 +280,20 @@ async def tts_async(
     context.current_speaker = character_name
     ref_info = _reference_audios[character_name]
     model_version = ref_info.get('model_version', model_manager.get_character_version(character_name))
-    context.current_prompt_audio = ReferenceAudio(
-        prompt_wav=ref_info['audio_path'],
-        prompt_text=ref_info['audio_text'],
-        language=ref_info.get('audio_lang') or 'auto',
-        model_version=model_version,
-    )
-    prompt_audio = context.current_prompt_audio
+    
+    # Check if persona mode (skip audio preprocessing)
+    if ref_info.get('is_persona', False):
+        # Use cached prompt audio from load_persona()
+        prompt_audio = context.current_prompt_audio
+    else:
+        # Standard mode: create ReferenceAudio from wav
+        context.current_prompt_audio = ReferenceAudio(
+            prompt_wav=ref_info['audio_path'],
+            prompt_text=ref_info['audio_text'],
+            language=ref_info.get('audio_lang') or 'auto',
+            model_version=model_version,
+        )
+        prompt_audio = context.current_prompt_audio
 
     # 3. 使用新的回调接口启动 TTS 会话
     tts_player.start_session(
@@ -229,7 +340,7 @@ def tts(
         save_path (str | PathLike | None, optional): If provided, saves the generated audio to this file path. Defaults to None.
     """
     if character_name not in _reference_audios:
-        logger.error("Please call 'set_reference_audio' first to set the reference audio.")
+        logger.error("Please call 'set_reference_audio' or 'load_persona' first.")
         return
 
     if save_path:
@@ -243,13 +354,20 @@ def tts(
     context.current_language = normalized_language
     ref_info = _reference_audios[character_name]
     model_version = ref_info.get('model_version', model_manager.get_character_version(character_name))
-    context.current_prompt_audio = ReferenceAudio(
-        prompt_wav=ref_info['audio_path'],
-        prompt_text=ref_info['audio_text'],
-        language=ref_info.get('audio_lang') or 'auto',
-        model_version=model_version,
-    )
-    prompt_audio = context.current_prompt_audio
+    
+    # Check if persona mode (skip audio preprocessing)
+    if ref_info.get('is_persona', False):
+        # Use cached prompt audio from load_persona()
+        prompt_audio = context.current_prompt_audio
+    else:
+        # Standard mode: create ReferenceAudio from wav
+        context.current_prompt_audio = ReferenceAudio(
+            prompt_wav=ref_info['audio_path'],
+            prompt_text=ref_info['audio_text'],
+            language=ref_info.get('audio_lang') or 'auto',
+            model_version=model_version,
+        )
+        prompt_audio = context.current_prompt_audio
 
     tts_player.start_session(
         play=play,

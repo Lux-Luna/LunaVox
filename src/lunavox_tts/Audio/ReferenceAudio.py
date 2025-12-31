@@ -24,6 +24,46 @@ class ReferenceAudio:
     _prompt_cache: dict[tuple[str, str, str], "ReferenceAudio"] = LRUCacheDict(
         capacity=int(os.getenv("Max_Cached_Reference_Audio", "5"))
     )
+    
+    # Persona support: indicates if this instance was loaded from cached features
+    _is_persona_based: bool = False
+
+    @classmethod
+    def from_persona(cls, persona_dir: str) -> "ReferenceAudio":
+        """
+        Create a ReferenceAudio from cached Persona features (no wav required).
+        
+        This enables reference-free TTS by loading pre-computed features
+        instead of extracting them from audio at runtime.
+        
+        Args:
+            persona_dir: Path to the persona directory containing metadata.json and features.npz.
+            
+        Returns:
+            A ReferenceAudio instance with all features pre-loaded.
+        """
+        from ..Persona.PersonaManager import PersonaManager
+        return PersonaManager.load(persona_dir)
+
+    def export_persona(self, save_dir: str, character_name: str, source_audio_path: Optional[str] = None) -> str:
+        """
+        Export current features to a Persona directory for reference-free TTS.
+        
+        Args:
+            save_dir: Directory path to save the persona files.
+            character_name: Name of the character.
+            source_audio_path: Optional path to source audio for MD5 validation.
+            
+        Returns:
+            The path to the saved persona directory.
+        """
+        from ..Persona.PersonaManager import PersonaManager
+        return PersonaManager.export(self, save_dir, character_name, source_audio_path)
+
+    @property
+    def is_persona_based(self) -> bool:
+        """Returns True if this instance was loaded from a Persona (no wav processing)."""
+        return getattr(self, '_is_persona_based', False)
 
     def __new__(cls, prompt_wav: str, prompt_text: str, language: str = "auto", model_version: str = 'v2'):
         # Cache key includes model_version to avoid conflicts

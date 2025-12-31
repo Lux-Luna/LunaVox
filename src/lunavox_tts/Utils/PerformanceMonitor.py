@@ -3,7 +3,7 @@ import logging
 import os
 import sys
 from contextlib import contextmanager
-from typing import Optional, Any
+from typing import Optional, Any, Literal
 from .EnvManager import env_manager
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ def _get_psutil():
             import psutil
             _psutil = psutil
         except ImportError:
-            pass
+            logger.warning("[Monitor] 'psutil' is missing. RAM tracking will be unavailable. 'pip install psutil' to enable.")
     return _psutil
 
 class PerformanceMonitor:
@@ -85,7 +85,7 @@ class PerformanceMonitor:
         return env_manager.get_developer_mode()
 
     @contextmanager
-    def measure(self, task_name: str):
+    def measure(self, task_name: str, category: Literal["USER_PERCEIVED", "LINK_DETAIL"] = "LINK_DETAIL"):
         """
         High-performance context manager for measuring task duration and memory.
         Calculations are performed AFTER the task to avoid blocking the TTS chain.
@@ -112,15 +112,15 @@ class PerformanceMonitor:
             rss_mb = 0
             if self.process:
                 try:
-                    # Report RSS relative to process baseline to filter background noise
+                    # Report absolute RSS of the process for better visibility
                     current_rss = self.process.memory_info().rss
-                    rss_mb = max(0, current_rss - self.base_rss) / (1024 * 1024)
+                    rss_mb = current_rss / (1024 * 1024)
                 except: pass
             
             vram_mb = 0
             if _gpu_handle:
                 try:
-                    # Attempt precise PID-based VRAM tracking first
+                    # Attempt precise PID-based VRAM tracking
                     pid = os.getpid()
                     used_vram = 0
                     pid_found = False
@@ -137,22 +137,34 @@ class PerformanceMonitor:
                     if pid_found:
                         vram_mb = used_vram / (1024 * 1024)
                     else:
-                        # Fallback to delta from system baseline if PID tracking fails
-                        current_vram = _pynvml.nvmlDeviceGetMemoryInfo(_gpu_handle).used
-                        vram_mb = max(0, current_vram - self.base_vram) / (1024 * 1024)
+                        # Fallback to absolute system VRAM usage if PID tracking fails
+                        vram_mb = _pynvml.nvmlDeviceGetMemoryInfo(_gpu_handle).used / (1024 * 1024)
                 except: pass
             
             if self._buffering_enabled:
                 self._buffer.append({
                     "type": "perf",
                     "task": task_name,
+                    "category": category,
                     "duration_ms": duration_ms,
                     "mem_rss_mb": rss_mb,
                     "vram_mb": vram_mb,
                     "timestamp": time.time()
                 })
             else:
-                logger.info(f"[Perf] {task_name} took: {duration_ms:.2f}ms | RAM+: {rss_mb:.2f}MB | VRAM+: {vram_mb:.2f}MB")
+                logger.info(f"[Perf][{category}] {task_name} took: {duration_ms:.2f}ms | RAM+: {rss_mb:.2f}MB | VRAM+: {vram_mb:.2f}MB")
+
+    def set_buffering(self, enabled: bool):
+        """Enable or disable buffering of metrics."""
+        self._buffering_enabled = enabled
+        if not enabled:
+            self._buffer = []
+
+    def get_buffer(self) -> list:
+        """Retrieve the current buffer and clear it."""
+        data = self._buffer
+        self._buffer = []
+        return data
 
     def log_data(self, name: str, data: Any, level: int = logging.DEBUG):
         if not self.is_enabled:

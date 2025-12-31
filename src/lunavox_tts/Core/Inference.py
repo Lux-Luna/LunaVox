@@ -48,7 +48,7 @@ class LunaVoxEngine:
             language: str = "ja",
     ) -> Optional[np.ndarray]:
         
-        with monitor.measure("Total TTS Latency"):
+        with monitor.measure("Total TTS Latency", category="USER_PERCEIVED"):
             # 文本前端补符策略：防止漏第一句
             if not text.startswith("。") and not text.startswith("."):
                 text = "。" + text
@@ -290,7 +290,9 @@ class LunaVoxEngine:
             for output in session.get_outputs():
                 io_binding.bind_output(output.name, "cpu") # Pull result back to CPU for audio output
             
-            session.run_with_iobinding(io_binding)
+            with monitor.measure("Vocoder Kernel", category="LINK_DETAIL"):
+                session.run_with_iobinding(io_binding)
+                
             outputs = io_binding.copy_outputs_to_cpu()
             if outputs:
                 return outputs[0]
