@@ -32,20 +32,33 @@ os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-ba
 
 def resolve_reference(language: str):
     audio_dir = REPO_ROOT / 'CharacterData' / 'audio' / language
-    wav_file = next(audio_dir.glob("*.wav"))
+    wav_files = list(audio_dir.glob("*.wav"))
+    if not wav_files:
+        raise FileNotFoundError(f"No .wav files found in {audio_dir}")
+    wav_file = wav_files[0]
     return str(wav_file), wav_file.stem
 
-# 1. キャラクタモデルのロード
+# 1. Persona のロード (推奨モード)
+# 事前に抽出・固化された特徴量 (luna_ja) を使用し、実行時の音声解析をスキップします。
+# このモードは、起動が速く、メモリ使用量が少なく、音質が安定しています。
+char_name = 'luna_ja'
+persona_dir = str(REPO_ROOT / 'CharacterData' / 'character' / 'luna_ja')
 model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2' / 'pretrained')
-lunavox.load_character('pretrained', model_dir)
 
-# 2. 参照オーディオの設定 (Japanese フォルダ内の最初の .wav ファイル)
+lunavox.load_persona(char_name, persona_dir)
+lunavox.load_character(char_name, model_dir)
+
+# 2. 代替案: 参照オーディオモード (コメントアウト)
+# 特定の WAV ファイルを使用してリアルタイムでボイスクローニングを行う場合に使用します。
+# 注意: 起動するたびに特徴量の再抽出が行われます。
+"""
 audio_path, reference_text = resolve_reference('Japanese')
-lunavox.set_reference_audio('pretrained', audio_path, reference_text, audio_language='ja')
+lunavox.set_reference_audio(char_name, audio_path, reference_text, audio_language='ja')
+"""
 
 # 3. テキスト読み上げ (TTS)
 lunavox.tts(
-    character_name='pretrained',
+    character_name=char_name,
     text='こんにちは、ルナヴォックスです。',
     play=True,
     language='ja'

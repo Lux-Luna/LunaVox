@@ -114,6 +114,19 @@ class ModelManager:
             gc.collect()
             logger.info("✓ HuBERT model unloaded.")
 
+    def unload_sv_model(self) -> None:
+        """
+        Unload the Speaker Vector model to free up memory/VRAM.
+        Useful when in Persona mode where SV extraction is no longer needed.
+        """
+        from .Audio import SpeakerVector
+        if hasattr(SpeakerVector, "_sv_model") and SpeakerVector._sv_model is not None:
+            logger.info("Unloading Speaker Vector model...")
+            SpeakerVector._sv_model = None
+            import gc
+            gc.collect()
+            logger.info("✓ Speaker Vector model unloaded.")
+
     def get(self, character_name: str) -> Optional[GSVModel]:
         if character_name in self.character_to_model:
             model_map = self.character_to_model[character_name]
@@ -190,34 +203,23 @@ class ModelManager:
                 logger.info(f"Loading character model '{character_name}'... ({i+1}/{total_steps})")
                 
                 onnx_path = os.path.join(model_dir, onnx_file)
-                
-                # Check for native FP16 model first (if GPU and available)
-                # But prioritize skeleton + bin if bin exists as per user request
                 bin_path = os.path.join(model_dir, bin_file) if bin_file else None
                 
+                # GPU/CPU Classic Path: Prioritize in-memory patching for memory efficiency
                 if bin_path and os.path.exists(bin_path) and os.path.exists(onnx_path):
-                    # In-memory patching
                     logger.debug(f"Loading {key} with in-memory FP16 patching...")
                     model_dict[key] = load_session_with_fp16_conversion(
                         onnx_path, bin_path, self.providers, get_default_sess_options()
                     )
                 else:
                     # Fallback to standard loading
-                    # Check if there's an FP16 version of the ONNX file
-                    fp16_onnx_name = getattr(_GSVModelFile, f"{key}_FP16", None)
-                    fp16_onnx_path = os.path.join(model_dir, fp16_onnx_name) if fp16_onnx_name else None
-                    
-                    if fp16_onnx_path and os.path.exists(fp16_onnx_path):
-                        logger.debug(f"Loading {key} from native FP16 ONNX: {fp16_onnx_name}")
-                        model_dict[key] = onnxruntime.InferenceSession(
-                            fp16_onnx_path, providers=self.providers, sess_options=get_default_sess_options()
-                        )
-                    elif os.path.exists(onnx_path):
+                    if os.path.exists(onnx_path):
                         logger.debug(f"Loading {key} from standard FP32 ONNX: {onnx_file}")
                         model_dict[key] = onnxruntime.InferenceSession(
                             onnx_path, providers=self.providers, sess_options=get_default_sess_options()
                         )
                     elif key == "PROMPT_ENCODER":
+                        logger.warning(f"Skipping PROMPT_ENCODER (Optional) as file not found: {onnx_path}")
                         continue # Optional
                     else:
                         raise FileNotFoundError(f"Required model file not found: {onnx_file}")

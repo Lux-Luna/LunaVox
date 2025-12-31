@@ -178,7 +178,19 @@ class EnvManager:
         try:
             import onnxruntime as ort
             providers = ort.get_available_providers()
-            return "CUDAExecutionProvider" in providers
+            if "CUDAExecutionProvider" not in providers:
+                return False
+            
+            # Additional check: attempt to create a dummy session to verify DLLs
+            # We use a tiny constant or empty bytes if possible, but 
+            # the most reliable way is often to check if we can initialize the provider.
+            # Here we just check the version as well.
+            target_ver = "1.22.0"
+            if ort.__version__ != target_ver:
+                logger.info(f"Current onnxruntime version {ort.__version__} mismatches target {target_ver}.")
+                return False
+
+            return True
         except Exception:
             return False
 
@@ -212,9 +224,29 @@ class EnvManager:
         current_is_gpu = self.is_gpu_installed()
 
         if target_mode == "gpu" and not current_is_gpu:
-            logger.warning("Target mode is GPU but onnxruntime-gpu is not found. Attempting upgrade...")
-            self.install_gpu_runtime()
-            return False
+            logger.warning("Target mode is GPU but onnxruntime-gpu or CUDA dependencies are not found.")
+            
+            # Terminal prompt for user confirmation (English)
+            print("\n" + "="*60)
+            print("GPU MODE DETECTED")
+            print("="*60)
+            print("The following dependencies are required for GPU acceleration but are missing:")
+            print("  - onnxruntime-gpu==1.22.0")
+            print("  - nvidia-*-cu12 (CUDA 12 Runtime Libraries)")
+            print("\nThis process will uninstall the current CPU-only 'onnxruntime' if it exists.")
+            
+            try:
+                choice = input("\nWould you like to install the required GPU dependencies now? (y/n): ").strip().lower()
+                if choice == 'y':
+                    self.install_gpu_runtime()
+                    return False
+                else:
+                    print("\nSkipping GPU dependency installation. The application may run on CPU or fail if GPU is forced.")
+                    return True # Let it proceed, though it might fail later
+            except EOFError:
+                # Handle non-interactive environments by defaulting to NO to avoid hanging
+                logger.error("Non-interactive environment detected. Automatic GPU installation skipped.")
+                return True
         
         if target_mode == "cpu" and current_is_gpu:
             logger.info("Target mode is CPU but onnxruntime-gpu is currently installed. Switching back to CPU runtime...")
@@ -231,12 +263,19 @@ class EnvManager:
             subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "onnxruntime", "-y"])
             subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "onnxruntime-gpu", "-y"])
             
-            # Using 1.20.1 as it supports Opset 20 and is stable with CUDA 12
-            logger.info("Installing onnxruntime-gpu==1.20.1 and CUDA 12 runtime libraries...")
+            # Using 1.22.0 as requested
+            logger.info("Installing onnxruntime-gpu==1.22.0 and full CUDA 12 runtime libraries...")
             subprocess.check_call([
                 sys.executable, "-m", "pip", "install", 
-                "onnxruntime-gpu==1.20.1", 
-                "nvidia-cudnn-cu12", "nvidia-cublas-cu12", "nvidia-cuda-runtime-cu12",
+                "onnxruntime-gpu==1.22.0", 
+                "nvidia-cudnn-cu12", 
+                "nvidia-cublas-cu12", 
+                "nvidia-cuda-runtime-cu12",
+                "nvidia-cuda-nvrtc-cu12",
+                "nvidia-cufft-cu12",
+                "nvidia-curand-cu12",
+                "nvidia-cusolver-cu12",
+                "nvidia-cusparse-cu12",
                 "numpy<2"
             ])
             

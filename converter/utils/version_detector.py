@@ -2,9 +2,9 @@
 Model version detection for GPT-SoVITS models (v2, v2Pro, v2ProPlus).
 """
 import logging
-from typing import Optional
 import sys
 import subprocess
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +17,12 @@ def ensure_torch() -> None:
         import torch
     except ImportError:
         print("\n" + "="*60)
-        print("Dependency Missing: PyTorch is required for model conversion/detection.")
+        print("Dependency Missing: PyTorch is required for model conversion.")
         print("LunaVox will now attempt to install the CPU version of PyTorch.")
         print("This is a one-time setup and will take a few minutes (~200MB).")
         print("="*60 + "\n")
         
         try:
-            # Install CPU version as it's sufficient for conversion and much smaller
             subprocess.check_call([
                 sys.executable, "-m", "pip", "install", 
                 "torch", "--index-url", "https://download.pytorch.org/whl/cpu"
@@ -51,16 +50,15 @@ def detect_version(pth_path: str) -> str:
         'v2', 'v2Pro', or 'v2ProPlus'
         
     Version detection logic:
-    - v2: gin_channels=512, upsample_initial_channel=512, upsample_kernel_sizes=[16,16,8,2,2]
-    - v2Pro: gin_channels=1024, upsample_initial_channel=512, upsample_kernel_sizes=[16,16,8,2,2]
-    - v2ProPlus: gin_channels=1024, upsample_initial_channel=768, upsample_kernel_sizes=[20,16,8,2,2]
+    - v2: gin_channels=512, upsample_initial_channel=512
+    - v2Pro: gin_channels=1024, upsample_initial_channel=512
+    - v2ProPlus: gin_channels=1024, upsample_initial_channel=768
     """
     ensure_torch()
     import torch
     from io import BytesIO
     
     try:
-        # Load with special handling for PK header
         f = open(pth_path, "rb")
         meta = f.read(2)
         if meta != b"PK":
@@ -75,15 +73,12 @@ def detect_version(pth_path: str) -> str:
         
         config = state.get('config', {})
         
-        # Handle both dict and HParams objects
         if hasattr(config, 'model'):
-            # HParams object
             model_config = config.model if hasattr(config, 'model') else {}
             gin_channels = getattr(model_config, 'gin_channels', 512)
             upsample_initial = getattr(model_config, 'upsample_initial_channel', 512)
             upsample_kernels = getattr(model_config, 'upsample_kernel_sizes', [])
         else:
-            # Dict object
             model_config = config.get('model', {})
             gin_channels = model_config.get('gin_channels', 512)
             upsample_initial = model_config.get('upsample_initial_channel', 512)
@@ -93,7 +88,6 @@ def detect_version(pth_path: str) -> str:
                    f"upsample_initial_channel={upsample_initial}, "
                    f"upsample_kernel_sizes={upsample_kernels}")
         
-        # Decision tree based on configuration
         if gin_channels == 512:
             version = 'v2'
         elif upsample_initial == 768:
@@ -101,7 +95,6 @@ def detect_version(pth_path: str) -> str:
         elif gin_channels == 1024:
             version = 'v2Pro'
         else:
-            # Fallback: try to detect by kernel sizes
             if upsample_kernels and len(upsample_kernels) > 0:
                 if upsample_kernels[0] == 20:
                     version = 'v2ProPlus'
@@ -124,3 +117,35 @@ def is_v2pro_variant(version: str) -> bool:
     """Check if version is v2Pro or v2ProPlus (requires SV embedding)."""
     return version in ['v2Pro', 'v2ProPlus']
 
+
+class HParams:
+    """Hyperparameters container with attribute access."""
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            if type(v) == dict:
+                v = HParams(**v)
+            self[k] = v
+
+    def keys(self):
+        return self.__dict__.keys()
+
+    def items(self):
+        return self.__dict__.items()
+
+    def values(self):
+        return self.__dict__.values()
+
+    def __len__(self):
+        return len(self.__dict__)
+
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+    def __setitem__(self, key, value):
+        return setattr(self, key, value)
+
+    def __contains__(self, key):
+        return key in self.__dict__
+
+    def __repr__(self):
+        return self.__dict__.__repr__()

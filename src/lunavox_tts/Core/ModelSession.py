@@ -92,6 +92,7 @@ def load_session_with_fp16_conversion(
                 continue
 
             tensor.raw_data = fp32_bytes[offset: offset + length]
+            tensor.data_type = onnx.TensorProto.FLOAT # Ensure type matches the injected data
             del tensor.external_data[:]
             tensor.data_location = onnx.TensorProto.DEFAULT
 

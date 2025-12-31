@@ -32,21 +32,33 @@ os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-ba
 
 def resolve_reference(language: str):
     audio_dir = REPO_ROOT / 'CharacterData' / 'audio' / language
-    wav_file = next(audio_dir.glob("*.wav"))
+    wav_files = list(audio_dir.glob("*.wav"))
+    if not wav_files:
+        raise FileNotFoundError(f"No .wav files found in {audio_dir}")
+    wav_file = wav_files[0]
     return str(wav_file), wav_file.stem
 
-# 1. Load v2 Pro Plus Model
+# 1. Load Persona (Recommended for v2ProPlus)
+# Using solidified persona (luna_en) which includes pre-computed Speaker Vectors.
+# This skips HuBERT and Speaker Vector extraction at runtime, saving memory and time.
+char_name = 'luna_v2pp_en'
+persona_dir = str(REPO_ROOT / 'CharacterData' / 'character' / 'luna_en')
 model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2_pro_plus' / 'pretrained')
-lunavox.load_character('pretrained_v2pp', model_dir)
 
-# 2. Set Reference Audio
+lunavox.load_persona(char_name, persona_dir)
+lunavox.load_character(char_name, model_dir)
+
+# 2. Alternative: Reference Audio Mode (Commented out)
+# Use this if you want to clone a voice from a specific WAV file in real-time.
+"""
 audio_path, reference_text = resolve_reference('English')
-lunavox.set_reference_audio('pretrained_v2pp', audio_path, reference_text, audio_language='en')
+lunavox.set_reference_audio(char_name, audio_path, reference_text, audio_language='en')
+"""
 
 # 3. Text-to-Speech
 lunavox.tts(
-    character_name='pretrained_v2pp',
-    text='Hi, This is the LunaVox speaking English.',
+    character_name=char_name,
+    text='Hi, This is LunaVox speaking English.',
     play=True,
     language='en'
 )

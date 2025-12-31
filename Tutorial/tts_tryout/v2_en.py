@@ -16,8 +16,8 @@ sys.path.insert(0, str(SCRIPT_DIR.parent))
 
 from lunavox_tts.Utils.EnvManager import env_manager
 
-# --- OPTIONAL: Environment Configuration ---
-# Uncomment to force a specific runtime mode. Default is "cpu".
+# --- Option: Environment Setup ---
+# Uncomment the following lines to force a specific execution mode. Default is "cpu".
 # env_manager.set_mode("cpu")
 # env_manager.set_mode("gpu")
 
@@ -27,35 +27,42 @@ if not env_manager.ensure_environment():
 
 import lunavox_tts as lunavox
 
-# Local environment settings
+# Local environment configuration
 os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
 def resolve_reference(language: str):
     audio_dir = REPO_ROOT / 'CharacterData' / 'audio' / language
-    wav_file = next(audio_dir.glob("*.wav"))
+    wav_files = list(audio_dir.glob("*.wav"))
+    if not wav_files:
+        raise FileNotFoundError(f"No .wav files found in {audio_dir}")
+    wav_file = wav_files[0]
     return str(wav_file), wav_file.stem
 
-# 1. Load Persona (Default: luna_en)
-character_name = 'luna_en'
+# 1. Load Persona (Recommended Mode)
+# This uses pre-solidified features (luna_en) and does not require a reference audio file at runtime.
+# This mode offers higher quality, faster startup, and lower GPU VRAM overhead.
+char_name = 'luna_en'
 persona_dir = str(REPO_ROOT / 'CharacterData' / 'character' / 'luna_en')
-lunavox.load_persona(character_name, persona_dir)
+model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2' / 'pretrained')
 
-# --- Option: Reference Audio Mode (Commented out) ---
-# To use reference audio directly instead of a persona, uncomment the lines below 
-# and comment out the "Load Persona" section above.
-# 
-# model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2' / 'pretrained')
-# audio_path, reference_text = resolve_reference('English')
-# lunavox.load_character(character_name, model_dir)
-# lunavox.set_reference_audio(character_name, audio_path, reference_text, audio_language='en')
+lunavox.load_persona(char_name, persona_dir)
+lunavox.load_character(char_name, model_dir)
 
-# 2. Text-to-Speech (TTS)
+# 2. Alternative: Reference Audio Mode (Commented out)
+# Use this if you want to perform real-time voice cloning using a specific WAV file.
+# Note: This will re-extract features every time the service restarts.
+"""
+audio_path, reference_text = resolve_reference('English')
+lunavox.set_reference_audio(char_name, audio_path, reference_text, audio_language='en')
+"""
+
+# 3. Text-to-Speech (TTS)
 lunavox.tts(
-    character_name=character_name,
-    text='Hi, this is LunaVox speaking English.',
+    character_name=char_name,
+    text='Hi, This is LunaVox speaking English.',
     play=True,
     language='en'
 )
 
-# Wait for playback to complete
+# Wait for playback to finish
 time.sleep(5)

@@ -32,20 +32,33 @@ os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-ba
 
 def resolve_reference(language: str):
     audio_dir = REPO_ROOT / 'CharacterData' / 'audio' / language
-    wav_file = next(audio_dir.glob("*.wav"))
+    wav_files = list(audio_dir.glob("*.wav"))
+    if not wav_files:
+        raise FileNotFoundError(f"No .wav files found in {audio_dir}")
+    wav_file = wav_files[0]
     return str(wav_file), wav_file.stem
 
-# 1. 加载角色模型
+# 1. 加载 Persona 音色固化 (推荐模式)
+# 使用预先提取并固化的特征 (luna_zh)，无需在运行时提供参考音频。
+# 这种模式启动更快，显存占用更低，且音质更加稳定。
+char_name = 'luna_zh'
+persona_dir = str(REPO_ROOT / 'CharacterData' / 'character' / 'luna_zh')
 model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2' / 'pretrained')
-lunavox.load_character('pretrained', model_dir)
 
-# 2. 设置参考音频 (使用 Chinese 文件夹下的第一个 .wav 文件)
+lunavox.load_persona(char_name, persona_dir)
+lunavox.load_character(char_name, model_dir)
+
+# 2. 备选方案：参考音频模式 (已注释)
+# 如果您想要使用特定的 WAV 文件进行实时声音克隆，请使用此代码。
+# 注意：每次重启服务都会重新提取特征。
+"""
 audio_path, reference_text = resolve_reference('Chinese')
-lunavox.set_reference_audio('pretrained', audio_path, reference_text, audio_language='zh')
+lunavox.set_reference_audio(char_name, audio_path, reference_text, audio_language='zh')
+"""
 
 # 3. 文本转语音 (TTS)
 lunavox.tts(
-    character_name='pretrained',
+    character_name=char_name,
     text='你好，这是一次中文语音合成测试。',
     play=True,
     language='zh'

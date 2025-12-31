@@ -1,61 +1,67 @@
-"""
-Quick tryout script for yuzuki_yukari v2ProPlus model - Japanese synthesis.
-
-This script demonstrates v2ProPlus inference with the converted yuzuki_yukari model.
-"""
 import time
 import os
 import sys
+import logging
 from pathlib import Path
 
-# Import LunaVox TTS from local src directory
+# ロギング設定
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# ローカルの src を sys.path に追加
 SCRIPT_DIR = Path(__file__).parent
-TUTORIAL_DIR = SCRIPT_DIR.parent  # Tutorial directory
-REPO_ROOT = TUTORIAL_DIR.parent  # Go up two levels from v2_pro_plus_quick_tryout to repo root
-REPO_SRC = REPO_ROOT / "src"
-if str(REPO_SRC) not in sys.path:
-    sys.path.insert(0, str(REPO_SRC))
-if str(TUTORIAL_DIR) not in sys.path:
-    sys.path.insert(0, str(TUTORIAL_DIR))
+REPO_ROOT = SCRIPT_DIR.parent.parent
+sys.path.insert(0, str(REPO_ROOT / "src"))
+sys.path.insert(0, str(SCRIPT_DIR.parent))
+
+from lunavox_tts.Utils.EnvManager import env_manager
+
+# --- オプション: 環境設定 ---
+# 特定の実行モードを強制する場合は、以下の行のコメントを解除してください。デフォルトは "cpu" です。
+# env_manager.set_mode("cpu")
+# env_manager.set_mode("gpu")
+
+if not env_manager.ensure_environment():
+    print(f"\n環境が {env_manager.get_mode().upper()} に更新されました。このスクリプトを再実行してください。")
+    sys.exit(0)
 
 import lunavox_tts as lunavox
+
+# ローカル環境設定
 os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
-
-def _resolve_reference_audio(language_folder: str):
-    """
-    Locate the first .wav file inside CharacterData/audio/<language_folder>.
-    Returns the file path and an inferred transcript (filename stem).
-    """
-    audio_dir = REPO_ROOT / 'CharacterData' / 'audio' / language_folder
-    if not audio_dir.is_dir():
-        raise FileNotFoundError(f"Reference audio directory not found: {audio_dir}")
-    wav_files = sorted(audio_dir.glob("*.wav"))
+def resolve_reference(language: str):
+    audio_dir = REPO_ROOT / 'CharacterData' / 'audio' / language
+    wav_files = list(audio_dir.glob("*.wav"))
     if not wav_files:
         raise FileNotFoundError(f"No .wav files found in {audio_dir}")
-    audio_file = wav_files[0]
-    return str(audio_file), audio_file.stem
+    wav_file = wav_files[0]
+    return str(wav_file), wav_file.stem
 
+# 1. Persona のロード (v2ProPlus 推奨モード)
+# 固化されたペルソナ (luna_ja) を使用します。これには計算済みの Speaker Vector が含まれています。
+# 実行時の HuBERT および声紋抽出をスキップするため、メモリ消費と起動時間を節約できます。
+char_name = 'luna_v2pp_ja'
+persona_dir = str(REPO_ROOT / 'CharacterData' / 'character' / 'luna_ja')
 model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2_pro_plus' / 'pretrained')
-lunavox.load_character('pretrained', model_dir)
 
-# Check model version
-# No extra version/output checks to keep parity with quick_tryout_ja.py
+lunavox.load_persona(char_name, persona_dir)
+lunavox.load_character(char_name, model_dir)
 
-# 设置参考音频（自动查找 CharacterData/audio/Japanese 下的 .wav 文件）
-audio_path, reference_text = _resolve_reference_audio('Japanese')
-lunavox.set_reference_audio(
-    'pretrained',
-    audio_path,
-    reference_text,
-    audio_language='ja'
-)
+# 2. 代替案: 参照オーディオモード (コメントアウト)
+# 特定の WAV ファイルからリアルタイムで音声をクローニングする場合に使用します。
+"""
+audio_path, reference_text = resolve_reference('Japanese')
+lunavox.set_reference_audio(char_name, audio_path, reference_text, audio_language='ja')
+"""
 
+# 3. テキスト読み上げ (TTS)
 lunavox.tts(
-    character_name='pretrained',
+    character_name=char_name,
     text='こんにちは、ルナヴォックスです。',
-    play=True,  # Play the generated audio directly
-    language='ja',
+    play=True,
+    language='ja'
 )
 
-time.sleep(10)  # Ensure audio playback completes
+# 再生完了まで待機
+time.sleep(5)

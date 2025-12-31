@@ -33,8 +33,19 @@ from .Utils.Shared import context
 from .Client import Client
 from .PredefinedCharacter import download_predefined_character_model
 from .Persona.PersonaManager import export_persona, load_persona as persona_loader
-from .Converter.onnx_exporter import convert_to_onnx as export_to_onnx
 from .Utils.ResourceManager import resource_manager
+
+# Import converter from new standalone module
+def convert_to_onnx(torch_ckpt_path, torch_pth_path, output_dir):
+    """Legacy wrapper for backward compatibility. Use converter.convert() directly."""
+    import sys
+    from pathlib import Path
+    # Add converter to path if not already there
+    converter_path = Path(__file__).parent.parent.parent / "converter"
+    if str(converter_path) not in sys.path:
+        sys.path.insert(0, str(converter_path.parent))
+    from converter import convert
+    convert(ckpt_path=torch_ckpt_path, pth_path=torch_pth_path, output_dir=output_dir, format="fp16")
 
 # Import for multi-reference SV averaging
 try:
@@ -260,6 +271,7 @@ def load_persona(
     frontend.warmup(language='zh')
 
     model_manager.unload_cn_hubert()
+    model_manager.unload_sv_model()
     
     logger.info(f"✓ Persona loaded for '{character_name}' from: {persona_dir_str}")
 

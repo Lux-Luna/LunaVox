@@ -173,9 +173,9 @@ class LunaVoxEngine:
                 # v2: use raw audio (2D: batch, samples)
                 ref_audio_features = np.expand_dims(prompt_audio.audio_32k, axis=0)
                 
-                # WORKAROUND: Truncate reference audio for VITS if too long on GPU.
+                # WORKAROUND: Truncate reference audio for VITS if too long on GPU and using reference audio mode.
                 # Long raw audio inputs (> ~4-5s) can cause FP16 overflow in VITS models on GPU, resulting in NaN output.
-                if device_mode == "gpu":
+                if device_mode == "gpu" and not prompt_audio.is_persona_based:
                     MAX_VITS_AUDIO_SAMPLES = 128000
                     if ref_audio_features.shape[1] > MAX_VITS_AUDIO_SAMPLES:
                         logger.warning(f"Truncating VITS ref_audio (GPU) from {ref_audio_features.shape[1]} to {MAX_VITS_AUDIO_SAMPLES} to avoid FP16 overflow.")
