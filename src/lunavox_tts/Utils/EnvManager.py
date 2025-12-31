@@ -31,6 +31,7 @@ class EnvManager:
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.config_file = self.config_dir / "env_config.json"
         self._config = self._load_config()
+        self._mode_override: Optional[str] = None
         
         # Setup portable CUDA paths if on Windows and GPU mode is active
         if sys.platform == "win32" and self.get_mode() == "gpu":
@@ -99,7 +100,9 @@ class EnvManager:
             logger.error(f"Failed to save env config: {e}")
 
     def get_mode(self) -> str:
-        """Returns the configured mode ('cpu' or 'gpu')."""
+        """Returns the configured mode ('cpu' or 'gpu'), respecting overrides."""
+        if self._mode_override:
+            return self._mode_override
         return self._config.get("mode", "cpu")
 
     def get_developer_mode(self) -> bool:
@@ -178,6 +181,26 @@ class EnvManager:
             return "CUDAExecutionProvider" in providers
         except Exception:
             return False
+
+    def temporary_mode(self, mode: str):
+        """
+        Context manager to temporarily override the mode without saving to disk.
+        Example:
+            with env_manager.temporary_mode("cpu"):
+                # run task in cpu mode
+        """
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _override():
+            old_override = self._mode_override
+            self._mode_override = mode
+            try:
+                yield
+            finally:
+                self._mode_override = old_override
+        
+        return _override()
 
     def ensure_environment(self):
         """

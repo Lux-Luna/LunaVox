@@ -172,16 +172,20 @@ def create_persona(
     # Get model version for the character
     model_version = model_manager.get_character_version(character_name)
     
-    # Create ReferenceAudio (this extracts all features)
-    ref = ReferenceAudio(
-        prompt_wav=audio_path_str,
-        prompt_text=audio_text,
-        language=audio_language or 'auto',
-        model_version=model_version,
-    )
+    # Create ReferenceAudio and export persona in CPU mode to ensure stability/precision
+    from .Utils.EnvManager import env_manager
+    with env_manager.temporary_mode("cpu"):
+        # Create ReferenceAudio (this extracts all features)
+        ref = ReferenceAudio(
+            prompt_wav=audio_path_str,
+            prompt_text=audio_text,
+            language=audio_language or 'auto',
+            model_version=model_version,
+        )
+        
+        # Export to persona directory using PersonaManager
+        persona_path = export_persona(ref, save_dir_str, character_name, audio_path_str)
     
-    # Export to persona directory using PersonaManager
-    persona_path = export_persona(ref, save_dir_str, character_name, audio_path_str)
     logger.info(f"✓ Persona created for '{character_name}' at: {persona_path}")
     
     return persona_path

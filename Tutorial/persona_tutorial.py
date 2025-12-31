@@ -1,11 +1,11 @@
 import os
 import sys
-import lunavox_tts as lunavox
-
 # 1. Setup paths
 # Move up one level to find the project root
 PROJ_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROJ_ROOT, "src"))
+
+import lunavox_tts as lunavox
 
 # Paths for resources
 MODEL_PATH = os.path.join(PROJ_ROOT, "CharacterData", "model", "v2", "pretrained")
