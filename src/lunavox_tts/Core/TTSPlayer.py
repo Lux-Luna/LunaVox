@@ -8,25 +8,17 @@ import time
 
 import numpy as np
 import wave
-from typing import Optional, List, Callable
-try:
-    import sounddevice as sd
-except Exception:  # optional dependency for playback
-    sd = None
-
-try:
-    import pyaudio
-except Exception:
-    pyaudio = None
 import logging
+from typing import Optional, List, Callable
 
+from .Inference import LunaVoxEngine
 from ..Japanese.Split import split_japanese_text
-from ..Core.Inference import tts_client
 from ..ModelManager import model_manager
 from ..Utils.Shared import context
 from ..Utils.Utils import clear_queue
 from ..Audio.ReferenceAudio import ReferenceAudio
 from ..Utils.PerformanceMonitor import monitor
+from ..Audio.AudioEngine import AudioEngine
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +30,9 @@ class TTSPlayer:
         self.sample_rate: int = sample_rate
         self.channels: int = 1
         self.bytes_per_sample: int = 2  # 16-bit audio
+        
+        self.inference_engine: LunaVoxEngine = LunaVoxEngine()
+        self.audio_engine: AudioEngine = AudioEngine(sample_rate, self.channels)
 
         self._text_queue: queue.Queue = queue.Queue()
         self._audio_queue: queue.Queue = queue.Queue()
@@ -119,8 +114,8 @@ class TTSPlayer:
                     logger.error("Failed to load model for current speaker.")
                     continue
 
-                tts_client.stop_event.clear()
-                audio_chunk = tts_client.tts(
+                self.inference_engine.stop_event.clear()
+                audio_chunk = self.inference_engine.tts(
                     text=sentence,
                     prompt_audio=prompt_audio,
                     encoder=gsv_model.T2S_ENCODER,
@@ -162,47 +157,36 @@ class TTSPlayer:
             while not self._stop_event.is_set():
                 try:
                     audio_chunk = self._audio_queue.get(timeout=1)
-                    if audio_chunk is None:
+                    if audio_chunk is None or audio_chunk is STREAM_END:
                         break
                     
-                    if sd is not None:
-                        # sounddevice handles float32 directly and is often easier to use
-                        sd.play(audio_chunk, self.sample_rate)
-                        sd.wait()  # wait for chunk to finish playing
-                    elif pyaudio is not None:
-                        self._play_with_pyaudio(audio_chunk)
-                    else:
-                        logger.warning("No audio playback backend (sounddevice or pyaudio) found. Audio synthesis completed but cannot play.")
+                    if self._play:
+                        self.audio_engine.play(audio_chunk)
+                        
+                    self._audio_queue.task_done()
                 except queue.Empty:
                     continue
                 except Exception as e:
                     logger.error(f"A critical error occurred while playing audio: {e}", exc_info=True)
         finally:
-            if sd is not None:
-                sd.stop()
-            if self._pa_stream is not None:
-                self._pa_stream.stop_stream()
-                self._pa_stream.close()
-                self._pa_stream = None
-            if self._pa is not None:
-                self._pa.terminate()
-                self._pa = None
+            self.audio_engine.stop()
 
-    def _play_with_pyaudio(self, audio_chunk: np.ndarray):
-        if self._pa is None:
-            logger.info("Using PyAudio for playback fallback.")
-            self._pa = pyaudio.PyAudio()
+    # _play_with_pyaudio is no longer needed as AudioEngine handles playback
+    # def _play_with_pyaudio(self, audio_chunk: np.ndarray):
+    #     if self._pa is None:
+    #         logger.info("Using PyAudio for playback fallback.")
+    #         self._pa = pyaudio.PyAudio()
         
-        if self._pa_stream is None:
-            self._pa_stream = self._pa.open(
-                format=pyaudio.paInt16,
-                channels=self.channels,
-                rate=self.sample_rate,
-                output=True
-            )
+    #     if self._pa_stream is None:
+    #         self._pa_stream = self._pa.open(
+    #             format=pyaudio.paInt16,
+    #             channels=self.channels,
+    #             rate=self.sample_rate,
+    #             output=True
+    #         )
         
-        audio_data = self._preprocess_for_playback(audio_chunk)
-        self._pa_stream.write(audio_data)
+    #     audio_data = self._preprocess_for_playback(audio_chunk)
+    #     self._pa_stream.write(audio_data)
 
     def _save_session_audio(self):
         try:
@@ -292,7 +276,7 @@ class TTSPlayer:
                 return
             if self._stop_event.is_set():
                 return
-            tts_client.stop_event.set()
+            self.inference_engine.stop_event.set()
             self._stop_event.set()
             self._tts_done_event.set()
             self._text_queue.put(None)

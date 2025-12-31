@@ -42,6 +42,23 @@ class TextFrontend:
         from ..Japanese.JapaneseG2P import japanese_to_phones
         return japanese_to_phones(text)
 
+    def warmup(self, language: str = "en") -> None:
+        """
+        Pre-load resources for the specified language to avoid first-call latency.
+        """
+        logger.debug(f"Warming up TextFrontend for language: {language}")
+        if language == "zh":
+            self._get_chinese_processor()
+        elif language == "en":
+            from ..English.EnglishG2P import get_g2p
+            get_g2p()
+        elif language == "ja":
+            from ..Japanese.JapaneseG2P import get_ja_g2p
+            try:
+                get_ja_g2p()
+            except ImportError:
+                pass # Japanese G2P might not have a singleton getter yet
+
 # Singleton management
 _frontend_instance: Optional[TextFrontend] = None
 

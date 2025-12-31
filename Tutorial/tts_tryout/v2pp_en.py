@@ -31,12 +31,12 @@ import lunavox_tts as lunavox
 os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
 def resolve_reference(language: str):
-    audio_dir = REPO_ROOT / 'CharacterData' / 'audio_resources' / language
+    audio_dir = REPO_ROOT / 'CharacterData' / 'audio' / language
     wav_file = next(audio_dir.glob("*.wav"))
     return str(wav_file), wav_file.stem
 
 # 1. Load v2 Pro Plus Model
-model_dir = str(REPO_ROOT / 'CharacterData' / 'character_model' / 'v2_pro_plus' / 'pretrained')
+model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2_pro_plus' / 'pretrained')
 lunavox.load_character('pretrained_v2pp', model_dir)
 
 # 2. Set Reference Audio

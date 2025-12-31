@@ -23,10 +23,10 @@ os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-ba
 
 def _resolve_reference_audio(language_folder: str):
     """
-    Locate the first .wav file inside CharacterData/audio_resources/<language_folder>.
+    Locate the first .wav file inside CharacterData/audio/<language_folder>.
     Returns the file path and an inferred transcript (filename stem).
     """
-    audio_dir = REPO_ROOT / 'CharacterData' / 'audio_resources' / language_folder
+    audio_dir = REPO_ROOT / 'CharacterData' / 'audio' / language_folder
     if not audio_dir.is_dir():
         raise FileNotFoundError(f"Reference audio directory not found: {audio_dir}")
     wav_files = sorted(audio_dir.glob("*.wav"))
@@ -36,10 +36,10 @@ def _resolve_reference_audio(language_folder: str):
     return str(audio_file), audio_file.stem
 
 
-model_dir = str(REPO_ROOT / 'CharacterData' / 'character_model' / 'v2_pro_plus' / 'pretrained')
+model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2_pro_plus' / 'pretrained')
 lunavox.load_character('pretrained', model_dir)
 
-# 设置参考音频（自动查找 CharacterData/audio_resources/Chinese 下的 .wav 文件）
+# 设置参考音频（自动查找 CharacterData/audio/Chinese 下的 .wav 文件）
 audio_path, reference_text = _resolve_reference_audio('Chinese')
 lunavox.set_reference_audio(
     'pretrained',

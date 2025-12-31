@@ -32,6 +32,9 @@ from .ModelManager import model_manager
 from .Utils.Shared import context
 from .Client import Client
 from .PredefinedCharacter import download_predefined_character_model
+from .Persona.PersonaManager import export_persona, load_persona as persona_loader
+from .Converter.onnx_exporter import convert_to_onnx as export_to_onnx
+from .Utils.ResourceManager import resource_manager
 
 # Import for multi-reference SV averaging
 try:
@@ -177,8 +180,8 @@ def create_persona(
         model_version=model_version,
     )
     
-    # Export to persona directory
-    persona_path = ref.export_persona(save_dir_str, character_name, audio_path_str)
+    # Export to persona directory using PersonaManager
+    persona_path = export_persona(ref, save_dir_str, character_name, audio_path_str)
     logger.info(f"✓ Persona created for '{character_name}' at: {persona_path}")
     
     return persona_path
@@ -211,8 +214,8 @@ def load_persona(
     if not os.path.isdir(persona_dir_str):
         raise FileNotFoundError(f"Persona directory not found: {persona_dir_str}")
     
-    # Load persona using ReferenceAudio.from_persona
-    ref = ReferenceAudio.from_persona(persona_dir_str)
+    # Load persona using PersonaManager
+    ref = persona_loader(persona_dir_str)
     
     # Get model version from loaded persona
     model_version = getattr(ref, 'model_version', 'v2')
@@ -226,6 +229,33 @@ def load_persona(
     
     # Set as current prompt audio
     context.current_prompt_audio = ref
+    
+    # --- AUTO-LOAD BASE MODEL ---
+    # If the character is not already loaded in the model manager,
+    # attempt to load the default base models corresponding to the persona's model version.
+    if not model_manager.has_character(character_name):
+        model_version_lower = model_version.lower()
+        if "v2_pro_plus" in model_version_lower or "v2pp" in model_version_lower:
+            base_model_dir = resource_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
+        else:
+            base_model_dir = resource_manager.char_data_dir / "model" / "v2" / "pretrained"
+            
+        if base_model_dir.exists():
+            logger.info(f"Auto-loading base {model_version} models for persona '{character_name}'...")
+            load_character(character_name, base_model_dir)
+        else:
+            logger.warning(
+                f"Base model directory for version '{model_version}' not found at: {base_model_dir}. "
+                f"You may need to call 'load_character' manually."
+            )
+    
+    # --- OPTIMIZATION: Warmup & Cleanup ---
+    from .Core.TextFrontend import get_text_frontend
+    frontend = get_text_frontend()
+    frontend.warmup(language=model_version.split('_')[-1] if '_' in model_version else 'en') 
+    frontend.warmup(language='zh')
+
+    model_manager.unload_cn_hubert()
     
     logger.info(f"✓ Persona loaded for '{character_name}' from: {persona_dir_str}")
 
@@ -396,29 +426,8 @@ def convert_to_onnx(
 ) -> None:
     """
     Converts PyTorch model checkpoints to the ONNX format.
-
-    This function requires PyTorch to be installed.
-
-    Args:
-        torch_ckpt_path (str | PathLike): The path to the T2S model (.ckpt) file.
-        torch_pth_path (str | PathLike): The path to the VITS model (.pth) file.
-        output_dir (str | PathLike): The directory where the ONNX models will be saved.
     """
-    from .Converter.version_detector import ensure_torch
-    ensure_torch()
-    import torch
-
-    from .Converter.v2.Converter import convert
-
-    torch_ckpt_path = os.fspath(torch_ckpt_path)
-    torch_pth_path = os.fspath(torch_pth_path)
-    output_dir = os.fspath(output_dir)
-
-    convert(
-        torch_pth_path=torch_pth_path,
-        torch_ckpt_path=torch_ckpt_path,
-        output_dir=output_dir,
-    )
+    export_to_onnx(torch_ckpt_path, torch_pth_path, output_dir)
 
 
 def clear_reference_audio_cache() -> None:

@@ -35,26 +35,27 @@ def resolve_reference(language: str):
     wav_file = next(audio_dir.glob("*.wav"))
     return str(wav_file), wav_file.stem
 
-# 1. Load Character Model
-model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2' / 'pretrained')
-lunavox.load_character('luna_en', model_dir)
-
-# 2. Use Persona (Solidified Features)
-# Old reference logic commented out as requested:
-# audio_path, reference_text = resolve_reference('English')
-# lunavox.set_reference_audio('luna_en', audio_path, reference_text, audio_language='en')
-
-# Load the persona for luna_en
+# 1. Load Persona (Default: luna_en)
+character_name = 'luna_en'
 persona_dir = str(REPO_ROOT / 'CharacterData' / 'character' / 'luna_en')
-lunavox.load_persona('luna_en', persona_dir)
+lunavox.load_persona(character_name, persona_dir)
 
-# 3. Text-to-Speech
+# --- Option: Reference Audio Mode (Commented out) ---
+# To use reference audio directly instead of a persona, uncomment the lines below 
+# and comment out the "Load Persona" section above.
+# 
+# model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2' / 'pretrained')
+# audio_path, reference_text = resolve_reference('English')
+# lunavox.load_character(character_name, model_dir)
+# lunavox.set_reference_audio(character_name, audio_path, reference_text, audio_language='en')
+
+# 2. Text-to-Speech (TTS)
 lunavox.tts(
-    character_name='luna_en',
-    text='Hi, This is LunaVox speaking English.',
+    character_name=character_name,
+    text='Hi, this is LunaVox speaking English.',
     play=True,
     language='en'
 )
 
-# Keep process alive for playback
+# Wait for playback to complete
 time.sleep(5)

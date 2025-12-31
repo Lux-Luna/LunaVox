@@ -7,77 +7,17 @@ import onnxruntime
 from onnxruntime import InferenceSession
 from typing import Optional, List
 import numpy as np
-# from importlib.resources import files
-from huggingface_hub import hf_hub_download
 
 from .Utils.Shared import context
-# from .Utils.Constants import PACKAGE_NAME
 from .Utils.Utils import LRUCacheDict
 from .Utils.PerformanceMonitor import monitor
+from .Core.ModelSession import (
+    get_default_sess_options,
+    resolve_providers,
+    load_session_with_fp16_conversion
+)
 
 logger = logging.getLogger(__name__)
-
-def _get_default_sess_options() -> onnxruntime.SessionOptions:
-    opts = onnxruntime.SessionOptions()
-    opts.log_severity_level = 3
-    # opts.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
-    opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-    
-    # Default (0) is generally best for multi-model CPU inference
-    # opts.intra_op_num_threads = 0
-    # opts.inter_op_num_threads = 0
-    
-    opts.add_session_config_entry("session.use_env_allocators", "1")
-    return opts
-
-# Global default options (legacy support)
-SESS_OPTIONS = _get_default_sess_options()
-
-_DEFAULT_PROVIDER_ORDER: list[str] = [
-    "CUDAExecutionProvider",
-    "DmlExecutionProvider",
-    "ROCMExecutionProvider",
-    "CPUExecutionProvider",
-]
-
-
-def _resolve_providers() -> list[str]:
-    from .Utils.EnvManager import env_manager
-    
-    # 1. Check persistence/user requested mode
-    target_mode = env_manager.get_mode()
-    
-    # If user explicitly wants CPU, we only return CPU provider
-    if target_mode == "cpu":
-        logger.debug("LunaVox is running in CPU mode as configured.")
-        return ["CPUExecutionProvider"]
-
-    # 2. Handle GPU/Auto mode
-    try:
-        available = set(onnxruntime.get_available_providers())
-    except Exception as e:
-        logger.warning(f"Failed to get available providers: {e}")
-        available = {"CPUExecutionProvider"}
-    env_value = os.getenv("LUNAVOX_ORT_PROVIDERS")
-    if env_value:
-        requested = [item.strip() for item in env_value.split(",") if item.strip()]
-        resolved = [provider for provider in requested if provider in available]
-        if resolved:
-            logger.debug("Using ONNXRuntime providers from LUNAVOX_ORT_PROVIDERS: %s", ",".join(resolved))
-            return resolved
-        logger.warning(
-            "Requested providers '%s' are not available in this environment. Falling back to auto detection.",
-            env_value,
-        )
-    
-    # Filter preferred providers by availability
-    resolved = [provider for provider in _DEFAULT_PROVIDER_ORDER if provider in available]
-    if resolved:
-        logger.debug("Auto-detected ONNXRuntime providers: %s", ",".join(resolved))
-        return resolved
-    
-    logger.debug("No preferred providers available or found; falling back to CPUExecutionProvider.")
-    return ["CPUExecutionProvider"]
 
 
 class _GSVModelFile:
@@ -109,89 +49,6 @@ class GSVModel:
     PROMPT_ENCODER: Optional[InferenceSession] = None
 
 
-def download_model(filename: str, repo_id: str = 'Lux-Luna/LunaVox') -> Optional[str]:
-    try:
-        model_path = hf_hub_download(
-            repo_id=repo_id,
-            filename=filename,
-        )
-        return model_path
-    except Exception as e:
-        logger.error(f"Failed to download model {filename}: {str(e)}", exc_info=True)
-
-
-def load_session_with_fp16_conversion(
-    onnx_path: str,
-    fp16_bin_path: str,
-    providers: List[str],
-    sess_options: Optional[onnxruntime.SessionOptions] = None
-) -> InferenceSession:
-    """
-    Reads ONNX and FP16 weights, converts to FP32 in memory, 
-    injects into ONNX model, and creates InferenceSession without temp files.
-    """
-    import onnx
-    import numpy as np
-
-    if not os.path.exists(onnx_path):
-        raise FileNotFoundError(f"ONNX Model not found: {onnx_path}")
-    if not os.path.exists(fp16_bin_path):
-        raise FileNotFoundError(f"FP16 Weight file not found: {fp16_bin_path}")
-
-    model_proto = onnx.load(onnx_path, load_external_data=False)
-    fp16_data = np.fromfile(fp16_bin_path, dtype=np.float16)
-    fp32_data = fp16_data.astype(np.float32)
-    # Clear fp16_data immediately
-    del fp16_data
-    fp32_bytes = fp32_data.tobytes()
-    # Clear fp32_data immediately
-    del fp32_data
-
-    # Iterate and patch external data initializers
-    for tensor in model_proto.graph.initializer:
-        if tensor.data_location == onnx.TensorProto.EXTERNAL:
-            offset = 0
-            length = 0
-            for entry in tensor.external_data:
-                if entry.key == 'offset':
-                    offset = int(entry.value)
-                elif entry.key == 'length':
-                    length = int(entry.value)
-
-            if offset + length > len(fp32_bytes):
-                logger.warning(
-                    f"Tensor {tensor.name} requested a data range that exceeds the size of the provided bin file. "
-                    f"Offset: {offset}, Length: {length}, Buffer: {len(fp32_bytes)}"
-                )
-                continue
-
-            tensor_data = fp32_bytes[offset: offset + length]
-            tensor.raw_data = tensor_data
-
-            del tensor.external_data[:]
-            tensor.data_location = onnx.TensorProto.DEFAULT
-
-    # Clear fp32_bytes as it is no longer needed (protobuf likely copied the data)
-    del fp32_bytes
-    gc.collect()
-
-    try:
-        model_serialized = model_proto.SerializeToString()
-        del model_proto
-        gc.collect()
-        
-        session = InferenceSession(
-            model_serialized,
-            providers=providers,
-            sess_options=sess_options
-        )
-        del model_serialized
-        return session
-    except Exception as e:
-        logger.error(f"Failed to load in-memory model {os.path.basename(onnx_path)}: {e}")
-        raise e
-
-
 class ModelManager:
     def __init__(self):
         capacity_str = os.getenv('Max_Cached_Character_Models', '3')
@@ -199,7 +56,7 @@ class ModelManager:
             capacity=int(capacity_str))
         self.model_paths: dict[str, str] = {}  # Persistence dict for model paths
         self.character_versions: dict[str, str] = {}  # Store model versions
-        self.providers = _resolve_providers()
+        self.providers = resolve_providers()
 
         self.cn_hubert: Optional[InferenceSession] = None
 
@@ -229,12 +86,12 @@ class ModelManager:
             
             if os.path.exists(hubert_fp16):
                  self.cn_hubert = load_session_with_fp16_conversion(
-                    model_path, hubert_fp16, self.providers, _get_default_sess_options()
+                    model_path, hubert_fp16, self.providers, get_default_sess_options()
                 )
             else:
                 self.cn_hubert = onnxruntime.InferenceSession(model_path,
                                                           providers=self.providers,
-                                                          sess_options=_get_default_sess_options())
+                                                          sess_options=get_default_sess_options())
             logger.debug("Successfully loaded CN_HuBERT model.")
             return True
         except Exception as e:
@@ -243,6 +100,19 @@ class ModelManager:
                 f"Details: {e}"
             )
         return False
+
+    def unload_cn_hubert(self) -> None:
+        """
+        Unload the Chinese HuBERT model to free up memory/VRAM.
+        Useful when in Persona mode where HuBERT is no longer needed.
+        """
+        if self.cn_hubert is not None:
+            logger.info("Unloading HuBERT model...")
+            del self.cn_hubert
+            self.cn_hubert = None
+            import gc
+            gc.collect()
+            logger.info("✓ HuBERT model unloaded.")
 
     def get(self, character_name: str) -> Optional[GSVModel]:
         if character_name in self.character_to_model:
@@ -300,7 +170,7 @@ class ModelManager:
         
         from .Utils.EnvManager import env_manager
         # Refresh providers to reflect any mode changes (CPU/GPU switch)
-        self.providers = _resolve_providers()
+        self.providers = resolve_providers()
 
         # Define model files and their corresponding weights
         model_load_plan = [
@@ -329,7 +199,7 @@ class ModelManager:
                     # In-memory patching
                     logger.debug(f"Loading {key} with in-memory FP16 patching...")
                     model_dict[key] = load_session_with_fp16_conversion(
-                        onnx_path, bin_path, self.providers, _get_default_sess_options()
+                        onnx_path, bin_path, self.providers, get_default_sess_options()
                     )
                 else:
                     # Fallback to standard loading
@@ -340,12 +210,12 @@ class ModelManager:
                     if fp16_onnx_path and os.path.exists(fp16_onnx_path):
                         logger.debug(f"Loading {key} from native FP16 ONNX: {fp16_onnx_name}")
                         model_dict[key] = onnxruntime.InferenceSession(
-                            fp16_onnx_path, providers=self.providers, sess_options=_get_default_sess_options()
+                            fp16_onnx_path, providers=self.providers, sess_options=get_default_sess_options()
                         )
                     elif os.path.exists(onnx_path):
                         logger.debug(f"Loading {key} from standard FP32 ONNX: {onnx_file}")
                         model_dict[key] = onnxruntime.InferenceSession(
-                            onnx_path, providers=self.providers, sess_options=_get_default_sess_options()
+                            onnx_path, providers=self.providers, sess_options=get_default_sess_options()
                         )
                     elif key == "PROMPT_ENCODER":
                         continue # Optional
