@@ -14,7 +14,7 @@
 
 **LunaVox** is a streamlined inference engine dedicated to the GPT-SoVITS project. By decoupling dependencies and utilizing pure ONNX Runtime, it provides a portable, fast, and easy-to-integrate solution for cross-platform speech synthesis.
 
-- **Fast**: Specialized for ONNX Runtime with optimized I/O binding and KV-Caching.
+- **High-speed Inference**: Deeply optimized for ONNX Runtime. Implements **I/O Binding** for zero-copy GPU memory access and **KV-Caching** to significantly reduce autoregressive loop latency.
 - **Lightweight**: Minimum dependencies; automatic resource management.
 - **Versatile**: Supports GPT-SoVITS V2, Pro, and Pro Plus models in English, Japanese, and Chinese.
 
@@ -28,6 +28,17 @@
 - **`CharacterData`**: Local storage for your character models.
 - **`TTSData`**: Shared resources (G2P, Chinese-HuBERT, Speaker-Vector). *Auto-downloaded on first run.*
 - **`RoBERTa`**: Chinese RoBERTa resources. *Auto-downloaded on first run.*
+
+---
+
+## 🎙 Voice Cloning Guide
+
+For perfect character voice cloning, you should use the [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) project to train your own models or download third-party PyTorch models (`.ckpt` and `.pth`), then convert them using LunaVox's conversion tools.
+
+However, if you don't mind a less-than-perfect restoration, LunaVox provides pretrained V2 and V2 Pro Plus models. You only need to provide a `.wav` reference audio to start performing inference for any character.
+
+> [!IMPORTANT]
+> **Important Tip**: To achieve the best inference results, it is strongly recommended to use a reference audio that matches the **target language** and set the **correct reference audio text**.
 
 ---
 
@@ -94,3 +105,25 @@ env_manager.ensure_environment() # Trigger auto-install if missing
 ```
 
 ---
+
+## 📅 Roadmap & Progress
+
+### ✅ Completed
+- **Language Core**
+  - [x] Simplified Chinese Support
+  - [x] English Support
+- **Model Architecture**
+  - [x] V2 Pro Plus Inference Support
+- **Performance**
+  - [x] GPU Acceleration & Optimization (CUDA/DirectML)
+  - [x] IO Binding Zero-copy Optimization
+  - [x] KV Cache Acceleration (On-device Persistence)
+
+### 🚀 Planned
+- **Model Expansion**
+  - [ ] V2 Pro Model Compatibility
+- **User Experience**
+  - [ ] Windows All-in-one Portable Package
+- **Advanced Features**
+  - [ ] Speaker Embedding Fixing
+  - [ ] Enhanced Emotion Control
