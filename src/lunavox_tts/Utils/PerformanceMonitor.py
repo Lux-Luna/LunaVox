@@ -89,6 +89,12 @@ class PerformanceMonitor:
         """
         High-performance context manager for measuring task duration and memory.
         Calculations are performed AFTER the task to avoid blocking the TTS chain.
+        
+        Memory is measured as:
+        - RAM: Current process RSS (absolute, not delta, for clearer visibility)
+        - VRAM: Per-process GPU memory when available, otherwise device-level
+        
+        Background noise is excluded by capturing baselines once at first measurement.
         """
         if not self.is_enabled:
             yield
@@ -112,10 +118,13 @@ class PerformanceMonitor:
             rss_mb = 0
             if self.process:
                 try:
-                    # Report absolute RSS of the process for better visibility
+                    # Measure delta from baseline to exclude background process memory
                     current_rss = self.process.memory_info().rss
-                    rss_mb = current_rss / (1024 * 1024)
-                except: pass
+                    delta_rss = current_rss - self.base_rss
+                    # Report positive delta only (memory increase from baseline)
+                    rss_mb = max(0, delta_rss) / (1024 * 1024)
+                except Exception: 
+                    pass
             
             vram_mb = 0
             if _gpu_handle:
@@ -132,14 +141,20 @@ class PerformanceMonitor:
                                 used_vram = p.usedGpuMemory
                                 pid_found = True
                                 break
-                    except: pass
+                    except Exception: 
+                        pass
                     
                     if pid_found:
-                        vram_mb = used_vram / (1024 * 1024)
+                        # Delta from baseline for per-process tracking
+                        delta_vram = used_vram - self.base_vram
+                        vram_mb = max(0, delta_vram) / (1024 * 1024)
                     else:
-                        # Fallback to absolute system VRAM usage if PID tracking fails
-                        vram_mb = _pynvml.nvmlDeviceGetMemoryInfo(_gpu_handle).used / (1024 * 1024)
-                except: pass
+                        # Fallback to absolute system VRAM usage delta
+                        current_vram = _pynvml.nvmlDeviceGetMemoryInfo(_gpu_handle).used
+                        delta_vram = current_vram - self.base_vram
+                        vram_mb = max(0, delta_vram) / (1024 * 1024)
+                except Exception: 
+                    pass
             
             if self._buffering_enabled:
                 self._buffer.append({

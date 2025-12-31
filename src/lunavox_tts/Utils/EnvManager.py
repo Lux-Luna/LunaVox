@@ -128,42 +128,62 @@ class EnvManager:
         self._save_config()
         logger.info(f"Developer mode set to: {enabled}")
 
-    def _ensure_developer_dependencies(self):
-        """Checks for optional developer dependencies and prompts for installation if missing."""
+    def _ensure_developer_dependencies(self) -> bool:
+        """
+        Checks for optional developer dependencies and prompts for installation if missing.
+        Returns True if all dependencies are available, False otherwise.
+        """
         deps = []
         try:
             import psutil
         except ImportError:
-            deps.append(("psutil", "psutil"))
+            deps.append(("psutil", "RAM tracking"))
             
         try:
             import pynvml
         except ImportError:
             # nvidia-ml-py is the package name for pynvml
-            deps.append(("nvidia-ml-py", "pynvml"))
+            deps.append(("nvidia-ml-py", "VRAM tracking"))
             
         if not deps:
-            return
+            return True
 
-        logger.info("\n" + "!" * 60)
-        logger.info("[DEVELOPER MODE] Required monitoring dependencies are missing.")
-        logger.info(f"Missing: {', '.join([d[0] for d in deps])}")
-        logger.info("These are required for RAM/VRAM tracking and detailed performance metrics.")
+        # Clear, visual English prompt with detailed explanation
+        print("\n" + "=" * 70)
+        print("  DEVELOPER MODE - Missing Dependencies")
+        print("=" * 70)
+        print("\nThe following packages are required for performance monitoring:\n")
+        for pkg_name, purpose in deps:
+            print(f"  • {pkg_name:<20} → {purpose}")
+        print("\nThese enable accurate RAM/VRAM metrics during benchmarking.")
+        print("Without them, memory usage will show as 0 in reports.")
+        print("\n" + "-" * 70)
         
         try:
             # We use a raw input here to prompt the user in the terminal
             # Note: This might block in non-interactive environments
             choice = input(f"\nWould you like to install {len(deps)} missing developer dependencies now? (y/n): ").strip().lower()
             if choice == 'y':
+                print("\nInstalling dependencies...")
                 for pkg_name, _ in deps:
-                    logger.info(f"Installing {pkg_name}...")
-                    subprocess.check_call([sys.executable, "-m", "pip", "install", pkg_name])
-                logger.info("Successfully installed developer dependencies.\n")
+                    print(f"  → Installing {pkg_name}...")
+                    subprocess.check_call([sys.executable, "-m", "pip", "install", pkg_name], 
+                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print("\n✓ Successfully installed developer dependencies.")
+                print("  Please restart the script to enable monitoring features.\n")
+                print("=" * 70 + "\n")
+                return True
             else:
-                logger.warning("\nSkipping installation. Some monitoring features will be unavailable.")
+                print("\n⚠ Skipping installation. Memory monitoring will be unavailable.")
+                print("=" * 70 + "\n")
+                return False
+        except EOFError:
+            # Handle non-interactive environments
+            logger.warning("Non-interactive environment detected. Skipping dependency prompt.")
+            return False
         except Exception as e:
-            logger.error(f"Failed to handle developer dependency installation: {e}")
-        logger.info("!" * 60 + "\n")
+            logger.error(f"Failed to install developer dependencies: {e}")
+            return False
 
     def set_mode(self, mode: str):
         """Sets the desired mode and saves configuration."""
