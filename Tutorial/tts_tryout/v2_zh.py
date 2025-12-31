@@ -46,7 +46,7 @@ lunavox.set_reference_audio('pretrained', audio_path, reference_text, audio_lang
 # 3. 文本转语音 (TTS)
 lunavox.tts(
     character_name='pretrained',
-    text='你好，我是 LunaVox。现在正在为您演示中文语音合成。',
+    text='你好，这是一次中文语音合成测试。',
     play=True,
     language='zh'
 )

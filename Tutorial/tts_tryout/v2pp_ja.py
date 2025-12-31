@@ -53,7 +53,7 @@ lunavox.set_reference_audio(
 
 lunavox.tts(
     character_name='pretrained',
-    text='こんにちは、ルナヴォックスです。日本語でお話しします。',
+    text='こんにちは、ルナヴォックスです。',
     play=True,  # Play the generated audio directly
     language='ja',
 )

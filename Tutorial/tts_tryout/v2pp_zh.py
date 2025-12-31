@@ -50,7 +50,7 @@ lunavox.set_reference_audio(
 
 lunavox.tts(
     character_name='pretrained',
-    text='你好，这里是露娜，正在用中文说话。',
+    text='你好，这是一次中文语音合成测试。',
     play=True,
     language='zh',
 )
