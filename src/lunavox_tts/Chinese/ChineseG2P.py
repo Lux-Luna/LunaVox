@@ -27,6 +27,11 @@ SPECIAL_REPLACEMENTS = {"...": "…"}  # 特殊的多字符替换
 
 class ChineseG2P:
     def __init__(self):
+        # --- Dependency Check ---
+        from ..Utils.DependencyManager import dependency_manager
+        if not dependency_manager.check_dependencies(["pypinyin", "cn2an", "jieba_fast", "g2pM"], "Chinese"):
+             raise ImportError("Missing dependencies for Chinese TTS support.")
+
         # --- Lazy Load Heavy Dependencies ---
         import jieba_fast
         import jieba_fast.posseg as psg

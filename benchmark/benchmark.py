@@ -6,11 +6,23 @@ import logging
 import statistics
 import threading
 import subprocess
+import wave
+import platform
 from pathlib import Path
 
-# Configure logging at the very beginning to ensure early messages are visible
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger("Benchmark")
+
+# Add parent directory to sys.path for project module imports
+# Now benchmark.py is inside the 'benchmark' folder, so REPO_ROOT is the parent folder.
+BENCHMARK_DIR = Path(__file__).parent.resolve()
+REPO_ROOT = BENCHMARK_DIR.parent.resolve()
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+# Define global benchmark root as a relative path
+BENCHMARK_ROOT = BENCHMARK_DIR
+PROJECT_NAME = "lunavox"
 
 # Attempt to import performance monitoring dependencies
 try:
@@ -24,6 +36,49 @@ try:
 except (ImportError, Exception):
     pynvml = None
 
+def get_device_info():
+    """Get CPU and GPU names for the report filename."""
+    cpu_name = platform.processor()
+    if sys.platform == "win32":
+        try:
+            output = subprocess.check_output(["wmic", "cpu", "get", "name"]).decode().split('\n')
+            if len(output) > 1:
+                cpu_name = output[1].strip()
+        except:
+            pass
+    elif sys.platform == "darwin":
+        try:
+            cpu_name = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"]).decode().strip()
+        except:
+            pass
+            
+    gpu_name = None
+    if pynvml:
+        try:
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            gpu_name = pynvml.nvmlDeviceGetName(handle)
+            if isinstance(gpu_name, bytes):
+                gpu_name = gpu_name.decode()
+        except:
+            pass
+            
+    # Clean names for filename compatibility
+    def clean_name(name):
+        return "".join(c if c.isalnum() or c in " _-" else "_" for c in name).strip()
+
+    cpu_clean = clean_name(cpu_name)
+    
+    # If not NVIDIA or Apple Silicon, use only CPU in filename as per request
+    is_apple = "Apple" in cpu_name or sys.platform == "darwin"
+    if gpu_name:
+        gpu_clean = clean_name(gpu_name)
+        return f"{cpu_clean}+{gpu_clean}"
+    elif is_apple:
+        return cpu_clean
+    else:
+        return cpu_clean
+
 # ==========================================
 # TEST CONFIGURATION (Set via code here)
 # ==========================================
@@ -34,16 +89,12 @@ TEST_LANGUAGES = ["zh", "en", "ja"]
 TEST_VERSIONS = ["v2", "v2pp"]
 
 # Warmup rounds and actual test rounds
-WARMUP_ROUNDS = 1
-TEST_ROUNDS = 5
+WARMUP_ROUNDS = 3
+TEST_ROUNDS = 100
 
 # Project running mode ("cpu" or "gpu")
 RUN_MODE = "cpu"
 # ==========================================
-
-# Add src to sys.path for project module imports
-REPO_ROOT = Path(__file__).parent.resolve()
-sys.path.insert(0, str(REPO_ROOT / "src"))
 
 # Initialize environment manager before importing lunavox
 from lunavox_tts.Utils.EnvManager import env_manager
@@ -70,7 +121,7 @@ REFERENCE_CONFIG = {
     "en": {
         "audio_dir": REPO_ROOT / "CharacterData" / "audio_resources" / "English",
         "target_text": "Hi, this is lunavox speaking English",
-        "specific_file": None
+        "specific_file": "First get into position like this, then move like that. Yep, thats it..wav"
     },
     "ja": {
         "audio_dir": REPO_ROOT / "CharacterData" / "audio_resources" / "Japanese",
@@ -175,16 +226,33 @@ def get_dependency_size(version, lang):
     """
     Calculate total size of core dependencies for the current version and language.
     RoBERTa is only included for Chinese (zh) or Hybrid tests.
+    SV model is only included for versions that use speaker vectors (not v2).
     """
     sizes = {}
-    # 1. Base TTS Data (HuBERT, G2P, SV, etc.)
-    sizes["tts_data"] = get_dir_size(REPO_ROOT / "TTSData")
     
-    # 2. RoBERTa Model (Only for zh or hybrid)
+    # 1. Base TTS Data (HuBERT, G2P, etc.) - Excluding SV for precision
+    tts_data_path = REPO_ROOT / "TTSData"
+    base_tts_size = 0
+    if tts_data_path.exists():
+        for item in tts_data_path.iterdir():
+            if item.name == "sv":
+                continue
+            if item.is_file():
+                base_tts_size += item.stat().st_size
+            else:
+                base_tts_size += sum(f.stat().st_size for f in item.rglob('*') if f.is_file())
+    sizes["tts_data_base"] = round(base_tts_size / (1024 * 1024), 2)
+    
+    # 2. Speaker Verification Model (Only for v2Pro/v2ProPlus)
+    # Plain v2 uses raw audio for reference and does not load ERes2NetV2.
+    if version != "v2":
+        sizes["sv_model"] = get_dir_size(tts_data_path / "sv")
+    
+    # 3. RoBERTa Model (Only for zh or hybrid)
     if lang in ["zh", "hybrid"]:
         sizes["roberta"] = get_dir_size(REPO_ROOT / "RoBERTa")
     
-    # 3. Version-specific character model
+    # 4. Version-specific character model
     if version in VERSION_MAP:
         sizes["character_model"] = get_dir_size(VERSION_MAP[version]["path"])
     
@@ -206,30 +274,74 @@ def get_reference_info(lang):
         audio_path = wavs[0]
     return str(audio_path), audio_path.stem
 
+def get_audio_duration(path):
+    """Get duration of a wav file in seconds."""
+    try:
+        with wave.open(str(path), 'rb') as f:
+            frames = f.getnframes()
+            rate = f.getframerate()
+            return frames / float(rate)
+    except Exception:
+        return 0
+
 def print_summary_table(all_results):
     """Prints a formatted summary table of all benchmark results."""
     if not all_results:
         return
 
-    logger.info("\n" + "=" * 110)
-    logger.info(f"{'BENCHMARK SUMMARY TABLE':^110}")
-    logger.info("-" * 110)
-    header = f"{'Ver':<8} | {'Lang':<5} | {'Time(avg)':<12} | {'Time(min)':<12} | {'Time(max)':<12} | {'RAM(peak)':<12} | {'VRAM(peak)':<12}"
+    logger.info("\n" + "=" * 130)
+    logger.info(f"{'BENCHMARK SUMMARY TABLE (' + PROJECT_NAME.upper() + ')':^130}")
+    logger.info("-" * 130)
+    header = f"{'Ver':<8} | {'Lang':<5} | {'Time(avg)':<12} | {'RTF(avg)':<10} | {'Time(min)':<12} | {'Time(max)':<12} | {'RAM(peak)':<12} | {'VRAM(peak)':<12}"
     logger.info(header)
-    logger.info("-" * 110)
+    logger.info("-" * 130)
 
     for res in all_results:
         v = res['version']
         l = res['language'].upper()
-        t_avg = f"{res['statistics']['time']['mean_ms']:.1f} ms"
+        t_avg = f"{res['statistics']['time']['avg_ms']:.1f} ms"
+        rtf_avg = f"{res['statistics']['time']['avg_rtf']:.4f}"
         t_min = f"{res['statistics']['time']['min_ms']:.1f} ms"
         t_max = f"{res['statistics']['time']['max_ms']:.1f} ms"
         r_peak = f"{res['statistics']['memory']['ram_peak_max_mb']:.1f} MB"
         v_peak = f"{res['statistics']['memory']['vram_peak_max_mb']:.1f} MB" if RUN_MODE == "gpu" else "N/A"
         
-        row = f"{v:<8} | {l:<5} | {t_avg:<12} | {t_min:<12} | {t_max:<12} | {r_peak:<12} | {v_peak:<12}"
+        row = f"{v:<8} | {l:<5} | {t_avg:<12} | {rtf_avg:<10} | {t_min:<12} | {t_max:<12} | {r_peak:<12} | {v_peak:<12}"
         logger.info(row)
-    logger.info("=" * 110 + "\n")
+    logger.info("=" * 130 + "\n")
+
+def generate_markdown_report(all_results, project_name, mode):
+    """Generate a visual-friendly markdown report for a single project/mode."""
+    device_info = get_device_info()
+    report_name = f"REPORT_{mode.upper()}_{device_info}.md"
+    report_path = BENCHMARK_DIR / report_name
+    
+    lines = [
+        f"# {project_name.upper()} Benchmark Report ({mode.upper()})",
+        f"\n- **Device**: {device_info}",
+        f"- **Timestamp**: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"- **Rounds**: {TEST_ROUNDS}",
+        f"- **Warmup**: {WARMUP_ROUNDS}",
+        "\n## Summary Table",
+        "\n| Version | Lang | Time(avg) | RTF(avg) | RAM(avg) | RAM(peak) | VRAM(peak) |",
+        "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |"
+    ]
+    
+    for res in all_results:
+        s = res['statistics']
+        v = res['version']
+        l = res['language'].upper()
+        t_avg = f"{s['latency']['avg_ms']:.1f} ms"
+        rtf_avg = f"{s['latency']['avg_rtf']:.4f}"
+        ram_avg = f"{s['ram']['avg_mb']:.1f} MB"
+        ram_peak = f"{s['ram']['peak_mb']:.1f} MB"
+        v_peak = f"{s['vram']['peak_mb']:.1f} MB" if mode == "gpu" else "N/A"
+        
+        lines.append(f"| {v} | {l} | {t_avg} | {rtf_avg} | {ram_avg} | {ram_peak} | {v_peak} |")
+    
+    with open(report_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    logger.info(f"Markdown report generated: {report_path}")
 
 def run_benchmark():
     # Check for developer mode dependencies and provide installation instructions if missing
@@ -269,7 +381,7 @@ def run_benchmark():
                 except Exception as e:
                     logger.error(f"Failed to install {pkg_name}: {e}")
             else:
-                logger.info(f"Skipping installation of {pkg_name}. Resource tracking for this component will be disabled.")
+                logger.info(f"Skipping installation of {pkg_name} Resource tracking for this component will be disabled.")
 
     # Non-NVIDIA GPU error check
     if RUN_MODE == "gpu":
@@ -325,7 +437,7 @@ def run_benchmark():
             # Calculate dependency size dynamically for current lang
             dep_total_mb, dep_details = get_dependency_size(version, lang)
 
-            logger.info(f"\n--- Language Test: {lang.upper()} ---")
+            logger.info(f"\n--- Language Test: {lang.upper()} ({RUN_MODE.upper()} mode) ---")
             logger.info(f"Dependency Size: {dep_total_mb:.2f} MB ({', '.join([f'{k}: {v}MB' for k,v in dep_details.items()])})")
             
             try:
@@ -346,7 +458,9 @@ def run_benchmark():
             round_results = []
             
             for i in range(TEST_ROUNDS):
-                save_audio_path = REPO_ROOT / "benchmark" / "audio_output" / version / lang / f"round_{i+1}.wav"
+                output_dir = BENCHMARK_ROOT / "audio_output" / version / lang / RUN_MODE
+                output_dir.mkdir(parents=True, exist_ok=True)
+                save_audio_path = output_dir / f"round_{i+1}.wav"
                 
                 tracker.start()
                 start_ts = time.perf_counter()
@@ -356,37 +470,54 @@ def run_benchmark():
                 
                 duration_ms = (end_ts - start_ts) * 1000
                 res_stats["time_ms"] = round(duration_ms, 2)
-                res_stats["round"] = i + 1
                 
+                # Calculate RTF
+                audio_duration = get_audio_duration(save_audio_path)
+                res_stats["audio_duration_s"] = round(audio_duration, 3)
+                res_stats["rtf"] = round((duration_ms / 1000) / audio_duration, 4) if audio_duration > 0 else 0
+                
+                res_stats["round"] = i + 1
                 round_results.append(res_stats)
                 
                 mem_info = f"RAM: {res_stats['ram_peak_mb']:.1f}MB"
                 if RUN_MODE == "gpu" and res_stats['vram_peak_mb'] > 0:
                     mem_info += f", VRAM: {res_stats['vram_peak_mb']:.1f}MB"
-                logger.info(f"  Round {i+1}: {duration_ms:.2f} ms | {mem_info}")
+                logger.info(f"  Round {i+1}: {duration_ms:.2f} ms | RTF: {res_stats['rtf']:.4f} | {mem_info}")
 
             # Statistics
             times = [r["time_ms"] for r in round_results]
+            rtfs = [r["rtf"] for r in round_results]
             ram_peaks = [r["ram_peak_mb"] for r in round_results]
             ram_avgs = [r["ram_avg_mb"] for r in round_results]
             vram_peaks = [r["vram_peak_mb"] for r in round_results]
             vram_avgs = [r["vram_avg_mb"] for r in round_results]
 
             stats = {
-                "time": {
-                    "mean_ms": round(statistics.mean(times), 2),
+                "latency": {
+                    "avg_ms": round(statistics.mean(times), 2),
                     "min_ms": round(min(times), 2),
-                    "max_ms": round(max(times), 2)
+                    "max_ms": round(max(times), 2),
+                    "avg_rtf": round(statistics.mean(rtfs), 4)
                 },
-                "memory": {
-                    "ram_peak_max_mb": round(max(ram_peaks), 2),
-                    "ram_avg_mean_mb": round(statistics.mean(ram_avgs), 2),
-                    "vram_peak_max_mb": round(max(vram_peaks), 2),
-                    "vram_avg_mean_mb": round(statistics.mean(vram_avgs), 2)
+                "ram": {
+                    "avg_mb": round(statistics.mean(ram_avgs), 2),
+                    "peak_mb": round(max(ram_peaks), 2)
+                },
+                "vram": {
+                    "avg_mb": round(statistics.mean(vram_avgs), 2),
+                    "peak_mb": round(max(vram_peaks), 2)
                 }
             }
             
+            # Legacy compatibility for summary table print logic if needed
+            stats["time"] = stats["latency"] # alias for existing code
+            stats["memory"] = {
+                "ram_peak_max_mb": stats["ram"]["peak_mb"],
+                "vram_peak_max_mb": stats["vram"]["peak_mb"]
+            }
+            
             final_report = {
+                "project": PROJECT_NAME,
                 "version": version,
                 "language": lang,
                 "mode": RUN_MODE,
@@ -403,17 +534,21 @@ def run_benchmark():
 
             summary_results.append(final_report)
 
-            result_json_path = REPO_ROOT / "benchmark" / "result" / version / lang / "benchmark_result.json"
+            result_json_path = BENCHMARK_ROOT / "result" / version / lang / RUN_MODE / "benchmark_result.json"
+            result_json_path.parent.mkdir(parents=True, exist_ok=True)
             with open(result_json_path, "w", encoding="utf-8") as f:
                 json.dump(final_report, f, indent=4, ensure_ascii=False)
             
-            logger.info(f"Average: {stats['time']['mean_ms']} ms | Peak RAM: {stats['memory']['ram_peak_max_mb']} MB")
+            logger.info(f"Average: {stats['time']['avg_ms']} ms | RTF: {stats['time']['avg_rtf']} | Peak RAM: {stats['memory']['ram_peak_max_mb']} MB")
             logger.info(f"Result saved to: {result_json_path}")
 
         lunavox.unload_character(model_name)
 
     # Print the final summary table
     print_summary_table(summary_results)
+    
+    # Generate Markdown Report
+    generate_markdown_report(summary_results, PROJECT_NAME, RUN_MODE)
 
     logger.info("\n" + "=" * 60)
     logger.info("Benchmark and resource monitoring completed!")
@@ -426,3 +561,4 @@ if __name__ == "__main__":
         logger.info("\nBenchmark interrupted by user.")
     except Exception as e:
         logger.error(f"\nError occurred during benchmark: {e}", exc_info=True)
+

@@ -1,20 +1,17 @@
-# pyproject.toml
-
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "lunavox-tts"
-version = "1.0.8"
+version = "1.5.0"
 authors = [
     { name = "Lux_Luna", email = "525236052@qq.com" },
 ]
 description = "GPT-SoVITS ONNX Inference Engine & Model Converter"
 readme = "README.md"
 requires-python = ">=3.9"
-license = "MIT"
-license-files = ["LICENSE"]
+license = { text = "MIT" }
 classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -27,21 +24,41 @@ classifiers = [
 
 dependencies = [
     "onnx",
-    "onnxruntime",
-    "numpy",
-    "pyopenjtalk-plus",
+    "onnxruntime==1.22.1",
+    "numpy<2",
     "soundfile",
     "soxr",
     "pyyaml",
     "sounddevice",
     "huggingface_hub[hf_xet]",
+    "fastapi",
+    "uvicorn[standard]",
     "pydantic",
     "nltk",
+    "tokenizers",
+]
+
+[project.optional-dependencies]
+zh = [
     "pypinyin",
     "cn2an",
     "jieba_fast",
-    "tokenizers",
     "g2pM",
+]
+ja = [
+    "pyopenjtalk-plus",
+]
+dev = [
+    "psutil",
+    "nvidia-ml-py",
+    "build",
+    "twine",
+]
+gpu = [
+    "onnxruntime-gpu==1.20.1",
+    "nvidia-cudnn-cu12",
+    "nvidia-cublas-cu12",
+    "nvidia-cuda-runtime-cu12",
 ]
 
 [project.urls]
@@ -55,6 +72,9 @@ include-package-data = true
 
 [tool.setuptools.package-data]
 "lunavox_tts" = [
-    "Data/v2/Models/*",
-    "Data/v2/Keys/*",
+    "**/*.json",
+    "**/*.txt",
+    "**/*.rep",
+    "**/*.pickle",
+    "**/*.npz",
 ]

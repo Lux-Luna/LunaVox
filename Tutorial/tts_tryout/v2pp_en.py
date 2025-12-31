@@ -18,7 +18,7 @@ from lunavox_tts.Utils.EnvManager import env_manager
 
 # --- OPTIONAL: Environment Configuration ---
 # Uncomment to force a specific runtime mode. Default is "cpu".
-env_manager.set_mode("cpu")
+# env_manager.set_mode("cpu")
 # env_manager.set_mode("gpu")
 
 if not env_manager.ensure_environment():

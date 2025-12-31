@@ -31,6 +31,56 @@ class EnvManager:
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.config_file = self.config_dir / "env_config.json"
         self._config = self._load_config()
+        
+        # Setup portable CUDA paths if on Windows and GPU mode is active
+        if sys.platform == "win32" and self.get_mode() == "gpu":
+            self._setup_portable_cuda_paths()
+
+    def _setup_portable_cuda_paths(self):
+        """
+        Search for portable CUDA DLLs in the current Python environment's site-packages
+        (installed via nvidia-*-cu12 pip packages) and add them to the DLL search path.
+        This is critical for Windows users who don't have a system-wide CUDA Toolkit installed.
+        """
+        if sys.platform != "win32":
+            return
+
+        try:
+            import site
+            # Aggressively find all possible site-packages locations
+            search_paths = site.getsitepackages()
+            if hasattr(site, 'getusersitepackages'):
+                search_paths.append(site.getusersitepackages())
+            
+            # Add current sys.path entries that look like site-packages
+            for p in sys.path:
+                if "site-packages" in p and p not in search_paths:
+                    search_paths.append(p)
+            
+            added_paths = []
+            for sp_str in search_paths:
+                sp = Path(sp_str)
+                nvidia_base = sp / "nvidia"
+                if not nvidia_base.exists():
+                    continue
+                
+                # Find all 'bin' directories under nvidia base
+                for bin_folder in nvidia_base.glob("**/bin"):
+                    if bin_folder.is_dir():
+                        bin_path_str = str(bin_folder.absolute())
+                        if bin_path_str not in added_paths:
+                            os.add_dll_directory(bin_path_str)
+                            # Also add to PATH for some older or stubborn loaders
+                            os.environ["PATH"] = bin_path_str + os.pathsep + os.environ["PATH"]
+                            added_paths.append(bin_path_str)
+            
+            if added_paths:
+                logger.info(f"Added portable CUDA DLL paths to search path: {len(added_paths)} paths found.")
+                for p in added_paths:
+                    logger.debug(f"  - {p}")
+        except Exception as e:
+            logger.warning(f"Failed to setup portable CUDA paths: {e}")
+            pass
 
     def _load_config(self):
         if self.config_file.exists():
@@ -122,17 +172,23 @@ class EnvManager:
         return True
 
     def install_gpu_runtime(self):
-        """Uninstalls CPU runtime and installs GPU runtime."""
-        logger.info("Switching to GPU runtime. This will uninstall onnxruntime and install onnxruntime-gpu.")
+        """Uninstalls CPU runtime and installs GPU runtime with portable CUDA 12 dependencies."""
+        logger.info("Switching to GPU runtime. This will uninstall onnxruntime and install onnxruntime-gpu with CUDA 12 libraries.")
         try:
             # Uninstall both just to be clean, though usually only one exists
             subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "onnxruntime", "-y"])
             subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "onnxruntime-gpu", "-y"])
             
-            # Using 1.22.0 as it's the closest to the optimized 1.22.1 CPU version
-            logger.info("Installing onnxruntime-gpu==1.22.0...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "onnxruntime-gpu==1.22.0"])
-            logger.info("onnxruntime-gpu installed successfully.")
+            # Using 1.20.1 as it supports Opset 20 and is stable with CUDA 12
+            logger.info("Installing onnxruntime-gpu==1.20.1 and CUDA 12 runtime libraries...")
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", 
+                "onnxruntime-gpu==1.20.1", 
+                "nvidia-cudnn-cu12", "nvidia-cublas-cu12", "nvidia-cuda-runtime-cu12",
+                "numpy<2"
+            ])
+            
+            logger.info("onnxruntime-gpu and portable CUDA libraries installed successfully.")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to install GPU runtime: {e}")
             raise RuntimeError(f"Dependency installation failed: {e}")
@@ -146,7 +202,11 @@ class EnvManager:
             
             # Explicitly lock to 1.22.1 for optimized CPU performance
             logger.info("Installing onnxruntime==1.22.1...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "onnxruntime==1.22.1"])
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", 
+                "onnxruntime==1.22.1",
+                "numpy<2"
+            ])
             logger.info("onnxruntime installed successfully.")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to install CPU runtime: {e}")

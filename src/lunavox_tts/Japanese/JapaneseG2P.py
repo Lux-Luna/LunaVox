@@ -6,9 +6,22 @@
 # os.environ['OPEN_JTALK_DICT_DIR'] = './Data/open_jtalk_dic_utf_8-1.11'
 
 import re
-import pyopenjtalk
 from typing import List
 from .SymbolsV2 import symbols_v2, symbol_to_id_v2
+
+# Global for lazy-loaded pyopenjtalk
+_pyopenjtalk = None
+
+def _get_pyopenjtalk():
+    global _pyopenjtalk
+    if _pyopenjtalk is None:
+        from ..Utils.DependencyManager import dependency_manager
+        if dependency_manager.check_dependencies(["pyopenjtalk-plus"], "Japanese"):
+            import pyopenjtalk
+            _pyopenjtalk = pyopenjtalk
+        else:
+            raise ImportError("pyopenjtalk-plus is required for Japanese TTS.")
+    return _pyopenjtalk
 
 # 匹配连续的标点符号
 _CONSECUTIVE_PUNCTUATION_RE = re.compile(r"([,./?!~…・])\1+")
@@ -66,7 +79,7 @@ class JapaneseG2P:
     @staticmethod
     def _pyopenjtalk_g2p_prosody(text: str) -> List[str]:
         """使用pyopenjtalk提取音素及韵律符号。"""
-        labels = pyopenjtalk.make_label(pyopenjtalk.run_frontend(text))
+        labels = _get_pyopenjtalk().make_label(_get_pyopenjtalk().run_frontend(text))
         phones = []
         for n, lab_curr in enumerate(labels):
             p3 = re.search(r"-(.*?)\+", lab_curr).group(1)
@@ -130,7 +143,7 @@ class JapaneseG2P:
                 if with_prosody:  # 移除分析结果中句首(^)/句尾($)的符号，因为我们按片段处理
                     phones = JapaneseG2P._pyopenjtalk_g2p_prosody(segment)[1:-1]
                 else:
-                    phones = pyopenjtalk.g2p(segment).split(" ")
+                    phones = _get_pyopenjtalk().g2p(segment).split(" ")
                 phonemes.extend(phones)
 
             # 将对应的标点符号添加回来

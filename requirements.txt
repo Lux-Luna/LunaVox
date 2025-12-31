@@ -1,7 +1,7 @@
+# --- Core Runtime Dependencies ---
 onnx
 onnxruntime==1.22.1
-numpy
-pyopenjtalk-plus
+numpy<2
 soundfile
 soxr
 pyyaml
@@ -11,8 +11,33 @@ fastapi
 uvicorn[standard]
 pydantic
 nltk
-pypinyin
-cn2an
-jieba_fast
 tokenizers
-g2pM
+
+# --- Core Developer monitor tool ---
+# psutil
+# nvidia-ml-py
+
+# --- Optional: Chinese TTS Support ---
+# pypinyin
+# cn2an
+# jieba_fast
+# g2pM
+
+# --- Optional: Japanese TTS Support ---
+# pyopenjtalk-plus
+
+# --- Optional: GPU Acceleration (CUDA 12) ---
+# To enable GPU mode, uninstall 'onnxruntime' and install the following:
+# onnxruntime-gpu==1.22.0
+# nvidia-cudnn-cu12
+# nvidia-cublas-cu12
+# nvidia-cuda-runtime-cu12
+# nvidia-cuda-nvrtc-cu12
+# nvidia-cufft-cu12
+# nvidia-curand-cu12
+# nvidia-cusolver-cu12
+# nvidia-cusparse-cu12
+
+# --- Optional: Model Conversion & Development ---
+# Required for exporting models to ONNX format:
+# torch
