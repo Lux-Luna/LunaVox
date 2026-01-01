@@ -32,7 +32,6 @@ class LunaVoxEngine:
     """
     
     def __init__(self, model_provider=None):
-        self.stop_event: threading.Event = threading.Event()
         self._model_provider = model_provider
 
     def tts(
@@ -68,10 +67,15 @@ class LunaVoxEngine:
         session.model = MockModel(encoder, first_stage_decoder, stage_decoder, vocoder, prompt_encoder)
         return self.generate(text, session)
 
-    def generate(self, text: str, session: SynthesisSession) -> Optional[np.ndarray]:
+    def generate(self, text: str, session: SynthesisSession, stop_event: threading.Event = None) -> Optional[np.ndarray]:
         """
         Main entry point for session-based TTS generation.
         Executes the full pipeline: Preprocess -> Features -> T2S -> Vocoder -> Postprocess.
+        
+        Args:
+            text: Text to synthesize
+            session: SynthesisSession with model and audio config
+            stop_event: Optional threading.Event for cancellation
         """
         with monitor.measure("Total TTS Latency", category="USER_PERCEIVED"):
             # 1. Pipeline: Preprocess (Linguistic)
@@ -84,13 +88,13 @@ class LunaVoxEngine:
                 session.model.PROMPT_ENCODER if session.model else None
             )
             
-            if self.stop_event.is_set(): return None
+            if stop_event and stop_event.is_set(): return None
 
             # 3. Pipeline: T2S (Text-to-Semantic)
-            semantic_tokens = self.t2s_stage(text_seq, text_bert, session)
+            semantic_tokens = self.t2s_stage(text_seq, text_bert, session, stop_event)
             if semantic_tokens is None: return None
             
-            if self.stop_event.is_set(): return None
+            if stop_event and stop_event.is_set(): return None
 
             # 4. Pipeline: Vocoder (VITS Synthesis)
             audio = self.vocoder_stage(semantic_tokens, text_seq, session)
@@ -115,7 +119,7 @@ class LunaVoxEngine:
             text_seq = np.array([ids], dtype=np.int64)
             return text_seq, bert_features
 
-    def t2s_stage(self, text_seq: np.ndarray, text_bert: np.ndarray, session: SynthesisSession) -> Optional[np.ndarray]:
+    def t2s_stage(self, text_seq: np.ndarray, text_bert: np.ndarray, session: SynthesisSession, stop_event: threading.Event = None) -> Optional[np.ndarray]:
         """
         Stage 3: T2S Inference.
         Generates semantic tokens from linguistic features.
@@ -143,7 +147,7 @@ class LunaVoxEngine:
                 first_stage_decoder=session.model.T2S_FIRST_STAGE_DECODER,
                 stage_decoder=session.model.T2S_STAGE_DECODER,
                 device=device_name,
-                stop_event=self.stop_event,
+                stop_event=stop_event,
             )
 
         if semantic_tokens is None or semantic_tokens.size == 0:
@@ -167,80 +171,42 @@ class LunaVoxEngine:
         """
         Stage 4: VITS Vocoder.
         Synthesizes waveform from semantic tokens and acoustic features.
+        
+        Uses spec-driven input assembly to eliminate hardcoded version checks.
         """
+        from ...Core.Model import get_model_spec
+        
         prompt_audio = session.prompt_audio
         model_version = session.model_version
         device_mode = env_manager.get_mode()
         
-        # Prepare vocoder inputs
-        vocoder_inputs = {
-            "text_seq": text_seq,
-            "pred_semantic": semantic_tokens,
-        }
+        # Get spec for this model version
+        spec = get_model_spec(model_version)
         
-        # Handle different model feature requirements
-        if model_version == 'v2Pro':
-            with monitor.measure("Reference Audio Feature Extraction"):
-                from ...Resources.Audio.SpectrogramExtractor import extract_stft_spectrogram
-                ref_audio_features = extract_stft_spectrogram(
-                    prompt_audio.audio_32k,
-                    n_fft=1406,
-                    hop_length=640,
-                    win_length=1406,
-                    center=False
-                )
-            vocoder_inputs["ref_audio"] = ref_audio_features
-            if prompt_audio.sv_emb is not None:
-                vocoder_inputs["sv_emb"] = prompt_audio.sv_emb
-                
-        elif model_version == 'v2ProPlus':
-            if prompt_audio.global_emb is not None:
-                vocoder_inputs["ge"] = prompt_audio.global_emb
-                vocoder_inputs["ge_advanced"] = prompt_audio.global_emb_advanced
-            else:
-                # Lazy prompt encoder run if not pre-extracted (Referrence mode fallback)
-                if session.model and session.model.PROMPT_ENCODER:
-                    with monitor.measure("Prompt Encoder"):
-                        run_prompt_encoder(session.model.PROMPT_ENCODER, prompt_audio)
-                    vocoder_inputs["ge"] = prompt_audio.global_emb
-                    vocoder_inputs["ge_advanced"] = prompt_audio.global_emb_advanced
-                else:
-                    raise RuntimeError("v2ProPlus requires global_emb or prompt_encoder")
-            
-            # v2ProPlus also optionally takes ref_audio for some variants, but usually skips it
-            # We'll let the robustness check below handle it if requested.
-        else:
-            # Standard v2
-            ref_audio_features = np.expand_dims(prompt_audio.audio_32k, axis=0)
-            # WORKAROUND: Truncate reference audio for VITS if too long on GPU
-            if device_mode == "gpu" and not prompt_audio.is_persona_based:
-                MAX_VITS_AUDIO_SAMPLES = 128000
-                if ref_audio_features.shape[1] > MAX_VITS_AUDIO_SAMPLES:
-                    ref_audio_features = ref_audio_features[:, :MAX_VITS_AUDIO_SAMPLES]
-            vocoder_inputs["ref_audio"] = ref_audio_features
-
-        # Robustness check: Satisfy missing required inputs if persona has them
-        # This handles cross-version compatibility (e.g. Universal Persona on v2 model that is actually v2pp)
-        expected_inputs = [i.name for i in session.model.VITS.get_inputs()]
-        
-        if "ge" in expected_inputs and "ge" not in vocoder_inputs:
-            if prompt_audio.global_emb is not None:
-                vocoder_inputs["ge"] = prompt_audio.global_emb
-                vocoder_inputs["ge_advanced"] = prompt_audio.global_emb_advanced
-                logger.debug("Automatically provided missing 'ge' inputs from Universal Persona.")
-            elif session.model.PROMPT_ENCODER:
-                with monitor.measure("Prompt Encoder (Fallback)"):
+        # Handle lazy prompt encoder for v2ProPlus if global_emb not cached
+        if spec.requires_global_emb and prompt_audio.global_emb is None:
+            if session.model and session.model.PROMPT_ENCODER:
+                with monitor.measure("Prompt Encoder"):
                     run_prompt_encoder(session.model.PROMPT_ENCODER, prompt_audio)
-                vocoder_inputs["ge"] = prompt_audio.global_emb
-                vocoder_inputs["ge_advanced"] = prompt_audio.global_emb_advanced
+            else:
+                raise RuntimeError(f"{model_version} requires global_emb or prompt_encoder")
         
-        if "sv_emb" in expected_inputs and "sv_emb" not in vocoder_inputs:
-            if prompt_audio.sv_emb is not None:
-                vocoder_inputs["sv_emb"] = prompt_audio.sv_emb
-                logger.debug("Automatically provided missing 'sv_emb' input from persona.")
+        # WORKAROUND: Truncate reference audio for VITS if too long on GPU (v2 only)
+        if model_version not in ('v2ProPlus', 'v2Pro', 'v2pp'):
+            if device_mode == "gpu" and not prompt_audio.is_persona_based:
+                if prompt_audio.audio_32k is not None and len(prompt_audio.audio_32k) > 128000:
+                    # Create a copy to avoid mutating the cached reference
+                    import copy
+                    prompt_audio = copy.copy(prompt_audio)
+                    prompt_audio.audio_32k = prompt_audio.audio_32k[:128000]
         
-        if "ref_audio" in expected_inputs and "ref_audio" not in vocoder_inputs:
-             vocoder_inputs["ref_audio"] = np.expand_dims(prompt_audio.audio_32k, axis=0)
+        # Use spec-driven input assembly
+        vocoder_inputs = spec.assemble_vocoder_inputs(
+            text_seq=text_seq,
+            pred_semantic=semantic_tokens,
+            features=prompt_audio,
+            vocoder_session=session.model.VITS,
+        )
 
         # Run Vocoder
         with monitor.measure("VITS Inference"):

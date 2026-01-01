@@ -11,7 +11,6 @@ from typing import Optional, Union
 
 from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
-from ..Utils.Shared import context
 from ..Utils.ResourceManager import resource_manager
 from .state import (
     SUPPORTED_AUDIO_EXTS,
@@ -40,9 +39,9 @@ def load_character(
     # --- AUTO-DOWNLOAD BUILT-IN MODELS ---
     if not os.path.isdir(model_path):
         normalized_path = model_path.replace("\\", "/")
-        if "CharacterData/model/v2/pretrained" in normalized_path:
+        if "lunavoxData/CharacterData/model/v2/pretrained" in normalized_path:
             resource_manager.ensure_base()
-        elif "CharacterData/model/v2_pro_plus/pretrained" in normalized_path:
+        elif "lunavoxData/CharacterData/model/v2_pro_plus/pretrained" in normalized_path:
             resource_manager.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
 
     if not os.path.isdir(model_path):

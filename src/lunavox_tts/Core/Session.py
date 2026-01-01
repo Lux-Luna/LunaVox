@@ -29,15 +29,6 @@ class SynthesisSession:
         if self.prompt_audio is None:
             return False
         return True
-    
-    @classmethod
-    def from_context(cls, speaker: str, language: str) -> "SynthesisSession":
-        from ..Utils.Shared import context
-        return cls(
-            speaker=speaker or context.current_speaker,
-            language=language or context.current_language,
-            prompt_audio=context.current_prompt_audio,
-        )
 
 
 def create_session(
@@ -47,3 +38,4 @@ def create_session(
 ) -> SynthesisSession:
     """Create a new synthesis session."""
     return SynthesisSession(speaker=speaker, language=language, prompt_audio=prompt_audio)
+

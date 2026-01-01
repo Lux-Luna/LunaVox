@@ -13,7 +13,6 @@ from .Inference import LunaVoxEngine
 from .Session import SynthesisSession
 from .Frontend.processor import text_processor
 from ..ModelManager import model_manager
-from ..Utils.Shared import context
 from ..Utils.Utils import clear_queue
 from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..Utils.PerformanceMonitor import monitor
@@ -98,10 +97,10 @@ class TTSPlayer:
                     continue
 
                 # Run inference via engine
-                self.inference_engine.stop_event.clear()
                 audio_chunk = self.inference_engine.generate(
                     text=sentence,
-                    session=self._current_session
+                    session=self._current_session,
+                    stop_event=self._stop_event
                 )
 
                 if audio_chunk is not None:
@@ -199,26 +198,26 @@ class TTSPlayer:
             self._start_time = None
             self._end_time = None
             
-            # Resolve parameters
-            resolved_speaker = speaker or context.current_speaker
-            resolved_language = (language or context.current_language or "ja").lower()
-            resolved_prompt = prompt_audio or context.current_prompt_audio
+            # Validate required parameters
+            if not speaker:
+                raise ValueError("speaker is required for TTS session")
+            if prompt_audio is None:
+                raise ValueError("prompt_audio is required for TTS session")
             
-            if not resolved_speaker or resolved_prompt is None:
-                raise ValueError("Speaker and prompt audio must be set.")
+            resolved_language = (language or "ja").lower()
             
             # Create session-based state
-            skip_pe = getattr(resolved_prompt, 'is_persona_based', False)
-            gsv_model = model_manager.get(resolved_speaker, skip_prompt_encoder=skip_pe)
+            skip_pe = getattr(prompt_audio, 'is_persona_based', False)
+            gsv_model = model_manager.get(speaker, skip_prompt_encoder=skip_pe)
             if not gsv_model:
-                raise RuntimeError(f"Failed to load model for {resolved_speaker}")
+                raise RuntimeError(f"Failed to load model for {speaker}")
                 
             self._current_session = SynthesisSession(
-                speaker=resolved_speaker,
+                speaker=speaker,
                 language=resolved_language,
-                prompt_audio=resolved_prompt,
+                prompt_audio=prompt_audio,
                 model=gsv_model,
-                model_version=model_manager.get_character_version(resolved_speaker),
+                model_version=model_manager.get_character_version(speaker),
                 skip_prompt_encoder=skip_pe
             )
             

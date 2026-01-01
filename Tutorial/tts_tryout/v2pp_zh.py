@@ -28,10 +28,10 @@ if not env_manager.ensure_environment():
 import lunavox_tts as lunavox
 
 # 本地环境设置
-os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
+os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'lunavoxData' / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
 def resolve_reference(language: str):
-    audio_dir = REPO_ROOT / 'CharacterData' / 'audio' / language
+    audio_dir = REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'audio' / language
     wav_files = list(audio_dir.glob("*.wav"))
     if not wav_files:
         raise FileNotFoundError(f"No .wav files found in {audio_dir}")
@@ -42,8 +42,8 @@ def resolve_reference(language: str):
 # 使用固化后的 Persona (luna_zh)，其中包含预计算的声纹向量 (Speaker Vector)。
 # 这样可以跳过运行时的 HuBERT 模型提取和声纹分析，大幅节省启动时间和内存。
 char_name = 'luna_v2pp_zh'
-persona_dir = str(REPO_ROOT / 'CharacterData' / 'character' / 'luna_zh')
-model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2_pro_plus' / 'pretrained')
+persona_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'character' / 'luna_zh')
+model_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'model' / 'v2_pro_plus' / 'pretrained')
 
 lunavox.load_persona(char_name, persona_dir)
 lunavox.load_character(char_name, model_dir)

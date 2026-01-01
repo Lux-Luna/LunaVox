@@ -13,7 +13,6 @@ from typing import AsyncIterator, Optional, Union
 from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..Core.TTSPlayer import tts_player
 from ..ModelManager import model_manager
-from ..Utils.Shared import context
 from ..Utils.ResourceManager import resource_manager
 from .state import (
     normalize_language,

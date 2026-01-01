@@ -36,12 +36,12 @@ class Context:
             object.__setattr__(self, '_warned', set())
         if name not in getattr(self, '_warned', set()) and name != '_warned':
             self._warned.add(name)
-            # Suppress warning during initial migration period
-            # warnings.warn(
-            #     f"Global context.{name} is deprecated. Use SynthesisSession instead.",
-            #     DeprecationWarning,
-            #     stacklevel=3
-            # )
+            # Deprecation warning enabled - migrate to SynthesisSession
+            warnings.warn(
+                f"Global context.{name} is deprecated. Use SynthesisSession instead.",
+                DeprecationWarning,
+                stacklevel=3
+            )
         object.__setattr__(self, name, value)
 
 

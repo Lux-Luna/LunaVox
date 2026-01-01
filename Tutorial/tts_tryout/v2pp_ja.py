@@ -28,10 +28,10 @@ if not env_manager.ensure_environment():
 import lunavox_tts as lunavox
 
 # ローカル環境設定
-os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
+os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'lunavoxData' / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
 def resolve_reference(language: str):
-    audio_dir = REPO_ROOT / 'CharacterData' / 'audio' / language
+    audio_dir = REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'audio' / language
     wav_files = list(audio_dir.glob("*.wav"))
     if not wav_files:
         raise FileNotFoundError(f"No .wav files found in {audio_dir}")
@@ -42,8 +42,8 @@ def resolve_reference(language: str):
 # 固化されたペルソナ (luna_ja) を使用します。これには計算済みの Speaker Vector が含まれています。
 # 実行時の HuBERT および声紋抽出をスキップするため、メモリ消費と起動時間を節約できます。
 char_name = 'luna_v2pp_ja'
-persona_dir = str(REPO_ROOT / 'CharacterData' / 'character' / 'luna_ja')
-model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2_pro_plus' / 'pretrained')
+persona_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'character' / 'luna_ja')
+model_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'model' / 'v2_pro_plus' / 'pretrained')
 
 lunavox.load_persona(char_name, persona_dir)
 lunavox.load_character(char_name, model_dir)

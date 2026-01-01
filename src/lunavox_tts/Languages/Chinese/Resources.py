@@ -13,8 +13,9 @@ def get_chinese_g2p_dir() -> str:
     from ...Utils.ResourceManager import resource_manager
     resource_manager.ensure_tts_data()
     repo_root = env_manager.repo_root
+    data_root = env_manager.data_root
     
-    g2p_dir = repo_root / "TTSData" / "G2P" / "Chinese"
+    g2p_dir = data_root / "TTSData" / "G2P" / "Chinese"
     if not g2p_dir.exists():
         g2p_dir.mkdir(parents=True, exist_ok=True)
         

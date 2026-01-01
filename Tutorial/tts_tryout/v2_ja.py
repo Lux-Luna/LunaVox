@@ -28,10 +28,10 @@ if not env_manager.ensure_environment():
 import lunavox_tts as lunavox
 
 # ローカル環境設定
-os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
+os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'lunavoxData' / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
 def resolve_reference(language: str):
-    audio_dir = REPO_ROOT / 'CharacterData' / 'audio' / language
+    audio_dir = REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'audio' / language
     wav_files = list(audio_dir.glob("*.wav"))
     if not wav_files:
         raise FileNotFoundError(f"No .wav files found in {audio_dir}")
@@ -42,14 +42,14 @@ def resolve_reference(language: str):
 # 事前に抽出・固化された特徴量 (luna_ja) を使用し、実行時の音声解析をスキップします。
 # このモードは、起動が速く、メモリ使用量が少なく、音質が安定しています。
 char_name = 'luna_ja'
-persona_dir = str(REPO_ROOT / 'CharacterData' / 'character' / 'luna_ja')
-model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2' / 'pretrained')
+persona_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'character' / 'luna_ja')
+model_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'model' / 'v2' / 'pretrained')
 
 lunavox.load_persona(char_name, persona_dir)
 lunavox.load_character(char_name, model_dir)
 
 # 2. 代替案: 参照オーディオモード (コメントアウト)
-# 特定の WAV ファイルを使用してリアルタイムでボイスクローニングを行う場合に使用します。
+# 特定の WAV ファイルを使用してリアルタイムでボイス克隆を行う場合に使用します。
 # 注意: 起動するたびに特徴量の再抽出が行われます。
 """
 audio_path, reference_text = resolve_reference('Japanese')

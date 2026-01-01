@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 from ...Utils.PerformanceMonitor import monitor
 from ...ModelManager import model_manager
 from ...Core.Frontend import get_language_frontend
+from .FeaturePacket import FeaturePacket
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +26,24 @@ class FeatureExtractor:
     """
     
     @staticmethod
-    def process(ref_audio: "ReferenceAudio", model_version: str = 'v2', prompt_encoder: Optional["onnxruntime.InferenceSession"] = None):
+    def process(
+        ref_audio: "ReferenceAudio", 
+        model_version: str = 'v2', 
+        prompt_encoder: Optional["onnxruntime.InferenceSession"] = None
+    ) -> FeaturePacket:
         """
         Extract all features for a ReferenceAudio instance based on the target model version.
+        
+        This method both mutates ref_audio (for backward compatibility) AND returns
+        a FeaturePacket for new session-based workflows.
         
         Args:
             ref_audio: The ReferenceAudio instance to process.
             model_version: Target model version ('v2', 'v2Pro', 'v2ProPlus').
             prompt_encoder: Optional prompt encoder session for v2ProPlus.
+            
+        Returns:
+            FeaturePacket containing all extracted features.
         """
         with monitor.measure("Feature Extraction"):
             # 1. Ensure audio is loaded and resampled
@@ -59,6 +70,18 @@ class FeatureExtractor:
             # 5. Global Embeddings (v2ProPlus specific)
             if model_version == 'v2ProPlus' and ref_audio.global_emb is None and prompt_encoder is not None:
                 FeatureExtractor.extract_global_emb(ref_audio, prompt_encoder)
+        
+        # Build and return FeaturePacket
+        return FeaturePacket.from_reference_audio(ref_audio)
+
+    @staticmethod
+    def extract_all(ref_audio: "ReferenceAudio", model_version: str = 'v2') -> FeaturePacket:
+        """
+        Extract all features and return as FeaturePacket without prompt encoder.
+        
+        Convenience method for persona creation where prompt_encoder is handled separately.
+        """
+        return FeatureExtractor.process(ref_audio, model_version, prompt_encoder=None)
 
     @staticmethod
     def extract_text_features(ref_audio: "ReferenceAudio"):
@@ -118,3 +141,4 @@ class FeatureExtractor:
             logger.error(f"Failed to extract global embeddings: {e}")
 
 feature_extractor = FeatureExtractor()
+

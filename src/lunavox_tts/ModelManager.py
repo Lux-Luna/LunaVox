@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from typing import Optional, List, Dict
 from onnxruntime import InferenceSession
 
-from .Utils.Shared import context
 from .Utils.Utils import LRUCacheDict
 from .Utils.PerformanceMonitor import monitor
 from .Core.Model import (
@@ -143,19 +142,30 @@ class ModelManager:
         t_start = time.perf_counter()
         name = character_name.lower()
         
-        # 1. Detect and register
+        # 1. Check if already loaded with SAME model_dir BEFORE updating registry
+        existing_entry = model_registry.get(name)
+        already_loaded_same = (
+            name in self.character_to_model and
+            existing_entry and 
+            existing_entry.path == model_dir
+        )
+        
+        # 2. Detect version and register (this updates registry entry)
         version = detect_model_version(model_dir)
         spec = get_model_spec(version)
         entry = model_registry.register(name, model_dir, force_version=version)
         
-        # 2. Check if already loaded correctly
-        if name in self.character_to_model:
+        if already_loaded_same:
              m = self.character_to_model[name]
              # Handle upgrade (Persona -> Reference mode)
              if not skip_prompt_encoder and spec.prompt_encoder and m.get("PROMPT_ENCODER") is None:
                  logger.info(f"Upgrading character '{character_name}': Loading missing Prompt Encoder...")
              else:
                  return True
+        
+        # If loaded with different model_dir, force reload
+        if name in self.character_to_model and not already_loaded_same:
+            logger.info(f"Character '{character_name}' model changed from previous, reloading...")
 
         # 3. Resource Pre-check
         from .Utils.ResourceManager import resource_manager
@@ -180,10 +190,6 @@ class ModelManager:
             
             logger.info(f"✓ Character '{character_name.capitalize()}' loaded: type={version}, providers={self.providers}")
             monitor.log_metric(f"Load time ({name})", f"{duration:.2f}", "s")
-            
-            if not context.current_speaker:
-                context.current_speaker = name
-            
             return True
         except Exception as e:
             logger.error(f"Error loading character '{character_name}': {e}", exc_info=True)

@@ -173,7 +173,6 @@ def set_multi_reference_audio(
     
     # Store in module-level dict (imported from API.state)
     from ..API import state as _state
-    from ..Utils.Shared import context as _context
     
     model_version = model_manager.get_character_version(character_name)
     _state.set_reference_audio_config(character_name, {
@@ -183,8 +182,8 @@ def set_multi_reference_audio(
         'model_version': model_version,
         'multi_ref': True,
         'num_refs': len(audio_paths),
+        'prompt_audio': ref_audio,  # Store the actual ReferenceAudio object
     })
-    _context.current_prompt_audio = ref_audio
     
     logger.debug(
         f"✓ Set {len(audio_paths)} reference audios for {character_name} "

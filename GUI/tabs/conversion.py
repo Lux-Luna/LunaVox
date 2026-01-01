@@ -95,7 +95,7 @@ class ConversionTab(ttk.Frame):
         
         # Set default output path
         from main import REPO_ROOT
-        default_out = REPO_ROOT / "CharacterData" / "model" / "v2"
+        default_out = REPO_ROOT / "lunavoxData" / "CharacterData" / "model" / "v2"
         self.out_entry.insert(0, str(default_out))
         
         ttk.Button(out_frame, text=get_text(self.app.lang, "browse"), command=self._browse_out).pack(side="right", padx=(SPACING["xs"], 0))

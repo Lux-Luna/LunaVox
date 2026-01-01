@@ -28,17 +28,6 @@ class ReferenceAudio:
     # Persona support: indicates if this instance was loaded from cached features
     _is_persona_based: bool = False
 
-    @classmethod
-    def from_persona(cls, persona_dir: str) -> "ReferenceAudio":
-        """Load ReferenceAudio from a Persona directory."""
-        from ..Resources.Persona.PersonaManager import PersonaManager
-        return PersonaManager.load(persona_dir)
-
-    def export_persona(self, save_dir: str, character_name: str, source_audio_path: Optional[str] = None) -> str:
-        """Export current features to a Persona directory."""
-        from ..Resources.Persona.PersonaManager import PersonaManager
-        return PersonaManager.export(self, save_dir, character_name, source_audio_path)
-
     @property
     def is_persona_based(self) -> bool:
         """Returns True if this instance was loaded from a Persona (no wav processing)."""
@@ -110,10 +99,7 @@ class ReferenceAudio:
     def clear_cache(cls) -> None:
         cls._prompt_cache.clear()
 
-    def update_global_emb(self, prompt_encoder: "onnxruntime.InferenceSession") -> None:
-        """Deprecated: Use FeatureExtractor instead."""
-        from ...Core.Processors.feature_extractor import feature_extractor
-        feature_extractor.extract_global_emb(self, prompt_encoder)
+    # NOTE: update_global_emb removed - use FeatureExtractor.extract_global_emb() directly
 
 
 def _decide_language(text: str, language: Optional[str]) -> str:

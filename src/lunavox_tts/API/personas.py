@@ -11,7 +11,6 @@ from typing import Union
 
 from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
-from ..Utils.Shared import context
 from ..Utils.ResourceManager import resource_manager
 from ..Resources.Persona.PersonaManager import export_persona, load_persona as persona_loader
 from .state import (
@@ -94,7 +93,8 @@ def create_persona(
                 sess_options=sess_options
             )
             logger.info("Computing global embeddings for v2ProPlus compatibility...")
-            ref.update_global_emb(prompt_encoder)
+            from ..Core.Processors.feature_extractor import feature_extractor
+            feature_extractor.extract_global_emb(ref, prompt_encoder)
             if ref.global_emb is not None:
                 logger.info(f"✓ Global embeddings computed: ge={ref.global_emb.shape}")
             else:

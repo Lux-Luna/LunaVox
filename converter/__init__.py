@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Package data paths (relative to this file)
 _DATA_DIR = Path(__file__).parent / "Data"
-_LUNAVOX_DATA_DIR = Path(__file__).parent.parent / "src" / "lunavox_tts" / "Data"
+_LUNAVOX_DATA_DIR = Path(__file__).parent.parent / "src" / "lunavox_tts" / "Resources" / "Data"
 
 # Version-specific resource paths
 _RESOURCE_PATHS = {

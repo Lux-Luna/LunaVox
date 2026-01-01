@@ -13,7 +13,6 @@ from typing import Union
 from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
 from ..PredefinedCharacter import download_predefined_character_model
-from ..Utils.Shared import context
 from .state import set_reference_audio_config
 
 logger = logging.getLogger(__name__)

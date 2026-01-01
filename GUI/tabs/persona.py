@@ -222,7 +222,7 @@ class PersonaTab(ttk.Frame):
                 import lunavox_tts as lunavox
                 
                 # Output directory
-                output_dir = REPO_ROOT / "CharacterData" / "character" / name
+                output_dir = REPO_ROOT / "lunavoxData" / "CharacterData" / "character" / name
                 output_dir.mkdir(parents=True, exist_ok=True)
                 
                 # Create persona using lunavox API
@@ -287,7 +287,7 @@ class PersonaTab(ttk.Frame):
         
         self.persona_listbox.delete(0, tk.END)
         
-        persona_dir = REPO_ROOT / "CharacterData" / "character"
+        persona_dir = REPO_ROOT / "lunavoxData" / "CharacterData" / "character"
         if not persona_dir.exists():
             return
             

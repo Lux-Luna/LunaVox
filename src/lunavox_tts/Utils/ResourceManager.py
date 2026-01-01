@@ -94,9 +94,10 @@ class ResourceManager:
 
     def __init__(self):
         self.repo_root = env_manager.repo_root
-        self.tts_data_dir = self.repo_root / "TTSData"
-        self.char_data_dir = self.repo_root / "CharacterData"
-        self.roberta_dir = self.repo_root / "RoBERTa"
+        self.data_root = env_manager.data_root
+        self.tts_data_dir = self.data_root / "TTSData"
+        self.char_data_dir = self.data_root / "CharacterData"
+        self.roberta_dir = self.data_root / "RoBERTa"
         self._loaded_packs: Set[ResourcePack] = set()
         self._check_existing_packs()
 
@@ -112,7 +113,7 @@ class ResourceManager:
         paths = _PACK_VERIFICATION.get(pack, [])
         if not paths:
             return True  # No verification needed
-        return all((self.repo_root / p).exists() for p in paths)
+        return all((self.data_root / p).exists() for p in paths)
 
     def ensure_pack(self, pack: ResourcePack, ignore_patterns: Optional[List[str]] = None) -> bool:
         """
@@ -142,7 +143,7 @@ class ResourceManager:
         # Optimization: If V2PP is requested with skip_prompt_encoder, and VITS is already here, 
         # we can skip the HF check to avoid latency.
         if pack == ResourcePack.V2PP and ignore_patterns == ["*prompt_encoder*"]:
-            vits_path = self.repo_root / "CharacterData/model/v2_pro_plus/pretrained/vits_fp32.onnx"
+            vits_path = self.char_data_dir / "model" / "v2_pro_plus" / "pretrained" / "vits_fp32.onnx"
             if vits_path.exists():
                 logger.debug("V2PP VITS already exists, skipping partial HF pull.")
                 return True
@@ -156,7 +157,7 @@ class ResourceManager:
         try:
             snapshot_download(
                 repo_id=REPO_ID,
-                local_dir=str(self.repo_root),
+                local_dir=str(self.data_root),
                 allow_patterns=patterns,
                 ignore_patterns=ignore_patterns,
                 local_dir_use_symlinks=False,

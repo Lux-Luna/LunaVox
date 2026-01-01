@@ -23,7 +23,7 @@ def _resolve_bert_paths() -> tuple[Path, Path]:
     
     # Define local storage path
     from ...Utils.EnvManager import env_manager
-    base_dir = env_manager.repo_root / "RoBERTa"
+    base_dir = env_manager.data_root / "RoBERTa"
     
     from ...Utils.ResourceManager import resource_manager
     resource_manager.ensure_roberta()
