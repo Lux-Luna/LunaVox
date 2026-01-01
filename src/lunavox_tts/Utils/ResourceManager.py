@@ -8,7 +8,7 @@ import os
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Set
+from typing import Set, Optional, List
 
 from huggingface_hub import snapshot_download
 from .EnvManager import env_manager
@@ -72,6 +72,7 @@ _PACK_VERIFICATION = {
     ],
     ResourcePack.V2PP: [
         "CharacterData/model/v2_pro_plus/pretrained/vits_fp32.onnx",
+        "CharacterData/model/v2_pro_plus/pretrained/prompt_encoder_fp32.onnx",
     ],
 }
 
@@ -93,9 +94,10 @@ class ResourceManager:
 
     def __init__(self):
         self.repo_root = env_manager.repo_root
-        self.tts_data_dir = self.repo_root / "TTSData"
-        self.char_data_dir = self.repo_root / "CharacterData"
-        self.roberta_dir = self.repo_root / "RoBERTa"
+        self.data_root = env_manager.data_root
+        self.tts_data_dir = self.data_root / "TTSData"
+        self.char_data_dir = self.data_root / "CharacterData"
+        self.roberta_dir = self.data_root / "RoBERTa"
         self._loaded_packs: Set[ResourcePack] = set()
         self._check_existing_packs()
 
@@ -111,22 +113,25 @@ class ResourceManager:
         paths = _PACK_VERIFICATION.get(pack, [])
         if not paths:
             return True  # No verification needed
-        return all((self.repo_root / p).exists() for p in paths)
+        return all((self.data_root / p).exists() for p in paths)
 
-    def ensure_pack(self, pack: ResourcePack) -> bool:
+    def ensure_pack(self, pack: ResourcePack, ignore_patterns: Optional[List[str]] = None) -> bool:
         """
         Ensure a resource pack is available. Downloads if missing.
         
         Args:
             pack: The resource pack to ensure.
+            ignore_patterns: Optional list of glob patterns to ignore during download.
             
         Returns:
             True if pack is available, False if download failed.
         """
-        if pack in self._loaded_packs:
+        # If no ignore patterns, we can use the cache
+        if pack in self._loaded_packs and not ignore_patterns:
             return True
         
-        if self._is_pack_installed(pack):
+        # If already installed (all verification files exist), we're good
+        if self._is_pack_installed(pack) and not ignore_patterns:
             self._loaded_packs.add(pack)
             # Still check dependencies even if files exist
             deps = _PACK_DEPENDENCIES.get(pack, [])
@@ -134,6 +139,14 @@ class ResourceManager:
                 from .DependencyManager import dependency_manager
                 dependency_manager.check_dependencies(deps, pack.value.capitalize(), auto_install=True)
             return True
+            
+        # Optimization: If V2PP is requested with skip_prompt_encoder, and VITS is already here, 
+        # we can skip the HF check to avoid latency.
+        if pack == ResourcePack.V2PP and ignore_patterns == ["*prompt_encoder*"]:
+            vits_path = self.char_data_dir / "model" / "v2_pro_plus" / "pretrained" / "vits_fp32.onnx"
+            if vits_path.exists():
+                logger.debug("V2PP VITS already exists, skipping partial HF pull.")
+                return True
         
         logger.info(f"📦 Downloading resource pack: {pack.value}...")
         patterns = _PACK_PATTERNS.get(pack, [])
@@ -144,12 +157,16 @@ class ResourceManager:
         try:
             snapshot_download(
                 repo_id=REPO_ID,
-                local_dir=str(self.repo_root),
+                local_dir=str(self.data_root),
                 allow_patterns=patterns,
+                ignore_patterns=ignore_patterns,
                 local_dir_use_symlinks=False,
             )
-            self._loaded_packs.add(pack)
-            logger.info(f"✓ Resource pack '{pack.value}' installed successfully.")
+            # Only add to loaded_packs if we didn't use ignore_patterns (partial download)
+            if not ignore_patterns:
+                self._loaded_packs.add(pack)
+            
+            logger.info(f"✓ Resource pack '{pack.value}' processed.")
             
             # --- CHECK PYTHON DEPENDENCIES ---
             deps = _PACK_DEPENDENCIES.get(pack, [])
@@ -180,24 +197,25 @@ class ResourceManager:
         """Ensure feature extractor pack (HuBERT, SV) is available."""
         return self.ensure_pack(ResourcePack.EXTRACTOR)
 
-    def ensure_v2pp(self) -> bool:
+    def ensure_v2pp(self, skip_prompt_encoder: bool = False) -> bool:
         """Ensure v2 Pro Plus model pack is available."""
-        return self.ensure_pack(ResourcePack.V2PP)
+        ignore = ["*prompt_encoder*"] if skip_prompt_encoder else None
+        return self.ensure_pack(ResourcePack.V2PP, ignore_patterns=ignore)
 
     # ===== Legacy API (Deprecated, for backward compatibility) =====
     
-    def ensure_tts_data(self, v2pp: bool = False) -> None:
+    def ensure_tts_data(self, v2pp: bool = False, skip_prompt_encoder: bool = False) -> None:
         """[Deprecated] Use ensure_base() / ensure_extractor() instead."""
         self.ensure_base()
         if v2pp:
             self.ensure_extractor()
-            self.ensure_v2pp()
+            self.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
 
-    def ensure_character_data(self, v2pp: bool = False) -> None:
+    def ensure_character_data(self, v2pp: bool = False, skip_prompt_encoder: bool = False) -> None:
         """[Deprecated] Use ensure_base() / ensure_v2pp() instead."""
         self.ensure_base()
         if v2pp:
-            self.ensure_v2pp()
+            self.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
 
     def ensure_roberta(self) -> None:
         """[Deprecated] Use ensure_chinese() instead."""

@@ -28,7 +28,7 @@ SPECIAL_REPLACEMENTS = {"...": "…"}  # 特殊的多字符替换
 class ChineseG2P:
     def __init__(self):
         # --- Dependency Check ---
-        from ..Utils.DependencyManager import dependency_manager
+        from ...Utils.DependencyManager import dependency_manager
         if not dependency_manager.check_dependencies(["pypinyin", "cn2an", "jieba_fast", "g2pM"], "Chinese"):
              raise ImportError("Missing dependencies for Chinese TTS support.")
 
@@ -231,3 +231,57 @@ def chinese_to_phones_and_word2ph(text: str) -> Tuple[List[int], List[int]]:
 def chinese_clean_g2p_and_norm(text: str) -> Tuple[List[int], List[int], str]:
     normalized_text, _, phones_ids, word2ph = get_chinese_processor().process(text)
     return phones_ids, word2ph, normalized_text
+
+
+# =============================================================================
+# AbstractFrontend Implementation for Plugin System
+# =============================================================================
+class ChineseFrontend:
+    """
+    Chinese frontend implementing the AbstractFrontend interface.
+    
+    Provides a unified interface for Chinese text-to-phoneme conversion
+    that integrates with the LunaVox frontend registry system.
+    """
+    
+    def __init__(self):
+        self._processor = None
+    
+    def _get_processor(self) -> ChineseG2P:
+        if self._processor is None:
+            self._processor = get_chinese_processor()
+        return self._processor
+    
+    @property
+    def language(self) -> str:
+        return "zh"
+    
+    def tokenize(self, text: str) -> List[int]:
+        """Convert Chinese text to phoneme IDs."""
+        _, _, phones_ids, _ = self._get_processor().process(text)
+        return phones_ids
+    
+    def get_bert_features(self, text: str, phone_len: int) -> "np.ndarray":
+        """
+        Extract Chinese BERT features for the given text.
+        
+        Uses RoBERTa model for Chinese semantic understanding.
+        """
+        import numpy as np
+        from ...Utils.Constants import BERT_FEATURE_DIM
+        from .ZhBert import compute_bert_phone_features
+        
+        # Get normalized text and word2ph from processor
+        normalized_text, _, _, word2ph = self._get_processor().process(text)
+        
+        bert = compute_bert_phone_features(normalized_text, word2ph, return_tensor=False)
+        if bert.shape[0] != phone_len:
+            return np.zeros((phone_len, BERT_FEATURE_DIM), dtype=np.float32)
+        return bert.astype(np.float32)
+    
+    def process(self, text: str) -> tuple:
+        """Full processing pipeline returning (phone_ids, bert_features)."""
+        normalized_text, _, phones_ids, word2ph = self._get_processor().process(text)
+        bert = self.get_bert_features(text, len(phones_ids))
+        return phones_ids, bert
+

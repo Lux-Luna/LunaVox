@@ -9,11 +9,10 @@ import logging
 from os import PathLike
 from typing import Union
 
-from ..Audio.ReferenceAudio import ReferenceAudio
+from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
-from ..Utils.Shared import context
 from ..Utils.ResourceManager import resource_manager
-from ..Persona.PersonaManager import export_persona, load_persona as persona_loader
+from ..Resources.Persona.PersonaManager import export_persona, load_persona as persona_loader
 from .state import (
     SUPPORTED_AUDIO_EXTS,
     set_reference_audio_config,
@@ -80,21 +79,34 @@ def create_persona(
         
         # Compute global embeddings for v2ProPlus compatibility
         resource_manager.ensure_character_data(v2pp=True)
-        prompt_encoder_path = (
-            resource_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained" / "prompt_encoder_fp32.onnx"
-        )
+        model_dir = resource_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
+        prompt_encoder_path = model_dir / "prompt_encoder_fp32.onnx"
+        prompt_encoder_bin = model_dir / "prompt_encoder_fp16.bin"
         
         if prompt_encoder_path.exists():
-            import onnxruntime as ort
-            sess_options = ort.SessionOptions()
-            sess_options.log_severity_level = 3
-            prompt_encoder = ort.InferenceSession(
-                str(prompt_encoder_path),
-                providers=["CPUExecutionProvider"],
-                sess_options=sess_options
-            )
+            from ..Core.Model.session import load_session_with_fp16_conversion, get_default_sess_options
+            
+            # Use FP16 patching if bin file exists
+            if prompt_encoder_bin.exists():
+                prompt_encoder = load_session_with_fp16_conversion(
+                    str(prompt_encoder_path),
+                    str(prompt_encoder_bin),
+                    ["CPUExecutionProvider"],
+                    get_default_sess_options()
+                )
+            else:
+                import onnxruntime as ort
+                sess_options = ort.SessionOptions()
+                sess_options.log_severity_level = 3
+                prompt_encoder = ort.InferenceSession(
+                    str(prompt_encoder_path),
+                    providers=["CPUExecutionProvider"],
+                    sess_options=sess_options
+                )
+            
             logger.info("Computing global embeddings for v2ProPlus compatibility...")
-            ref.update_global_emb(prompt_encoder)
+            from ..Core.Processors.feature_extractor import feature_extractor
+            feature_extractor.extract_global_emb(ref, prompt_encoder)
             if ref.global_emb is not None:
                 logger.info(f"✓ Global embeddings computed: ge={ref.global_emb.shape}")
             else:
@@ -160,10 +172,8 @@ def load_persona(
         'persona_dir': persona_dir_str,
         'model_version': model_version,
         'is_persona': True,
+        'prompt_audio': ref  # Store the actual ReferenceAudio object
     })
-    
-    # Set as current prompt audio
-    context.current_prompt_audio = ref
     
     # --- AUTO-LOAD BASE MODEL ---
     # Check if persona has cached global embeddings (enables skipping prompt_encoder)
@@ -176,26 +186,21 @@ def load_persona(
         else:
             base_model_dir = resource_manager.char_data_dir / "model" / "v2" / "pretrained"
             
-        if base_model_dir.exists():
-            logger.info(f"Auto-loading base {model_version} models for persona '{character_name}'...")
-            # Skip prompt_encoder if persona has cached global embeddings
-            load_character(character_name, base_model_dir, skip_prompt_encoder=has_cached_ge)
-        else:
-            logger.warning(
-                f"Base model directory for version '{model_version}' not found at: {base_model_dir}. "
-                f"You may need to call 'load_character' manually."
-            )
+        logger.info(f"Auto-loading base {model_version} models for persona '{character_name}'...")
+        # Skip prompt_encoder if persona has cached global embeddings
+        # load_character will handle downloading if the directory doesn't exist
+        load_character(character_name, base_model_dir, skip_prompt_encoder=has_cached_ge)
     
     # --- OPTIMIZATION: Warmup & Cleanup ---
-    from ..Core.TextFrontend import get_text_frontend
-    frontend = get_text_frontend()
+    from ..Core.Frontend import get_language_frontend
     try:
         native_lang = model_version.split('_')[-1] if '_' in model_version else 'en'
-        frontend.warmup(language=native_lang) 
+        # Warmup: access the frontend to pre-load resources
+        _ = get_language_frontend(native_lang)
         
         if native_lang != 'zh':
-            frontend.warmup(language='zh')
-    except (ImportError, Exception) as e:
+            _ = get_language_frontend('zh')
+    except (ImportError, ValueError) as e:
         logger.debug(f"Optional language warmup skipped: {e}")
 
     model_manager.unload_cn_hubert()

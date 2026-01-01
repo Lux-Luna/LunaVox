@@ -13,7 +13,7 @@ from .WordSegment import segment_text
 from .Resources import English_G2P_DIR
 # Reuse symbols_v2 from Japanese module (it already includes ARPAbet)
 from ..Japanese.SymbolsV2 import symbols_v2, symbol_to_id_v2
-from ..Utils.NltkResources import ensure_nltk_data
+from ...Utils.NltkResources import ensure_nltk_data
 
 # Ensure NLTK can find local data if provided
 if os.path.exists(English_G2P_DIR):
@@ -287,3 +287,38 @@ def english_to_phones(text: str) -> List[int]:
     # Filter unknowns and non-symbols. Map to IDs via symbols_v2.
     phones = [ph for ph in phone_list if ph in symbols_v2]
     return [symbol_to_id_v2[ph] for ph in phones]
+
+
+# =============================================================================
+# AbstractFrontend Implementation for Plugin System
+# =============================================================================
+class EnglishFrontend:
+    """
+    English frontend implementing the AbstractFrontend interface.
+    
+    Provides a unified interface for English text-to-phoneme conversion
+    that integrates with the LunaVox frontend registry system.
+    """
+    
+    @property
+    def language(self) -> str:
+        return "en"
+    
+    def tokenize(self, text: str) -> List[int]:
+        """Convert English text to phoneme IDs."""
+        return english_to_phones(text)
+    
+    def get_bert_features(self, text: str, phone_len: int) -> np.ndarray:
+        """
+        English does not use BERT features.
+        Returns zero-filled array matching the expected dimensions.
+        """
+        from ...Utils.Constants import BERT_FEATURE_DIM
+        return np.zeros((phone_len, BERT_FEATURE_DIM), dtype=np.float32)
+    
+    def process(self, text: str) -> tuple:
+        """Full processing pipeline returning (phone_ids, bert_features)."""
+        ids = self.tokenize(text)
+        bert = self.get_bert_features(text, len(ids))
+        return ids, bert
+

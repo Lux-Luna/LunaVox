@@ -28,10 +28,10 @@ if not env_manager.ensure_environment():
 import lunavox_tts as lunavox
 
 # 本地环境设置
-os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
+os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'lunavoxData' / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
 def resolve_reference(language: str):
-    audio_dir = REPO_ROOT / 'CharacterData' / 'audio' / language
+    audio_dir = REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'audio' / language
     wav_files = list(audio_dir.glob("*.wav"))
     if not wav_files:
         raise FileNotFoundError(f"No .wav files found in {audio_dir}")
@@ -42,8 +42,8 @@ def resolve_reference(language: str):
 # 使用预先提取并固化的特征 (luna_zh)，无需在运行时提供参考音频。
 # 这种模式启动更快，显存占用更低，且音质更加稳定。
 char_name = 'luna_zh'
-persona_dir = str(REPO_ROOT / 'CharacterData' / 'character' / 'luna_zh')
-model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2' / 'pretrained')
+persona_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'character' / 'luna_zh')
+model_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'model' / 'v2' / 'pretrained')
 
 lunavox.load_persona(char_name, persona_dir)
 lunavox.load_character(char_name, model_dir)

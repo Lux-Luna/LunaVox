@@ -350,7 +350,7 @@ class InferenceTab(ttk.Frame):
         """Update the character model dropdown."""
         from main import REPO_ROOT
         version = self.version_cb.get()
-        base_dir = REPO_ROOT / "CharacterData" / "model" / version
+        base_dir = REPO_ROOT / "lunavoxData" / "CharacterData" / "model" / version
         
         if not base_dir.exists():
             self.char_cb['values'] = []
@@ -364,7 +364,7 @@ class InferenceTab(ttk.Frame):
     def _update_persona_list(self):
         """Update the persona dropdown."""
         from main import REPO_ROOT
-        persona_dir = REPO_ROOT / "CharacterData" / "character"
+        persona_dir = REPO_ROOT / "lunavoxData" / "CharacterData" / "character"
         
         if not persona_dir.exists():
             self.persona_cb['values'] = []
@@ -395,7 +395,7 @@ class InferenceTab(ttk.Frame):
         from main import REPO_ROOT
         lang_map = {"en": "English", "zh": "Chinese", "ja": "Japanese"}
         lang_folder = lang_map.get(self.ref_lang_cb.get(), "Japanese")
-        audio_dir = REPO_ROOT / "CharacterData" / "audio" / lang_folder
+        audio_dir = REPO_ROOT / "lunavoxData" / "CharacterData" / "audio" / lang_folder
         
         if not audio_dir.exists():
             self.preset_cb['values'] = []
@@ -472,7 +472,7 @@ class InferenceTab(ttk.Frame):
             return
             
         version = self.version_cb.get()
-        char_dir = REPO_ROOT / "CharacterData" / "model" / version / char
+        char_dir = REPO_ROOT / "lunavoxData" / "CharacterData" / "model" / version / char
         
         self.app.set_status(get_text(self.app.lang, "status_loading"), show_progress=True)
         self.load_indicator.configure(text="⌛ " + get_text(self.app.lang, "status_loading"), foreground=COLORS["warning"])

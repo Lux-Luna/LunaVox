@@ -9,11 +9,11 @@ from os import PathLike
 from typing import Union, List, Optional
 import logging
 
-from .Audio.ReferenceAudio import ReferenceAudio
-from .ModelManager import model_manager
+from ..Resources.Audio.ReferenceAudio import ReferenceAudio
+from ..ModelManager import model_manager
 
 try:
-    from .Audio.SpeakerVector import average_sv_embeddings
+    from ..Resources.Audio.SpeakerVector import average_sv_embeddings
     _SV_AVERAGING_AVAILABLE = True
 except ImportError:
     _SV_AVERAGING_AVAILABLE = False
@@ -171,19 +171,19 @@ def set_multi_reference_audio(
     if ref_audio is None:
         return False
     
-    # Store in module-level dict (imported from _internal.py)
-    from . import _internal
+    # Store in module-level dict (imported from API.state)
+    from ..API import state as _state
     
     model_version = model_manager.get_character_version(character_name)
-    _internal._reference_audios[character_name] = {
+    _state.set_reference_audio_config(character_name, {
         'audio_path': audio_paths[0],  # Store first path for compatibility
         'audio_text': audio_texts[0],
         'audio_lang': audio_languages[0] if audio_languages else 'auto',
         'model_version': model_version,
         'multi_ref': True,
         'num_refs': len(audio_paths),
-    }
-    _internal.context.current_prompt_audio = ref_audio
+        'prompt_audio': ref_audio,  # Store the actual ReferenceAudio object
+    })
     
     logger.debug(
         f"✓ Set {len(audio_paths)} reference audios for {character_name} "

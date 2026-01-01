@@ -241,21 +241,26 @@ def _create_reference_audio_from_features(
     instance = object.__new__(ReferenceAudio)
     
     # Set all attributes manually
+    instance.wav_path = None
     instance.text = metadata.prompt_text
     instance.language = metadata.language
-    # Store supported versions for version compatibility checks
-    instance.supported_versions = metadata.supported_versions
-    # Set model_version for backward compatibility with inference code
     instance.model_version = "v2ProPlus" if "v2ProPlus" in metadata.supported_versions else "v2"
     
-    # Set pre-computed features
-    instance.ssl_content = features.ssl_content
-    instance.text_bert = features.text_bert
+    # Features (lazily populated by FeatureExtractor, but Personas have them pre-filled)
     instance.phonemes_seq = features.phonemes_seq
-    instance.audio_32k = features.audio_32k
+    instance.text_bert = features.text_bert
     instance.sv_emb = features.sv_emb
     instance.global_emb = features.global_emb
     instance.global_emb_advanced = features.global_emb_advanced
+    instance.ssl_content = features.ssl_content
+    instance.resolved_language = metadata.language
+    
+    # Audio buffers
+    instance.audio_32k = features.audio_32k
+    instance.audio_16k = None # Will be generated if needed, but Personas usually skip this
+    
+    # Supported versions for compatibility checks
+    instance.supported_versions = metadata.supported_versions
     
     # Mark as initialized and persona-based
     instance._initialized = True

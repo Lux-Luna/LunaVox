@@ -1,8 +1,5 @@
 # Data folders - contain large model files and audio resources
-CharacterData/
-TTSData/
-RoBERTa/
-Data/
+lunavoxData
 
 # Python cache files
 __pycache__/
@@ -144,3 +141,4 @@ docs/
 
 
 Base_model
+test

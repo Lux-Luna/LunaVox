@@ -10,10 +10,9 @@ import logging
 from os import PathLike
 from typing import Union
 
-from ..Audio.ReferenceAudio import ReferenceAudio
+from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
 from ..PredefinedCharacter import download_predefined_character_model
-from ..Utils.Shared import context
 from .state import set_reference_audio_config
 
 logger = logging.getLogger(__name__)
@@ -70,11 +69,13 @@ def load_predefined_character(character_name: str) -> None:
     audio_path = os.path.join(save_path, "prompt.wav")
     with open(os.path.join(save_path, "prompt_wav.json"), "r", encoding="utf-8") as f:
         audio_text = json.load(f)["Normal"]["text"]
-    set_reference_audio_config(character_name, {
-        'audio_path': audio_path,
-        'audio_text': audio_text,
-    })
-    context.current_prompt_audio = ReferenceAudio(
+    ref = ReferenceAudio(
         prompt_wav=audio_path,
         prompt_text=audio_text,
     )
+
+    set_reference_audio_config(character_name, {
+        'audio_path': audio_path,
+        'audio_text': audio_text,
+        'prompt_audio': ref,
+    })

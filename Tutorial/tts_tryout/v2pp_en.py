@@ -28,10 +28,10 @@ if not env_manager.ensure_environment():
 import lunavox_tts as lunavox
 
 # Local environment settings
-os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
+os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'lunavoxData' / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
 def resolve_reference(language: str):
-    audio_dir = REPO_ROOT / 'CharacterData' / 'audio' / language
+    audio_dir = REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'audio' / language
     wav_files = list(audio_dir.glob("*.wav"))
     if not wav_files:
         raise FileNotFoundError(f"No .wav files found in {audio_dir}")
@@ -43,7 +43,7 @@ def resolve_reference(language: str):
 # This skips HuBERT, Speaker Vector extraction, AND prompt_encoder loading at runtime.
 # The load_persona() call automatically loads the base v2ProPlus models.
 char_name = 'luna_v2pp_en'
-persona_dir = str(REPO_ROOT / 'CharacterData' / 'character' / 'luna_en')
+persona_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'character' / 'luna_en')
 
 # Note: load_persona() will auto-load v2ProPlus models AND skip prompt_encoder
 # since the persona has cached global embeddings. No need to call load_character separately.
@@ -53,7 +53,7 @@ lunavox.load_persona(char_name, persona_dir)
 # Use this if you want to clone a voice from a specific WAV file in real-time.
 # In this mode, prompt_encoder WILL be loaded to compute global embeddings on-the-fly.
 """
-model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2_pro_plus' / 'pretrained')
+model_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'model' / 'v2_pro_plus' / 'pretrained')
 lunavox.load_character(char_name, model_dir)  # This loads prompt_encoder
 audio_path, reference_text = resolve_reference('English')
 lunavox.set_reference_audio(char_name, audio_path, reference_text, audio_language='en')

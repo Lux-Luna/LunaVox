@@ -16,12 +16,14 @@ class EnvManager:
             current_file = Path(__file__).resolve()
             # Parents: 0=Utils, 1=lunavox_tts, 2=src, 3=LunaVox(repo root)
             repo_root = current_file.parents[3]
-            self.config_dir = repo_root / "TTSData"
             self.repo_root = repo_root
+            self.data_root = repo_root / "lunavoxData"
+            self.config_dir = self.data_root / "TTSData"
         except Exception:
              # Fallback if path resolution fails
-            self.config_dir = Path("TTSData")
             self.repo_root = Path(".")
+            self.data_root = self.repo_root / "lunavoxData"
+            self.config_dir = self.data_root / "TTSData"
 
         # Allow override via env var
         data_dir_env = os.environ.get("LUNAVOX_DATA_DIR")

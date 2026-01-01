@@ -18,10 +18,29 @@ if sys.platform == 'win32':
                 if comp_path not in os.environ['PATH']:
                     os.environ['PATH'] = comp_path + os.pathsep + os.environ['PATH']
 
-from ._internal import (load_character, unload_character, set_reference_audio, tts_async, tts, stop, convert_to_onnx,
-                        clear_reference_audio_cache, launch_command_line_client, load_predefined_character,
-                        create_persona, load_persona)
-from ._internal_multi_ref import set_multi_reference_audio, create_multi_reference_audio
+# Modern modular API
+from .API import (
+    load_character, 
+    unload_character, 
+    set_reference_audio, 
+    tts_async, 
+    tts, 
+    stop, 
+    convert_to_onnx,
+    clear_reference_audio_cache, 
+    launch_command_line_client, 
+    load_predefined_character,
+    create_persona, 
+    load_persona
+)
+
+# For multi-reference, we should check if it's in API or still in separate file
+try:
+    from .API.synthesis import set_multi_reference_audio, create_multi_reference_audio
+except ImportError:
+    # Fallback to experimental if not yet integrated into API
+    from .Experimental._internal_multi_ref import set_multi_reference_audio, create_multi_reference_audio
+
 from .Server import start_server
 
 __all__ = [

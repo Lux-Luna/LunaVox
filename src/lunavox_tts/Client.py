@@ -2,8 +2,7 @@ import argparse
 import shlex
 import logging
 from typing import Optional, Callable
-from .Audio.ReferenceAudio import ReferenceAudio
-from .Utils.Shared import context
+from .Resources.Audio.ReferenceAudio import ReferenceAudio
 from .Utils.UserData import userdata_manager
 from .ModelManager import model_manager
 from .Core.TTSPlayer import tts_player
@@ -16,6 +15,8 @@ from .Core.TTSPlayer import tts_player
 
 class Client:
     def __init__(self):
+        self.current_speaker: Optional[str] = None
+        self.current_prompt_audio: Optional[ReferenceAudio] = None
         self.commands: dict[str, Callable] = {
             'load': self._handle_load,
             'unload': self._handle_unload,
@@ -53,6 +54,11 @@ class Client:
             model_manager.load_character(character_name=args.character, model_dir=model_path)
             all_cached_paths[args.character] = model_path
             userdata_manager.set('last_model_paths', all_cached_paths)
+            
+            # Set as current speaker if none set
+            if self.current_speaker is None:
+                self.current_speaker = args.character
+            
             print(f"Character '{args.character}' loaded successfully!")
 
         except SystemExit:
@@ -70,6 +76,11 @@ class Client:
         try:
             args = parser.parse_args(args_list)
             model_manager.remove_character(character_name=args.character)
+            
+            # Clear current speaker if it was unloaded
+            if self.current_speaker == args.character:
+                self.current_speaker = None
+            
             print(f"Character '{args.character}' has been unloaded.")
         except SystemExit:
             pass
@@ -86,7 +97,7 @@ class Client:
             if not model_manager.has_character(args.character):
                 print("Error: The character does not exist. Please load the character first.")
                 return
-            context.current_speaker = args.character
+            self.current_speaker = args.character
             print(f"Current speaker set to '{args.character}'.")
         except SystemExit:
             pass
@@ -101,7 +112,7 @@ class Client:
         parser.add_argument('text', help='Text corresponding to the reference audio.')
         try:
             args = parser.parse_args(args_list)
-            context.current_prompt_audio = ReferenceAudio(prompt_wav=args.audio_path, prompt_text=args.text)
+            self.current_prompt_audio = ReferenceAudio(prompt_wav=args.audio_path, prompt_text=args.text)
             print("Reference audio set successfully.")
         except SystemExit:
             pass
@@ -117,9 +128,19 @@ class Client:
         parser.add_argument('--play', action='store_true', help='Play the generated audio. (Optional)')
         try:
             args = parser.parse_args(args_list)
+            
+            if not self.current_speaker:
+                print("Error: No speaker set. Use /speaker <name> first.")
+                return
+            if not self.current_prompt_audio:
+                print("Error: No reference audio set. Use /prompt <path> <text> first.")
+                return
+            
             tts_player.start_session(
                 play=args.play,
-                save_path=args.output
+                save_path=args.output,
+                speaker=self.current_speaker,
+                prompt_audio=self.current_prompt_audio
             )
             tts_player.feed(args.text)
             tts_player.end_session()

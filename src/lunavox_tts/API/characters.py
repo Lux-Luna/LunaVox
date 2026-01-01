@@ -9,9 +9,8 @@ import logging
 from os import PathLike
 from typing import Optional, Union
 
-from ..Audio.ReferenceAudio import ReferenceAudio
+from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
-from ..Utils.Shared import context
 from ..Utils.ResourceManager import resource_manager
 from .state import (
     SUPPORTED_AUDIO_EXTS,
@@ -39,10 +38,11 @@ def load_character(
     
     # --- AUTO-DOWNLOAD BUILT-IN MODELS ---
     if not os.path.isdir(model_path):
-        if "v2/pretrained" in model_path:
+        normalized_path = model_path.replace("\\", "/")
+        if "lunavoxData/CharacterData/model/v2/pretrained" in normalized_path:
             resource_manager.ensure_base()
-        elif "v2_pro_plus/pretrained" in model_path:
-            resource_manager.ensure_v2pp()
+        elif "lunavoxData/CharacterData/model/v2_pro_plus/pretrained" in normalized_path:
+            resource_manager.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
 
     if not os.path.isdir(model_path):
         logger.error(f"Character model directory not found: {model_path}")
@@ -99,15 +99,17 @@ def set_reference_audio(
     # Get model version for the character
     model_version = model_manager.get_character_version(character_name)
 
-    set_reference_audio_config(character_name, {
-        'audio_path': audio_path_str,
-        'audio_text': audio_text,
-        'audio_lang': audio_language,
-        'model_version': model_version,
-    })
-    context.current_prompt_audio = ReferenceAudio(
+    ref = ReferenceAudio(
         prompt_wav=audio_path_str,
         prompt_text=audio_text,
         language=audio_language or 'auto',
         model_version=model_version,
     )
+
+    set_reference_audio_config(character_name, {
+        'audio_path': audio_path_str,
+        'audio_text': audio_text,
+        'audio_lang': audio_language,
+        'model_version': model_version,
+        'prompt_audio': ref,
+    })

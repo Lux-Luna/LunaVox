@@ -61,9 +61,18 @@ def run_prompt_encoder(session: ort.InferenceSession, prompt_audio: Any) -> None
         
     except Exception as e:
         logger.warning(f"Failed to run prompt_encoder with IO binding ({e}). Falling back to regular execution.")
-        prompt_audio.update_global_emb(session)
-        if prompt_audio.global_emb is not None:
+        # Direct fallback without update_global_emb (method removed)
+        audio_input = prompt_audio.audio_32k
+        if audio_input.ndim == 1:
+            audio_input = np.expand_dims(audio_input, axis=0)
+        try:
+            prompt_audio.global_emb, prompt_audio.global_emb_advanced = session.run(None, {
+                'ref_audio': audio_input.astype(np.float32),
+                'sv_emb': prompt_audio.sv_emb.astype(np.float32),
+            })
             logger.debug(f"✓ Global embeddings extracted (Standard): ge={prompt_audio.global_emb.shape}, ge_adv={prompt_audio.global_emb_advanced.shape}")
+        except Exception as fallback_err:
+            logger.error(f"Fallback prompt encoder also failed: {fallback_err}")
 
 
 def run_vocoder(session: ort.InferenceSession, inputs: Dict[str, Any]) -> np.ndarray:

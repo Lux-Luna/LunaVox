@@ -15,7 +15,7 @@ _pyopenjtalk = None
 def _get_pyopenjtalk():
     global _pyopenjtalk
     if _pyopenjtalk is None:
-        from ..Utils.DependencyManager import dependency_manager
+        from ...Utils.DependencyManager import dependency_manager
         if dependency_manager.check_dependencies(["pyopenjtalk-plus"], "Japanese"):
             import pyopenjtalk
             _pyopenjtalk = pyopenjtalk
@@ -163,3 +163,39 @@ def japanese_to_phones(text: str) -> list[int]:
     phones = ["UNK" if ph not in symbols_v2 else ph for ph in phones]
     phones = [symbol_to_id_v2[ph] for ph in phones]
     return phones
+
+
+# =============================================================================
+# AbstractFrontend Implementation for Plugin System
+# =============================================================================
+class JapaneseFrontend:
+    """
+    Japanese frontend implementing the AbstractFrontend interface.
+    
+    Provides a unified interface for Japanese text-to-phoneme conversion
+    that integrates with the LunaVox frontend registry system.
+    """
+    
+    @property
+    def language(self) -> str:
+        return "ja"
+    
+    def tokenize(self, text: str) -> List[int]:
+        """Convert Japanese text to phoneme IDs."""
+        return japanese_to_phones(text)
+    
+    def get_bert_features(self, text: str, phone_len: int) -> "np.ndarray":
+        """
+        Japanese does not use BERT features.
+        Returns zero-filled array matching the expected dimensions.
+        """
+        import numpy as np
+        from ...Utils.Constants import BERT_FEATURE_DIM
+        return np.zeros((phone_len, BERT_FEATURE_DIM), dtype=np.float32)
+    
+    def process(self, text: str) -> tuple:
+        """Full processing pipeline returning (phone_ids, bert_features)."""
+        ids = self.tokenize(text)
+        bert = self.get_bert_features(text, len(ids))
+        return ids, bert
+
