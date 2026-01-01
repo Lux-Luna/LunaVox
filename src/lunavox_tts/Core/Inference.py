@@ -153,7 +153,11 @@ class LunaVoxEngine:
             # v2: uses raw audio (2D)
             # v2Pro: uses STFT spectrogram (3D)
             # v2ProPlus: uses Prompt Encoder features (no ref_audio needed for VITS)
-            model_version = prompt_audio.model_version if hasattr(prompt_audio, 'model_version') else 'v2'
+            # Infer model version from prompt_encoder presence (more reliable than persona metadata)
+            if prompt_encoder is not None:
+                model_version = 'v2ProPlus'
+            else:
+                model_version = prompt_audio.model_version if hasattr(prompt_audio, 'model_version') else 'v2'
             
             if model_version == 'v2Pro':
                 # Extract STFT spectrogram for v2Pro (matches GPT-SoVITS get_spec)

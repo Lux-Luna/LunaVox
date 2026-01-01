@@ -253,8 +253,12 @@ def load_persona(
     # Load persona using PersonaManager
     ref = persona_loader(persona_dir_str)
     
-    # Get model version from loaded persona
-    model_version = getattr(ref, 'model_version', 'v2')
+    # Prioritize loaded model's version over persona metadata
+    # This ensures v2 personas work correctly with v2pp models
+    if model_manager.has_character(character_name):
+        model_version = model_manager.get_character_version(character_name)
+    else:
+        model_version = getattr(ref, 'model_version', 'v2')
     
     # Register in reference audios dict
     _reference_audios[character_name] = {
@@ -363,7 +367,8 @@ async def tts_async(
         resource_manager.ensure_base()
 
     ref_info = _reference_audios[character_name]
-    model_version = ref_info.get('model_version', model_manager.get_character_version(character_name))
+    # Always use loaded model's version to ensure correct inference path
+    model_version = model_manager.get_character_version(character_name)
     
     # Check if persona mode (skip audio preprocessing)
     if ref_info.get('is_persona', False):
@@ -446,7 +451,8 @@ def tts(
         resource_manager.ensure_base()
     
     ref_info = _reference_audios[character_name]
-    model_version = ref_info.get('model_version', model_manager.get_character_version(character_name))
+    # Always use loaded model's version to ensure correct inference path
+    model_version = model_manager.get_character_version(character_name)
     
     # Check if persona mode (skip audio preprocessing)
     if ref_info.get('is_persona', False):
