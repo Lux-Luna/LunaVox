@@ -484,15 +484,19 @@ class InferenceTab(ttk.Frame):
                     unload_character(self.app.loaded_character)
                     
                 lunavox.load_character(char, str(char_dir))
-                self.app.update_model_status(character=char)
-                self.app.set_status(get_text(self.app.lang, "model_loaded"))
-                self.load_indicator.configure(text="✅ " + get_text(self.app.lang, "model_loaded"), foreground=COLORS["success"])
+                self.after(0, lambda: [
+                    self.app.update_model_status(character=char),
+                    self.app.set_status(get_text(self.app.lang, "model_loaded")),
+                    self.load_indicator.configure(text="✅ " + get_text(self.app.lang, "model_loaded"), foreground=COLORS["success"])
+                ])
             except Exception as e:
-                self.app.set_status(get_text(self.app.lang, "status_error", str(e)))
-                self.load_indicator.configure(text="❌ " + get_text(self.app.lang, "error"), foreground=COLORS["error"])
-                messagebox.showerror(get_text(self.app.lang, "error"), str(e))
+                self.after(0, lambda err=e: [
+                    self.app.set_status(get_text(self.app.lang, "status_error", str(err))),
+                    self.load_indicator.configure(text="❌ " + get_text(self.app.lang, "error"), foreground=COLORS["error"]),
+                    messagebox.showerror(get_text(self.app.lang, "error"), str(err))
+                ])
             finally:
-                self.btn_load.configure(state="normal")
+                self.after(0, lambda: self.btn_load.configure(state="normal"))
         
         threading.Thread(target=task, daemon=True).start()
         
@@ -542,13 +546,13 @@ class InferenceTab(ttk.Frame):
                     get_text(self.app.lang, "persona_loaded")
                 ))
             except Exception as e:
-                self.app.set_status(get_text(self.app.lang, "status_error", str(e)))
-                self.after(0, lambda: self.persona_status.set_error(
-                    get_text(self.app.lang, "error")
-                ))
-                messagebox.showerror(get_text(self.app.lang, "error"), str(e))
+                self.after(0, lambda err=e: [
+                    self.app.set_status(get_text(self.app.lang, "status_error", str(err))),
+                    self.persona_status.set_error(get_text(self.app.lang, "error")),
+                    messagebox.showerror(get_text(self.app.lang, "error"), str(err))
+                ])
             finally:
-                self.btn_load_persona.configure(state="normal")
+                self.after(0, lambda: self.btn_load_persona.configure(state="normal"))
                 
         threading.Thread(target=task, daemon=True).start()
     
@@ -669,10 +673,12 @@ class InferenceTab(ttk.Frame):
                 ))
                 
             except Exception as e:
-                self.app.set_status(get_text(self.app.lang, "status_error", str(e)))
-                messagebox.showerror(get_text(self.app.lang, "error"), str(e))
+                self.after(0, lambda err=e: [
+                    self.app.set_status(get_text(self.app.lang, "status_error", str(err))),
+                    messagebox.showerror(get_text(self.app.lang, "error"), str(err))
+                ])
             finally:
-                self.btn_synth.configure(state="normal")
+                self.after(0, lambda: self.btn_synth.configure(state="normal"))
                 
         threading.Thread(target=task, daemon=True).start()
     

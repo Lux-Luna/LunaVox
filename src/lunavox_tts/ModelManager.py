@@ -68,10 +68,10 @@ class ModelManager:
         
         # If env var not set or invalid, check default location in TTSData folder
         if not (model_path and os.path.isfile(model_path)):
-            # Try the new folder structure first
-            potential_path = os.path.join("TTSData", "chinese-hubert-base", "chinese-hubert-base.onnx")
-            if os.path.isfile(potential_path):
-                model_path = potential_path
+            # Use absolute path from resource_manager
+            potential_path = resource_manager.tts_data_dir / "chinese-hubert-base" / "chinese-hubert-base.onnx"
+            if potential_path.is_file():
+                model_path = str(potential_path)
             else:
                 logger.error("Chinese HuBERT model not found in TTSData.")
                 return False
