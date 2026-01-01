@@ -9,11 +9,11 @@ import logging
 from os import PathLike
 from typing import Union
 
-from ..Audio.ReferenceAudio import ReferenceAudio
+from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
 from ..Utils.Shared import context
 from ..Utils.ResourceManager import resource_manager
-from ..Persona.PersonaManager import export_persona, load_persona as persona_loader
+from ..Resources.Persona.PersonaManager import export_persona, load_persona as persona_loader
 from .state import (
     SUPPORTED_AUDIO_EXTS,
     set_reference_audio_config,

@@ -22,10 +22,10 @@ def _resolve_bert_paths() -> tuple[Path, Path]:
     global _model_dir
     
     # Define local storage path
-    from ..Utils.EnvManager import env_manager
+    from ...Utils.EnvManager import env_manager
     base_dir = env_manager.repo_root / "RoBERTa"
     
-    from ..Utils.ResourceManager import resource_manager
+    from ...Utils.ResourceManager import resource_manager
     resource_manager.ensure_roberta()
 
     if not base_dir.exists():

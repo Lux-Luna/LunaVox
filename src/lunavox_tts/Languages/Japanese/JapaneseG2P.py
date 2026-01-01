@@ -15,7 +15,7 @@ _pyopenjtalk = None
 def _get_pyopenjtalk():
     global _pyopenjtalk
     if _pyopenjtalk is None:
-        from ..Utils.DependencyManager import dependency_manager
+        from ...Utils.DependencyManager import dependency_manager
         if dependency_manager.check_dependencies(["pyopenjtalk-plus"], "Japanese"):
             import pyopenjtalk
             _pyopenjtalk = pyopenjtalk
@@ -190,7 +190,7 @@ class JapaneseFrontend:
         Returns zero-filled array matching the expected dimensions.
         """
         import numpy as np
-        from ..Utils.Constants import BERT_FEATURE_DIM
+        from ...Utils.Constants import BERT_FEATURE_DIM
         return np.zeros((phone_len, BERT_FEATURE_DIM), dtype=np.float32)
     
     def process(self, text: str) -> tuple:

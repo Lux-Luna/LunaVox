@@ -3,7 +3,7 @@ import logging
 import warnings
 
 if TYPE_CHECKING:
-    from ..Audio.ReferenceAudio import ReferenceAudio
+    from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 
 # Replace rich.console with standard logging
 logger = logging.getLogger("LunaVox")

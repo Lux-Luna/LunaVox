@@ -28,7 +28,7 @@ SPECIAL_REPLACEMENTS = {"...": "…"}  # 特殊的多字符替换
 class ChineseG2P:
     def __init__(self):
         # --- Dependency Check ---
-        from ..Utils.DependencyManager import dependency_manager
+        from ...Utils.DependencyManager import dependency_manager
         if not dependency_manager.check_dependencies(["pypinyin", "cn2an", "jieba_fast", "g2pM"], "Chinese"):
              raise ImportError("Missing dependencies for Chinese TTS support.")
 
@@ -268,7 +268,7 @@ class ChineseFrontend:
         Uses RoBERTa model for Chinese semantic understanding.
         """
         import numpy as np
-        from ..Utils.Constants import BERT_FEATURE_DIM
+        from ...Utils.Constants import BERT_FEATURE_DIM
         from .ZhBert import compute_bert_phone_features
         
         # Get normalized text and word2ph from processor

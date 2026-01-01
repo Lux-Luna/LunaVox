@@ -119,7 +119,7 @@ class ModelManager:
         Unload the Speaker Vector model to free up memory/VRAM.
         Useful when in Persona mode where SV extraction is no longer needed.
         """
-        from .Audio import SpeakerVector
+        from .Resources.Audio import SpeakerVector
         if hasattr(SpeakerVector, "_sv_model") and SpeakerVector._sv_model is not None:
             logger.info("Unloading Speaker Vector model...")
             SpeakerVector._sv_model = None

@@ -12,13 +12,13 @@ import logging
 from typing import Optional, List, Callable
 
 from .Inference import LunaVoxEngine
-from ..Japanese.Split import split_japanese_text
+from ..Languages.Japanese.Split import split_japanese_text
 from ..ModelManager import model_manager
 from ..Utils.Shared import context
 from ..Utils.Utils import clear_queue
-from ..Audio.ReferenceAudio import ReferenceAudio
+from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..Utils.PerformanceMonitor import monitor
-from ..Audio.AudioEngine import AudioEngine
+from ..Resources.Audio.AudioEngine import AudioEngine
 
 logger = logging.getLogger(__name__)
 

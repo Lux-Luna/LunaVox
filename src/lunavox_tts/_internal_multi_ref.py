@@ -9,11 +9,11 @@ from os import PathLike
 from typing import Union, List, Optional
 import logging
 
-from .Audio.ReferenceAudio import ReferenceAudio
+from .Resources.Audio.ReferenceAudio import ReferenceAudio
 from .ModelManager import model_manager
 
 try:
-    from .Audio.SpeakerVector import average_sv_embeddings
+    from .Resources.Audio.SpeakerVector import average_sv_embeddings
     _SV_AVERAGING_AVAILABLE = True
 except ImportError:
     _SV_AVERAGING_AVAILABLE = False

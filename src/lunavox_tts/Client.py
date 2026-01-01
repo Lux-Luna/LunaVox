@@ -2,7 +2,7 @@ import argparse
 import shlex
 import logging
 from typing import Optional, Callable
-from .Audio.ReferenceAudio import ReferenceAudio
+from .Resources.Audio.ReferenceAudio import ReferenceAudio
 from .Utils.Shared import context
 from .Utils.UserData import userdata_manager
 from .ModelManager import model_manager

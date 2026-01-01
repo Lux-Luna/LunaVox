@@ -113,8 +113,8 @@ def load_sv_model(model_path: Optional[str] = None) -> bool:
     if model_path is None:
         # Default location: LunaVox/TTSData/sv/eres2netv2.onnx
         from pathlib import Path
-        from ..Utils.EnvManager import env_manager
-        from ..Utils.ResourceManager import resource_manager
+        from ...Utils.EnvManager import env_manager
+        from ...Utils.ResourceManager import resource_manager
         resource_manager.ensure_tts_data(v2pp=True)
         model_path = str(env_manager.repo_root / "TTSData" / "sv" / "eres2netv2.onnx")
     
@@ -127,7 +127,7 @@ def load_sv_model(model_path: Optional[str] = None) -> bool:
         return False
     
     try:
-        from ..Utils.EnvManager import env_manager
+        from ...Utils.EnvManager import env_manager
         device_mode = env_manager.get_mode()
         providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if device_mode == "gpu" else ["CPUExecutionProvider"]
         

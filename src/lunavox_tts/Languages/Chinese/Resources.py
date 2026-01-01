@@ -9,8 +9,8 @@ def get_chinese_g2p_dir() -> str:
     # Current file: src/lunavox_tts/Chinese/Resources.py
     # Root: src/lunavox_tts/../../ (LunaVox root) -> Data
     
-    from ..Utils.EnvManager import env_manager
-    from ..Utils.ResourceManager import resource_manager
+    from ...Utils.EnvManager import env_manager
+    from ...Utils.ResourceManager import resource_manager
     resource_manager.ensure_tts_data()
     repo_root = env_manager.repo_root
     

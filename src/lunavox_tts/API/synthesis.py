@@ -10,7 +10,7 @@ import logging
 from os import PathLike
 from typing import AsyncIterator, Optional, Union
 
-from ..Audio.ReferenceAudio import ReferenceAudio
+from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..Core.TTSPlayer import tts_player
 from ..ModelManager import model_manager
 from ..Utils.Shared import context

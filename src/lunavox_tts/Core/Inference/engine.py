@@ -12,7 +12,7 @@ import numpy as np
 from typing import List, Optional
 import threading
 
-from ...Audio.ReferenceAudio import ReferenceAudio
+from ...Resources.Audio.ReferenceAudio import ReferenceAudio
 from ...Core.Frontend import get_language_frontend
 from ...Utils.PerformanceMonitor import monitor
 
@@ -136,7 +136,7 @@ class LunaVoxEngine:
             if model_version == 'v2Pro':
                 try:
                     with monitor.measure("Reference Audio Feature Extraction"):
-                        from ...Audio.SpectrogramExtractor import extract_stft_spectrogram
+                        from ...Resources.Audio.SpectrogramExtractor import extract_stft_spectrogram
                         ref_audio_features = extract_stft_spectrogram(
                             prompt_audio.audio_32k,
                             n_fft=1406,  

@@ -48,19 +48,19 @@ class LanguageRegistry:
             return
         
         try:
-            from ...English.EnglishG2P import EnglishFrontend
+            from ...Languages.English.EnglishG2P import EnglishFrontend
             self.register("en", EnglishFrontend)
         except ImportError:
             logger.debug("English frontend not available")
         
         try:
-            from ...Chinese.ChineseG2P import ChineseFrontend
+            from ...Languages.Chinese.ChineseG2P import ChineseFrontend
             self.register("zh", ChineseFrontend)
         except ImportError:
             logger.debug("Chinese frontend not available")
         
         try:
-            from ...Japanese.JapaneseG2P import JapaneseFrontend
+            from ...Languages.Japanese.JapaneseG2P import JapaneseFrontend
             self.register("ja", JapaneseFrontend)
         except ImportError:
             logger.debug("Japanese frontend not available")

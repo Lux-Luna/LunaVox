@@ -9,7 +9,7 @@ import logging
 from os import PathLike
 from typing import Optional, Union
 
-from ..Audio.ReferenceAudio import ReferenceAudio
+from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
 from ..Utils.Shared import context
 from ..Utils.ResourceManager import resource_manager

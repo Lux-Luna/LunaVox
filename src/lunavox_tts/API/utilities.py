@@ -10,7 +10,7 @@ import logging
 from os import PathLike
 from typing import Union
 
-from ..Audio.ReferenceAudio import ReferenceAudio
+from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
 from ..PredefinedCharacter import download_predefined_character_model
 from ..Utils.Shared import context

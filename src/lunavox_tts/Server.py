@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from .Audio.ReferenceAudio import ReferenceAudio
+from .Resources.Audio.ReferenceAudio import ReferenceAudio
 from .Core.TTSPlayer import tts_player
 from .ModelManager import model_manager
 

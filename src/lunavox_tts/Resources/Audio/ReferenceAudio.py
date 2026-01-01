@@ -5,10 +5,10 @@ import numpy as np
 import soxr
 
 from ..Audio.Audio import load_audio
-from ..Core.Frontend import get_language_frontend
-from ..ModelManager import model_manager
-from ..Utils.Shared import context
-from ..Utils.Utils import LRUCacheDict
+from ...Core.Frontend import get_language_frontend
+from ...ModelManager import model_manager
+from ...Utils.Shared import context
+from ...Utils.Utils import LRUCacheDict
 
 # Import SV extraction for v2Pro/v2ProPlus
 try:
@@ -40,7 +40,7 @@ class ReferenceAudio:
         Returns:
             A ReferenceAudio instance with all features pre-loaded.
         """
-        from ..Persona.PersonaManager import PersonaManager
+        from ..Resources.Persona.PersonaManager import PersonaManager
         return PersonaManager.load(persona_dir)
 
     def export_persona(self, save_dir: str, character_name: str, source_audio_path: Optional[str] = None) -> str:
@@ -55,7 +55,7 @@ class ReferenceAudio:
         Returns:
             The path to the saved persona directory.
         """
-        from ..Persona.PersonaManager import PersonaManager
+        from ..Resources.Persona.PersonaManager import PersonaManager
         return PersonaManager.export(self, save_dir, character_name, source_audio_path)
 
     @property
@@ -106,7 +106,7 @@ class ReferenceAudio:
              audio_16k = np.nan_to_num(audio_16k)
         
         # Ensure extractor resources are available (HuBERT, SV)
-        from ..Utils.ResourceManager import resource_manager
+        from ...Utils.ResourceManager import resource_manager
         resource_manager.ensure_extractor()
         
         # Extract SSL content (always needed)
