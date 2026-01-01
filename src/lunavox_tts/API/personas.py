@@ -79,19 +79,31 @@ def create_persona(
         
         # Compute global embeddings for v2ProPlus compatibility
         resource_manager.ensure_character_data(v2pp=True)
-        prompt_encoder_path = (
-            resource_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained" / "prompt_encoder_fp32.onnx"
-        )
+        model_dir = resource_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
+        prompt_encoder_path = model_dir / "prompt_encoder_fp32.onnx"
+        prompt_encoder_bin = model_dir / "prompt_encoder_fp16.bin"
         
         if prompt_encoder_path.exists():
-            import onnxruntime as ort
-            sess_options = ort.SessionOptions()
-            sess_options.log_severity_level = 3
-            prompt_encoder = ort.InferenceSession(
-                str(prompt_encoder_path),
-                providers=["CPUExecutionProvider"],
-                sess_options=sess_options
-            )
+            from ..Core.Model.session import load_session_with_fp16_conversion, get_default_sess_options
+            
+            # Use FP16 patching if bin file exists
+            if prompt_encoder_bin.exists():
+                prompt_encoder = load_session_with_fp16_conversion(
+                    str(prompt_encoder_path),
+                    str(prompt_encoder_bin),
+                    ["CPUExecutionProvider"],
+                    get_default_sess_options()
+                )
+            else:
+                import onnxruntime as ort
+                sess_options = ort.SessionOptions()
+                sess_options.log_severity_level = 3
+                prompt_encoder = ort.InferenceSession(
+                    str(prompt_encoder_path),
+                    providers=["CPUExecutionProvider"],
+                    sess_options=sess_options
+                )
+            
             logger.info("Computing global embeddings for v2ProPlus compatibility...")
             from ..Core.Processors.feature_extractor import feature_extractor
             feature_extractor.extract_global_emb(ref, prompt_encoder)

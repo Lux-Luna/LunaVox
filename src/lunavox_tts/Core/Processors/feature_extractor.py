@@ -112,7 +112,6 @@ class FeatureExtractor:
     @staticmethod
     def extract_sv_embedding(ref_audio: "ReferenceAudio"):
         """Extract speaker vector embedding."""
-        from .audio import extract_sv_embedding # Using the refactored location if available, or current
         from ...Resources.Audio.SpeakerVector import extract_sv_embedding as extract_sv
         
         ref_audio.sv_emb = extract_sv(ref_audio.audio_16k)

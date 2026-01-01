@@ -13,8 +13,8 @@ SCRIPT_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(SCRIPT_DIR / "src"))
 
 from lunavox_tts.Utils.EnvManager import env_manager
-from lunavox_tts.Audio.ReferenceAudio import ReferenceAudio
-from lunavox_tts.Persona.PersonaManager import export_persona
+from lunavox_tts.Resources.Audio.ReferenceAudio import ReferenceAudio
+from lunavox_tts.Resources.Persona.PersonaManager import export_persona
 
 
 class UniversalPersonaCreator:
@@ -53,7 +53,7 @@ class UniversalPersonaCreator:
             return
         
         from lunavox_tts.Utils.ResourceManager import resource_manager
-        from lunavox_tts.Core.ModelSession import load_session_with_fp16_conversion, get_default_sess_options
+        from lunavox_tts.Core.Model.session import load_session_with_fp16_conversion, get_default_sess_options
         
         # Ensure v2pp pretrained models are available
         resource_manager.ensure_character_data(v2pp=True)
@@ -142,9 +142,13 @@ class UniversalPersonaCreator:
             model_version="v2ProPlus"  # Request full feature extraction
         )
         
+        # Run feature extraction pipeline to extract SSL, SV, and text features
+        from lunavox_tts.Core.Processors.feature_extractor import feature_extractor
+        feature_extractor.extract_all(ref, model_version="v2ProPlus")
+        
         # Compute global embeddings for v2ProPlus compatibility
         logger.info("Computing global embeddings for v2ProPlus compatibility...")
-        ref.update_global_emb(self._prompt_encoder)
+        feature_extractor.extract_global_emb(ref, self._prompt_encoder)
         
         if ref.global_emb is None:
             logger.warning("Failed to compute global embeddings. Persona will only support v2 models.")
