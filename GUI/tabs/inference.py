@@ -226,7 +226,10 @@ class InferenceTab(ttk.Frame):
         ttk.Label(row2, text=get_text(self.app.lang, "ref_audio"), style="Card.TLabel").pack(side="left")
         self.ref_audio_entry = ttk.Entry(row2)
         self.ref_audio_entry.pack(side="left", fill="x", expand=True, padx=SPACING["sm"])
-        ttk.Button(row2, text=get_text(self.app.lang, "browse"), command=self._browse_ref_audio).pack(side="right")
+        ttk.Button(row2, text=get_text(self.app.lang, "browse"), command=self._browse_ref_audio).pack(side="right", padx=(SPACING["sm"], 0))
+        
+        self.btn_load_ref = ttk.Button(row2, text=get_text(self.app.lang, "load_ref"), command=self._load_ref_audio)
+        self.btn_load_ref.pack(side="right")
         
         # Reference text
         row3 = ttk.Frame(self.ref_frame, style="Card.TFrame")
@@ -402,6 +405,7 @@ class InferenceTab(ttk.Frame):
         wavs = list(audio_dir.glob("*.wav"))
         self.preset_cb['values'] = [w.name for w in wavs]
         self.preset_audio_paths = {w.name: str(w) for w in wavs}
+        self.preset_cb.set("") # Clear selection when list changes
         
     def _on_preset_selected(self, event):
         """Handle preset audio selection."""
@@ -413,6 +417,10 @@ class InferenceTab(ttk.Frame):
             self.ref_text_entry.delete(0, tk.END)
             self.ref_text_entry.insert(0, Path(path).stem)
             
+            # Immediately load if a character is already loaded
+            if self.app.loaded_character:
+                self._load_ref_audio()
+            
     def _browse_ref_audio(self):
         """Browse for reference audio file."""
         path = filedialog.askopenfilename(filetypes=[("WAV files", "*.wav"), ("All files", "*.*")])
@@ -421,6 +429,37 @@ class InferenceTab(ttk.Frame):
             self.ref_audio_entry.insert(0, path)
             if not self.ref_text_entry.get():
                 self.ref_text_entry.insert(0, Path(path).stem)
+            
+            # Immediately load if a character is already loaded
+            if self.app.loaded_character:
+                self._load_ref_audio()
+
+    def _load_ref_audio(self):
+        """Load reference audio features in background."""
+        import lunavox_tts as lunavox
+        char = self.app.loaded_character
+        if not char:
+            messagebox.showwarning(get_text(self.app.lang, "warning"), get_text(self.app.lang, "no_model"))
+            return
+            
+        ref_audio = self.ref_audio_entry.get()
+        ref_text = self.ref_text_entry.get()
+        ref_lang = self.ref_lang_cb.get()
+        
+        if not ref_audio or not ref_text:
+            return
+            
+        self.ref_status.set_loading()
+        
+        def task():
+            try:
+                lunavox.set_reference_audio(char, ref_audio, ref_text, audio_language=ref_lang)
+                self.after(0, lambda: self.ref_status.set_success(get_text(self.app.lang, "status_success")))
+            except Exception as e:
+                self.after(0, lambda: self.ref_status.set_error(get_text(self.app.lang, "error")))
+                self.app.set_status(get_text(self.app.lang, "status_error", str(e)))
+                
+        threading.Thread(target=task, daemon=True).start()
                 
     def _load_model(self):
         """Load selected character model."""
@@ -732,11 +771,27 @@ class InferenceTab(ttk.Frame):
         """Update UI text when language changes."""
         lang = self.app.lang
         
-        # Update labels and buttons
+        # Update tab mode texts
         self.radio_persona.configure(text=get_text(lang, "tts_mode_persona"))
         self.radio_reference.configure(text=get_text(lang, "tts_mode_reference"))
+        
+        # Update model section
+        self.model_frame.configure(text=get_text(lang, "character"))
         self.btn_load.configure(text=get_text(lang, "load_model"))
         self.btn_unload.configure(text=get_text(lang, "unload_model"))
+        
+        # Update persona section
+        self.persona_frame.configure(text=get_text(lang, "select_persona"))
         self.btn_load_persona.configure(text=get_text(lang, "load_persona"))
+        self.persona_hint_label.configure(text=get_text(lang, "hint_lang_match"))
+        
+        # Update reference section
+        self.ref_frame.configure(text=get_text(lang, "ref_audio"))
+        self.btn_load_ref.configure(text=get_text(lang, "load_ref"))
+        self.ref_hint_lang.configure(text=get_text(lang, "hint_lang_match"))
+        self.ref_hint_text.configure(text=get_text(lang, "hint_ref_text_accuracy"))
+        
+        # Update synthesis section
         self.btn_synth.configure(text=get_text(lang, "synthesize"))
         self.btn_stop.configure(text=get_text(lang, "stop"))
+        self.auto_save_cb.configure(text=get_text(lang, "auto_save"))

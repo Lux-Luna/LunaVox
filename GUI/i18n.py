@@ -43,6 +43,7 @@ I18N = {
         "ref_text": "Reference Text",
         "ref_lang": "Reference Language",
         "preset_audio": "Quick Select",
+        "load_ref": "Load Audio",
         
         # Hints
         "hint_lang_match": "💡 Tip: For best results, use the same language as output",
@@ -135,6 +136,7 @@ I18N = {
         "ref_text": "参考文本",
         "ref_lang": "参考语言",
         "preset_audio": "快速选择",
+        "load_ref": "加载音频",
         
         # Hints
         "hint_lang_match": "💡 提示：建议使用与输出语言相同的Persona/参考音频",
@@ -227,6 +229,7 @@ I18N = {
         "ref_text": "参照テキスト",
         "ref_lang": "参照言語",
         "preset_audio": "クイック選択",
+        "load_ref": "音声を読み込む",
         
         # Hints
         "hint_lang_match": "💡 ヒント：出力言語と同じ言語のペルソナ/参照音声を使用してください",

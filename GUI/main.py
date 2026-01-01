@@ -10,7 +10,7 @@ from tkinter import ttk, messagebox
 from pathlib import Path
 
 # Add src to path
-REPO_ROOT = Path(__file__).parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_PATH = REPO_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))

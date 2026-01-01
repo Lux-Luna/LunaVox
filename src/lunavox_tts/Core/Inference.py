@@ -52,6 +52,11 @@ class LunaVoxEngine:
             # 文本前端补符策略：防止漏第一句
             if not text.startswith("。") and not text.startswith("."):
                 text = "。" + text
+            
+            # 文本尾部补符策略：防止最后一句被截断
+            # 检查是否以标点符号结尾，如果不是则补一个句号
+            if not text.strip().endswith((".", "。", "?", "？", "!", "！", "…", "—", "-")):
+                text = text + "。"
 
             with monitor.measure(f"Frontend ({language})"):
                 frontend = get_text_frontend()
@@ -216,6 +221,19 @@ class LunaVoxEngine:
                 # and handle NaNs if any slipped through
                 vits_output = np.nan_to_num(vits_output)
                 vits_output = np.clip(vits_output, -1.0, 1.0)
+                
+                # Add trailing silence to prevent truncation of the last syllable
+                # 400ms silence buffer at 32kHz sample rate
+                silence_samples = int(0.40 * 32000)
+                original_shape = vits_output.shape
+                flat_audio = vits_output.flatten()
+                silence = np.zeros(silence_samples, dtype=vits_output.dtype)
+                padded_audio = np.concatenate([flat_audio, silence])
+                # Restore to original dimensions (keep batch dim if present)
+                if len(original_shape) > 1:
+                    vits_output = padded_audio.reshape(original_shape[0], -1)
+                else:
+                    vits_output = padded_audio
             
             monitor.log_data("VITS output", vits_output)
             
