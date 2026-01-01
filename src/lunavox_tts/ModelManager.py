@@ -127,6 +127,21 @@ class ModelManager:
             gc.collect()
             logger.info("✓ Speaker Vector model unloaded.")
 
+    def unload_prompt_encoder(self, character_name: str) -> None:
+        """
+        Unload the Prompt Encoder session for a character to free memory/VRAM.
+        Useful in Persona mode where global embeddings are already cached.
+        """
+        character_name = character_name.lower()
+        if character_name in self.character_to_model:
+            model_dict = self.character_to_model[character_name]
+            if model_dict.get("PROMPT_ENCODER") is not None:
+                logger.info(f"Unloading Prompt Encoder for '{character_name}'...")
+                del model_dict["PROMPT_ENCODER"]
+                model_dict["PROMPT_ENCODER"] = None
+                gc.collect()
+                logger.info("✓ Prompt Encoder unloaded.")
+
     def get(self, character_name: str) -> Optional[GSVModel]:
         if character_name in self.character_to_model:
             model_map = self.character_to_model[character_name]
