@@ -76,6 +76,13 @@ _PACK_VERIFICATION = {
 }
 
 
+# Resource pack to required Python packages mapping
+_PACK_DEPENDENCIES = {
+    ResourcePack.CHINESE: ["pypinyin", "cn2an", "jieba_fast", "g2pM"],
+    ResourcePack.JAPANESE: ["pyopenjtalk-plus"],
+}
+
+
 class ResourceManager:
     """
     Manages on-demand resource fetching from HuggingFace Hub.
@@ -121,6 +128,11 @@ class ResourceManager:
         
         if self._is_pack_installed(pack):
             self._loaded_packs.add(pack)
+            # Still check dependencies even if files exist
+            deps = _PACK_DEPENDENCIES.get(pack, [])
+            if deps:
+                from .DependencyManager import dependency_manager
+                dependency_manager.check_dependencies(deps, pack.value.capitalize(), auto_install=True)
             return True
         
         logger.info(f"📦 Downloading resource pack: {pack.value}...")
@@ -138,6 +150,13 @@ class ResourceManager:
             )
             self._loaded_packs.add(pack)
             logger.info(f"✓ Resource pack '{pack.value}' installed successfully.")
+            
+            # --- CHECK PYTHON DEPENDENCIES ---
+            deps = _PACK_DEPENDENCIES.get(pack, [])
+            if deps:
+                from .DependencyManager import dependency_manager
+                dependency_manager.check_dependencies(deps, pack.value.capitalize(), auto_install=True)
+                
             return True
         except Exception as e:
             logger.error(f"Failed to download pack '{pack.value}': {e}")

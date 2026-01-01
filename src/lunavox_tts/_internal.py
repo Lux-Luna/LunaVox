@@ -76,6 +76,18 @@ def load_character(
         onnx_model_dir (str | PathLike): The directory path containing the ONNX model files.
     """
     model_path: str = os.fspath(onnx_model_dir)
+    
+    # --- AUTO-DOWNLOAD BUILT-IN MODELS ---
+    if not os.path.isdir(model_path):
+        if "v2/pretrained" in model_path:
+            resource_manager.ensure_base()
+        elif "v2_pro_plus/pretrained" in model_path:
+            resource_manager.ensure_v2pp()
+
+    if not os.path.isdir(model_path):
+        logger.error(f"Character model directory not found: {model_path}")
+        return
+
     model_manager.load_character(
         character_name=character_name,
         model_dir=model_path,
@@ -226,6 +238,15 @@ def load_persona(
     """
     persona_dir_str = os.fspath(persona_dir)
     
+    # --- AUTO-DOWNLOAD BUILT-IN PERSONAS ---
+    if not os.path.isdir(persona_dir_str):
+        if "luna_en" in persona_dir_str:
+            resource_manager.ensure_base()
+        elif "luna_zh" in persona_dir_str:
+            resource_manager.ensure_chinese()
+        elif "luna_ja" in persona_dir_str:
+            resource_manager.ensure_japanese()
+
     if not os.path.isdir(persona_dir_str):
         raise FileNotFoundError(f"Persona directory not found: {persona_dir_str}")
     
@@ -267,8 +288,16 @@ def load_persona(
     # --- OPTIMIZATION: Warmup & Cleanup ---
     from .Core.TextFrontend import get_text_frontend
     frontend = get_text_frontend()
-    frontend.warmup(language=model_version.split('_')[-1] if '_' in model_version else 'en') 
-    frontend.warmup(language='zh')
+    try:
+        # Determine persona's native language for specialized warmup
+        native_lang = model_version.split('_')[-1] if '_' in model_version else 'en'
+        frontend.warmup(language=native_lang) 
+        
+        # English environments often use Chinese symbols, so we try to warmup zh as well
+        if native_lang != 'zh':
+            frontend.warmup(language='zh')
+    except (ImportError, Exception) as e:
+        logger.debug(f"Optional language warmup skipped: {e}")
 
     model_manager.unload_cn_hubert()
     model_manager.unload_sv_model()
@@ -324,6 +353,15 @@ async def tts_async(
     # 设置 TTS 上下文
     session_language = _normalize_language(language)
     context.current_speaker = character_name
+
+    # Lazy load language-specific resources
+    if session_language == "zh":
+        resource_manager.ensure_chinese()
+    elif session_language == "ja":
+        resource_manager.ensure_japanese()
+    elif session_language == "en":
+        resource_manager.ensure_base()
+
     ref_info = _reference_audios[character_name]
     model_version = ref_info.get('model_version', model_manager.get_character_version(character_name))
     
@@ -404,6 +442,8 @@ def tts(
         resource_manager.ensure_chinese()
     elif normalized_language == "ja":
         resource_manager.ensure_japanese()
+    elif normalized_language == "en":
+        resource_manager.ensure_base()
     
     ref_info = _reference_audios[character_name]
     model_version = ref_info.get('model_version', model_manager.get_character_version(character_name))
