@@ -8,7 +8,7 @@ import os
 import logging
 from enum import Enum
 from pathlib import Path
-from typing import Set
+from typing import Set, Optional, List
 
 from huggingface_hub import snapshot_download
 from .EnvManager import env_manager

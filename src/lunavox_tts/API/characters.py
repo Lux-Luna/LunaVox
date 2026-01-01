@@ -39,9 +39,10 @@ def load_character(
     
     # --- AUTO-DOWNLOAD BUILT-IN MODELS ---
     if not os.path.isdir(model_path):
-        if "v2/pretrained" in model_path:
+        normalized_path = model_path.replace("\\", "/")
+        if "CharacterData/model/v2/pretrained" in normalized_path:
             resource_manager.ensure_base()
-        elif "v2_pro_plus/pretrained" in model_path:
+        elif "CharacterData/model/v2_pro_plus/pretrained" in normalized_path:
             resource_manager.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
 
     if not os.path.isdir(model_path):

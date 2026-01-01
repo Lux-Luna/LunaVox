@@ -176,15 +176,10 @@ def load_persona(
         else:
             base_model_dir = resource_manager.char_data_dir / "model" / "v2" / "pretrained"
             
-        if base_model_dir.exists():
-            logger.info(f"Auto-loading base {model_version} models for persona '{character_name}'...")
-            # Skip prompt_encoder if persona has cached global embeddings
-            load_character(character_name, base_model_dir, skip_prompt_encoder=has_cached_ge)
-        else:
-            logger.warning(
-                f"Base model directory for version '{model_version}' not found at: {base_model_dir}. "
-                f"You may need to call 'load_character' manually."
-            )
+        logger.info(f"Auto-loading base {model_version} models for persona '{character_name}'...")
+        # Skip prompt_encoder if persona has cached global embeddings
+        # load_character will handle downloading if the directory doesn't exist
+        load_character(character_name, base_model_dir, skip_prompt_encoder=has_cached_ge)
     
     # --- OPTIMIZATION: Warmup & Cleanup ---
     from ..Core.TextFrontend import get_text_frontend
