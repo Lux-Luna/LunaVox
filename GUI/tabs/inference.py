@@ -656,7 +656,7 @@ class InferenceTab(ttk.Frame):
                 lunavox.tts(
                     character_name=char,
                     text=text,
-                    play=True,
+                    play=False,  # Disabled auto-play to avoid GUI audio stutter
                     language=target_lang,
                     save_path=str(output_path)
                 )

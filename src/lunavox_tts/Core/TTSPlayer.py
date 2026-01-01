@@ -247,6 +247,11 @@ class TTSPlayer:
             self._session_prompt_audio = prompt_audio or context.current_prompt_audio
             if not self._session_speaker or self._session_prompt_audio is None:
                 raise ValueError("Speaker and reference audio must be set before starting a TTS session.")
+            
+            # Pre-warm audio engine to eliminate cold-start stutter
+            if play:
+                self.audio_engine.warmup()
+
 
     def feed(self, text_chunk: str):
         with self._api_lock:

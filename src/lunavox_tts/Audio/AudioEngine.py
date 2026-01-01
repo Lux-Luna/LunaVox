@@ -17,6 +17,9 @@ try:
 except ImportError:
     _PYAUDIO_AVAILABLE = False
 
+# Pre-roll silence duration in milliseconds (to warm up audio driver)
+_PREROLL_SILENCE_MS = 30
+
 
 class AudioEngine:
     def __init__(self, sample_rate: int = 32000, channels: int = 1):
@@ -24,9 +27,58 @@ class AudioEngine:
         self.channels = channels
         self.pa_instance: Optional[pyaudio.PyAudio] = None
         self.pa_stream: Optional[pyaudio.Stream] = None
+        self._warmed_up: bool = False
+
+    def warmup(self) -> None:
+        """
+        Pre-initialize audio stream and write silence to eliminate cold-start latency.
+        Call this before the first real audio chunk arrives.
+        """
+        if self._warmed_up:
+            return
+        
+        if _PYAUDIO_AVAILABLE:
+            self._warmup_pyaudio()
+        elif _SD_AVAILABLE:
+            self._warmup_sounddevice()
+        
+        self._warmed_up = True
+        logger.debug("Audio engine warmed up successfully.")
+
+    def _warmup_pyaudio(self) -> None:
+        """Initialize PyAudio stream and write pre-roll silence."""
+        if self.pa_instance is None:
+            self.pa_instance = pyaudio.PyAudio()
+        
+        if self.pa_stream is None:
+            self.pa_stream = self.pa_instance.open(
+                format=pyaudio.paInt16,
+                channels=self.channels,
+                rate=self.sample_rate,
+                output=True
+            )
+        
+        # Write a short silence to activate the audio driver
+        silence_samples = int(self.sample_rate * _PREROLL_SILENCE_MS / 1000)
+        silence = np.zeros(silence_samples, dtype=np.int16)
+        self.pa_stream.write(silence.tobytes())
+
+    def _warmup_sounddevice(self) -> None:
+        """Write pre-roll silence using sounddevice."""
+        silence_samples = int(self.sample_rate * _PREROLL_SILENCE_MS / 1000)
+        silence = np.zeros(silence_samples, dtype=np.float32)
+        try:
+            sd.play(silence, self.sample_rate)
+            sd.wait()
+        except Exception as e:
+            logger.warning(f"SoundDevice warmup failed: {e}")
 
     def play(self, audio_chunk: np.ndarray):
         """Play a chunk of audio using available backends."""
+        # Auto-warmup on first play if not already done
+        if not self._warmed_up:
+            self.warmup()
+        
         if _PYAUDIO_AVAILABLE:
             self._play_with_pyaudio(audio_chunk)
         elif _SD_AVAILABLE:
@@ -35,6 +87,7 @@ class AudioEngine:
             logger.warning("No audio playback library (PyAudio or SoundDevice) available.")
 
     def _play_with_pyaudio(self, audio_chunk: np.ndarray):
+        # Stream should already be initialized from warmup, but handle edge cases
         if self.pa_instance is None:
             self.pa_instance = pyaudio.PyAudio()
         
@@ -74,3 +127,5 @@ class AudioEngine:
                 sd.stop()
             except:
                 pass
+        # Reset warmup state so next session can warmup again
+        self._warmed_up = False
