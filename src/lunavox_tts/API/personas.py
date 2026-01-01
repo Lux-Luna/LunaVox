@@ -182,15 +182,15 @@ def load_persona(
         load_character(character_name, base_model_dir, skip_prompt_encoder=has_cached_ge)
     
     # --- OPTIMIZATION: Warmup & Cleanup ---
-    from ..Core.TextFrontend import get_text_frontend
-    frontend = get_text_frontend()
+    from ..Core.Frontend import get_language_frontend
     try:
         native_lang = model_version.split('_')[-1] if '_' in model_version else 'en'
-        frontend.warmup(language=native_lang) 
+        # Warmup: access the frontend to pre-load resources
+        _ = get_language_frontend(native_lang)
         
         if native_lang != 'zh':
-            frontend.warmup(language='zh')
-    except (ImportError, Exception) as e:
+            _ = get_language_frontend('zh')
+    except (ImportError, ValueError) as e:
         logger.debug(f"Optional language warmup skipped: {e}")
 
     model_manager.unload_cn_hubert()

@@ -11,7 +11,7 @@ import numpy as np
 from .Utils.Shared import context
 from .Utils.Utils import LRUCacheDict
 from .Utils.PerformanceMonitor import monitor
-from .Core.ModelSession import (
+from .Core.Model import (
     get_default_sess_options,
     resolve_providers,
     load_session_with_fp16_conversion

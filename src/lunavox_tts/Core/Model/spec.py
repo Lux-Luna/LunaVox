@@ -1,8 +1,7 @@
 """
-ModelSpec - Model architecture specifications and file mappings.
+Model Specification - Architecture definitions and file mappings.
 
-This module centralizes all model-related configuration that was previously
-scattered across ModelManager, engine.py, and other modules.
+Centralizes all model-related configuration for v2, v2Pro, and v2ProPlus.
 """
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
@@ -20,21 +19,15 @@ class ModelVersion(Enum):
 class ModelFileSpec:
     """Specification for a single model file."""
     onnx_file: str
-    weight_file: Optional[str] = None  # FP16 weight file for patching
+    weight_file: Optional[str] = None
     required: bool = True
 
 
 @dataclass 
 class ModelSpec:
-    """
-    Complete specification for a model architecture.
-    
-    Defines what files are needed, what components are required/optional,
-    and what features the model supports.
-    """
+    """Complete specification for a model architecture."""
     version: ModelVersion
     
-    # Core model files (always required)
     t2s_encoder: ModelFileSpec = field(default_factory=lambda: ModelFileSpec("t2s_encoder_fp32.onnx"))
     t2s_first_stage_decoder: ModelFileSpec = field(default_factory=lambda: ModelFileSpec(
         "t2s_first_stage_decoder_fp32.onnx", "t2s_shared_fp16.bin"
@@ -46,16 +39,13 @@ class ModelSpec:
         "vits_fp32.onnx", "vits_fp16.bin"
     ))
     
-    # Optional components
     prompt_encoder: Optional[ModelFileSpec] = None
     
-    # Feature flags
     requires_global_emb: bool = False
     requires_sv_emb: bool = False
     supports_persona: bool = True
     
     def get_required_files(self) -> List[str]:
-        """Return list of required ONNX files."""
         files = [
             self.t2s_encoder.onnx_file,
             self.t2s_first_stage_decoder.onnx_file,
@@ -67,7 +57,6 @@ class ModelSpec:
         return files
     
     def get_weight_files(self) -> Dict[str, str]:
-        """Return mapping of ONNX file -> weight file for FP16 patching."""
         mapping = {}
         for spec in [self.t2s_first_stage_decoder, self.t2s_stage_decoder, self.vits]:
             if spec.weight_file:
@@ -78,23 +67,11 @@ class ModelSpec:
 
 
 # Pre-defined model specifications
-V2_SPEC = ModelSpec(
-    version=ModelVersion.V2,
-    requires_global_emb=False,
-    requires_sv_emb=False,
-)
-
-V2_PRO_SPEC = ModelSpec(
-    version=ModelVersion.V2_PRO,
-    requires_global_emb=False,
-    requires_sv_emb=True,
-)
-
+V2_SPEC = ModelSpec(version=ModelVersion.V2, requires_global_emb=False, requires_sv_emb=False)
+V2_PRO_SPEC = ModelSpec(version=ModelVersion.V2_PRO, requires_global_emb=False, requires_sv_emb=True)
 V2_PRO_PLUS_SPEC = ModelSpec(
     version=ModelVersion.V2_PRO_PLUS,
-    prompt_encoder=ModelFileSpec(
-        "prompt_encoder_fp32.onnx", "prompt_encoder_fp16.bin", required=False
-    ),
+    prompt_encoder=ModelFileSpec("prompt_encoder_fp32.onnx", "prompt_encoder_fp16.bin", required=False),
     requires_global_emb=True,
     requires_sv_emb=True,
 )
@@ -113,15 +90,10 @@ def get_model_spec(version: str) -> ModelSpec:
 
 
 def detect_model_version(model_dir: str) -> str:
-    """
-    Detect model version from directory contents or metadata.
-    
-    Returns version string: 'v2', 'v2Pro', or 'v2ProPlus'
-    """
+    """Detect model version from directory contents or metadata."""
     import os
     import json
     
-    # Check for model_info.json first
     info_path = os.path.join(model_dir, "model_info.json")
     if os.path.exists(info_path):
         try:
@@ -131,11 +103,9 @@ def detect_model_version(model_dir: str) -> str:
         except Exception:
             pass
     
-    # Fallback: check for prompt_encoder (v2ProPlus indicator)
     if os.path.exists(os.path.join(model_dir, "prompt_encoder_fp32.onnx")):
         return "v2ProPlus"
     
-    # Check directory path hints
     dir_lower = model_dir.lower()
     if "v2_pro_plus" in dir_lower or "v2pp" in dir_lower:
         return "v2ProPlus"

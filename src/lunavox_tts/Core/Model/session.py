@@ -1,8 +1,13 @@
+"""
+Model Session Configuration - ONNX Runtime session utilities.
+
+Provides session options, provider resolution, and FP16 weight loading.
+"""
 import os
 import logging
 import onnxruntime
 import gc
-from typing import Optional, List, Union
+from typing import Optional, List
 from onnxruntime import InferenceSession
 
 logger = logging.getLogger(__name__)
@@ -22,7 +27,7 @@ _DEFAULT_PROVIDER_ORDER: list[str] = [
 ]
 
 def resolve_providers() -> list[str]:
-    from ..Utils.EnvManager import env_manager
+    from ...Utils.EnvManager import env_manager
     
     target_mode = env_manager.get_mode()
     if target_mode == "cpu":
@@ -92,7 +97,7 @@ def load_session_with_fp16_conversion(
                 continue
 
             tensor.raw_data = fp32_bytes[offset: offset + length]
-            tensor.data_type = onnx.TensorProto.FLOAT # Ensure type matches the injected data
+            tensor.data_type = onnx.TensorProto.FLOAT
             del tensor.external_data[:]
             tensor.data_location = onnx.TensorProto.DEFAULT
 

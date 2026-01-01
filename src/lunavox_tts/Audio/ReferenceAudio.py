@@ -5,7 +5,7 @@ import numpy as np
 import soxr
 
 from ..Audio.Audio import load_audio
-from ..Core.TextFrontend import get_text_frontend
+from ..Core.Frontend import get_language_frontend
 from ..Chinese.ZhBert import compute_bert_phone_features
 from ..ModelManager import model_manager
 from ..Utils.Constants import BERT_FEATURE_DIM
@@ -159,16 +159,17 @@ class ReferenceAudio:
         lang = _decide_language(prompt_text, language)
         self.language = lang
         
-        frontend = get_text_frontend()
+        frontend = get_language_frontend(lang)
 
         if lang == "en":
-            ids = frontend.process_en(prompt_text)
+            ids = frontend.tokenize(prompt_text)
             word2ph: list[int] = []
             norm_text = ""
         elif lang == "zh":
-            ids, word2ph, norm_text = frontend.process_zh(prompt_text)
+            from ..Chinese.ChineseG2P import chinese_clean_g2p_and_norm
+            ids, word2ph, norm_text = chinese_clean_g2p_and_norm(prompt_text)
         else:
-            ids = frontend.process_ja(prompt_text)
+            ids = frontend.tokenize(prompt_text)
             word2ph = []
             norm_text = ""
 
