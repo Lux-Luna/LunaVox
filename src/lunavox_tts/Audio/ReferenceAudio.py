@@ -6,9 +6,7 @@ import soxr
 
 from ..Audio.Audio import load_audio
 from ..Core.Frontend import get_language_frontend
-from ..Chinese.ZhBert import compute_bert_phone_features
 from ..ModelManager import model_manager
-from ..Utils.Constants import BERT_FEATURE_DIM
 from ..Utils.Shared import context
 from ..Utils.Utils import LRUCacheDict
 
@@ -160,22 +158,10 @@ class ReferenceAudio:
         self.language = lang
         
         frontend = get_language_frontend(lang)
-
-        if lang == "en":
-            ids = frontend.tokenize(prompt_text)
-            word2ph: list[int] = []
-            norm_text = ""
-        elif lang == "zh":
-            from ..Chinese.ChineseG2P import chinese_clean_g2p_and_norm
-            ids, word2ph, norm_text = chinese_clean_g2p_and_norm(prompt_text)
-        else:
-            ids = frontend.tokenize(prompt_text)
-            word2ph = []
-            norm_text = ""
-
+        ids, bert_features = frontend.process(prompt_text)
+        
         self.phonemes_seq = np.array([ids], dtype=np.int64)
-        bert_matrix = _compute_reference_bert(lang, norm_text, word2ph, len(ids))
-        self.text_bert = bert_matrix
+        self.text_bert = bert_features
 
         if lang in {"ja", "en", "zh"}:
             context.current_language = lang
@@ -226,14 +212,7 @@ def _decide_language(text: str, language: Optional[str]) -> str:
     return "ja"
 
 
-def _compute_reference_bert(
-    language: str, norm_text: str, word2ph: list[int], phone_len: int
-) -> np.ndarray:
-    if language == "zh" and phone_len:
-        bert = compute_bert_phone_features(norm_text, word2ph)
-        if bert.shape[0] == phone_len:
-            return bert.astype(np.float32)
-    return np.zeros((phone_len, BERT_FEATURE_DIM), dtype=np.float32)
+
 
 
 def _looks_english(text: str) -> bool:

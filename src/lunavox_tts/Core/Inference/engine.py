@@ -14,8 +14,6 @@ import threading
 
 from ...Audio.ReferenceAudio import ReferenceAudio
 from ...Core.Frontend import get_language_frontend
-from ...Chinese.ZhBert import compute_bert_phone_features
-from ...Utils.Constants import BERT_FEATURE_DIM
 from ...Utils.PerformanceMonitor import monitor
 
 from .t2s_handler import t2s_iobinding
@@ -80,53 +78,11 @@ class LunaVoxEngine:
                 text = text + "。"
 
             with monitor.measure(f"Frontend ({language})"):
-                if language == "en":
-                    frontend = get_language_frontend("en")
-                    ids = frontend.tokenize(text)
-                    from ...Japanese.SymbolsV2 import symbols_v2
-                    phones = [symbols_v2[i] for i in ids]
-                    monitor.log_data("LunaVox phones", phones)
-                    text_seq: np.ndarray = np.array([ids], dtype=np.int64)
-                    monitor.log_data("LunaVox text_seq", text_seq)
-                    text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
-                elif language == "zh":
-                    from ...Chinese.ChineseG2P import chinese_clean_g2p_and_norm
-                    ids, word2ph, norm_text = chinese_clean_g2p_and_norm(text)
-                    text_seq: np.ndarray = np.array([ids], dtype=np.int64)
-                    bert_phone = compute_bert_phone_features(norm_text, word2ph, return_tensor=False)
-                    if bert_phone.shape[0] != text_seq.shape[1]:
-                        text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
-                    else:
-                        text_bert = bert_phone
-                elif language == "hybrid":
-                    # 混合语言支持 (中英混合)
-                    chunks = self.split_language(text)
-                    all_ids = []
-                    all_berts = []
-                    for chunk in chunks:
-                        if chunk['language'] == 'en':
-                            ids = get_language_frontend("en").tokenize(chunk['content'])
-                            all_ids.extend(ids)
-                            all_berts.append(np.zeros((len(ids), BERT_FEATURE_DIM), dtype=np.float32))
-                        else:
-                            from ...Chinese.ChineseG2P import chinese_clean_g2p_and_norm
-                            ids, word2ph, norm_text = chinese_clean_g2p_and_norm(chunk['content'])
-                            all_ids.extend(ids)
-                            bert_phone = compute_bert_phone_features(norm_text, word2ph, return_tensor=False)
-                            if bert_phone.shape[0] != len(ids):
-                                all_berts.append(np.zeros((len(ids), BERT_FEATURE_DIM), dtype=np.float32))
-                            else:
-                                all_berts.append(bert_phone)
-                    text_seq = np.array([all_ids], dtype=np.int64)
-                    if all_berts:
-                        text_bert = np.concatenate(all_berts, axis=0)
-                    else:
-                        text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
-                else:
-                    # Japanese (default)
-                    frontend = get_language_frontend("ja")
-                    text_seq: np.ndarray = np.array([frontend.tokenize(text)], dtype=np.int64)
-                    text_bert = np.zeros((text_seq.shape[1], BERT_FEATURE_DIM), dtype=np.float32)
+                # Unified frontend interface - no language-specific branches
+                frontend = get_language_frontend(language)
+                ids, bert_features = frontend.process(text)
+                text_seq = np.array([ids], dtype=np.int64)
+                text_bert = bert_features
 
             ref_seq = prompt_audio.phonemes_seq
             if ref_seq is None:
