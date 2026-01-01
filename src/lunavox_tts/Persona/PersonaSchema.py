@@ -21,8 +21,8 @@ class PersonaMetadata:
     character_name: str
     language: str
     prompt_text: str
-    model_version: str  # v2, v2Pro, v2ProPlus
-    created_at: str     # ISO timestamp
+    supported_versions: list  # e.g., ["v2", "v2ProPlus"] - models this persona supports
+    created_at: str           # ISO timestamp
     
     # Optional validation fields
     source_audio_md5: Optional[str] = None
@@ -31,6 +31,13 @@ class PersonaMetadata:
     # Feature shape information for validation
     ssl_content_shape: Optional[tuple] = None
     audio_32k_length: Optional[int] = None
+    
+    # v2ProPlus feature presence flags
+    has_global_emb: bool = False
+    
+    def supports_version(self, version: str) -> bool:
+        """Check if this persona supports a specific model version."""
+        return version in self.supported_versions
 
 
 @dataclass

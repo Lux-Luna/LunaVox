@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 def load_character(
         character_name: str,
         onnx_model_dir: Union[str, PathLike],
+        skip_prompt_encoder: bool = False,
 ) -> None:
     """
     Loads a character model from an ONNX model directory.
@@ -31,6 +32,8 @@ def load_character(
     Args:
         character_name (str): The name to assign to the loaded character.
         onnx_model_dir (str | PathLike): The directory path containing the ONNX model files.
+        skip_prompt_encoder (bool): If True, skip loading the prompt_encoder.
+                                    Useful when using Personas with cached global_emb.
     """
     model_path: str = os.fspath(onnx_model_dir)
     
@@ -48,6 +51,7 @@ def load_character(
     model_manager.load_character(
         character_name=character_name,
         model_dir=model_path,
+        skip_prompt_encoder=skip_prompt_encoder,
     )
 
 

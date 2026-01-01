@@ -75,17 +75,24 @@ class PersonaManager:
             except Exception as e:
                 logger.warning(f"Failed to compute source audio MD5: {e}")
         
+        # Determine supported versions based on available features
+        supported_versions = ["v2"]  # v2 is always supported
+        has_global_emb = ref_audio.global_emb is not None
+        if has_global_emb:
+            supported_versions.append("v2ProPlus")
+        
         # Build metadata
         metadata = PersonaMetadata(
             character_name=character_name,
             language=ref_audio.language,
             prompt_text=ref_audio.text,
-            model_version=getattr(ref_audio, 'model_version', 'v2'),
+            supported_versions=supported_versions,
             created_at=datetime.utcnow().isoformat() + "Z",
             source_audio_md5=source_md5,
             lunavox_version=_get_lunavox_version(),
             ssl_content_shape=tuple(ref_audio.ssl_content.shape),
             audio_32k_length=len(ref_audio.audio_32k),
+            has_global_emb=has_global_emb,
         )
         
         # Save metadata as JSON
@@ -95,12 +102,13 @@ class PersonaManager:
                 "character_name": metadata.character_name,
                 "language": metadata.language,
                 "prompt_text": metadata.prompt_text,
-                "model_version": metadata.model_version,
+                "supported_versions": metadata.supported_versions,
                 "created_at": metadata.created_at,
                 "source_audio_md5": metadata.source_audio_md5,
                 "lunavox_version": metadata.lunavox_version,
                 "ssl_content_shape": metadata.ssl_content_shape,
                 "audio_32k_length": metadata.audio_32k_length,
+                "has_global_emb": metadata.has_global_emb,
             }, f, ensure_ascii=False, indent=2)
         
         # Build feature dictionary
@@ -133,7 +141,7 @@ class PersonaManager:
         logger.info(f"✓ Persona exported to: {save_dir}")
         logger.debug(f"  - SSL content shape: {ref_audio.ssl_content.shape}")
         logger.debug(f"  - Audio length: {len(ref_audio.audio_32k)} samples")
-        logger.debug(f"  - Model version: {metadata.model_version}")
+        logger.debug(f"  - Supported versions: {metadata.supported_versions}")
         
         return save_dir
     
@@ -167,16 +175,27 @@ class PersonaManager:
         with open(metadata_path, "r", encoding="utf-8") as f:
             meta_dict = json.load(f)
         
+        # Handle legacy metadata format (model_version -> supported_versions)
+        if "supported_versions" in meta_dict:
+            supported_versions = meta_dict["supported_versions"]
+        else:
+            # Legacy format: convert single model_version to list
+            legacy_version = meta_dict.get("model_version", "v2")
+            supported_versions = ["v2"]
+            if legacy_version in ["v2ProPlus", "v2pp"]:
+                supported_versions.append("v2ProPlus")
+        
         metadata = PersonaMetadata(
             character_name=meta_dict["character_name"],
             language=meta_dict["language"],
             prompt_text=meta_dict["prompt_text"],
-            model_version=meta_dict["model_version"],
+            supported_versions=supported_versions,
             created_at=meta_dict["created_at"],
             source_audio_md5=meta_dict.get("source_audio_md5"),
             lunavox_version=meta_dict.get("lunavox_version"),
             ssl_content_shape=tuple(meta_dict.get("ssl_content_shape", [])),
             audio_32k_length=meta_dict.get("audio_32k_length"),
+            has_global_emb=meta_dict.get("has_global_emb", False),
         )
         
         # Load features
@@ -200,7 +219,8 @@ class PersonaManager:
         
         logger.info(f"✓ Persona loaded from: {persona_dir}")
         logger.debug(f"  - Character: {metadata.character_name}")
-        logger.debug(f"  - Model version: {metadata.model_version}")
+        logger.debug(f"  - Supported versions: {metadata.supported_versions}")
+        logger.debug(f"  - Has global_emb: {metadata.has_global_emb}")
         
         return ref_audio
 
@@ -223,7 +243,10 @@ def _create_reference_audio_from_features(
     # Set all attributes manually
     instance.text = metadata.prompt_text
     instance.language = metadata.language
-    instance.model_version = metadata.model_version
+    # Store supported versions for version compatibility checks
+    instance.supported_versions = metadata.supported_versions
+    # Set model_version for backward compatibility with inference code
+    instance.model_version = "v2ProPlus" if "v2ProPlus" in metadata.supported_versions else "v2"
     
     # Set pre-computed features
     instance.ssl_content = features.ssl_content

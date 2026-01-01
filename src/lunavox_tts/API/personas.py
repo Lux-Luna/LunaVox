@@ -31,10 +31,11 @@ def create_persona(
         audio_language: str = None,
 ) -> str:
     """
-    Create and save a Persona from reference audio for reference-free TTS.
+    Create and save a Universal Persona from reference audio for reference-free TTS.
     
-    After calling this function, you can use `load_persona()` to enable
-    TTS without providing the reference audio again.
+    The resulting Persona supports both v2 and v2ProPlus models. When used with
+    v2ProPlus models, the prompt_encoder is not needed as global embeddings are
+    pre-computed and stored in the Persona.
     
     Args:
         character_name (str): The name of the character.
@@ -63,24 +64,48 @@ def create_persona(
             f"Supported formats: {SUPPORTED_AUDIO_EXTS}"
         )
     
-    # Get model version for the character
-    model_version = model_manager.get_character_version(character_name)
-    
-    # Create ReferenceAudio and export persona in CPU mode to ensure stability/precision
+    # Create Universal Persona in CPU mode for maximum precision
     from ..Utils.EnvManager import env_manager
     with env_manager.temporary_mode("cpu"):
-        # Create ReferenceAudio (this extracts all features)
+        # Ensure all extractor resources (HuBERT + SV + PromptEncoder)
+        resource_manager.ensure_extractor()
+        
+        # Create ReferenceAudio with v2ProPlus to extract all features
         ref = ReferenceAudio(
             prompt_wav=audio_path_str,
             prompt_text=audio_text,
             language=audio_language or 'auto',
-            model_version=model_version,
+            model_version="v2ProPlus",  # Request full feature extraction
         )
+        
+        # Compute global embeddings for v2ProPlus compatibility
+        resource_manager.ensure_character_data(v2pp=True)
+        prompt_encoder_path = (
+            resource_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained" / "prompt_encoder_fp32.onnx"
+        )
+        
+        if prompt_encoder_path.exists():
+            import onnxruntime as ort
+            sess_options = ort.SessionOptions()
+            sess_options.log_severity_level = 3
+            prompt_encoder = ort.InferenceSession(
+                str(prompt_encoder_path),
+                providers=["CPUExecutionProvider"],
+                sess_options=sess_options
+            )
+            logger.info("Computing global embeddings for v2ProPlus compatibility...")
+            ref.update_global_emb(prompt_encoder)
+            if ref.global_emb is not None:
+                logger.info(f"✓ Global embeddings computed: ge={ref.global_emb.shape}")
+            else:
+                logger.warning("Failed to compute global embeddings. Persona will only support v2 models.")
+        else:
+            logger.warning(f"prompt_encoder not found at {prompt_encoder_path}. Persona will only support v2 models.")
         
         # Export to persona directory using PersonaManager
         persona_path = export_persona(ref, save_dir_str, character_name, audio_path_str)
     
-    logger.info(f"✓ Persona created for '{character_name}' at: {persona_path}")
+    logger.info(f"✓ Universal Persona created for '{character_name}' at: {persona_path}")
     
     return persona_path
 
@@ -141,16 +166,20 @@ def load_persona(
     context.current_prompt_audio = ref
     
     # --- AUTO-LOAD BASE MODEL ---
+    # Check if persona has cached global embeddings (enables skipping prompt_encoder)
+    has_cached_ge = ref.global_emb is not None
+    
     if not model_manager.has_character(character_name):
         model_version_lower = model_version.lower()
-        if "v2_pro_plus" in model_version_lower or "v2pp" in model_version_lower:
+        if "v2_pro_plus" in model_version_lower or "v2pp" in model_version_lower or "v2proplus" in model_version_lower:
             base_model_dir = resource_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
         else:
             base_model_dir = resource_manager.char_data_dir / "model" / "v2" / "pretrained"
             
         if base_model_dir.exists():
             logger.info(f"Auto-loading base {model_version} models for persona '{character_name}'...")
-            load_character(character_name, base_model_dir)
+            # Skip prompt_encoder if persona has cached global embeddings
+            load_character(character_name, base_model_dir, skip_prompt_encoder=has_cached_ge)
         else:
             logger.warning(
                 f"Base model directory for version '{model_version}' not found at: {base_model_dir}. "

@@ -165,7 +165,16 @@ class ModelManager:
         character_name = character_name.lower()
         return character_name in self.model_paths
 
-    def load_character(self, character_name: str, model_dir: str) -> bool:
+    def load_character(self, character_name: str, model_dir: str, skip_prompt_encoder: bool = False) -> bool:
+        """
+        Load a character's TTS models.
+        
+        Args:
+            character_name: Name of the character.
+            model_dir: Path to the model directory.
+            skip_prompt_encoder: If True, skip loading the prompt_encoder.
+                                 Useful when using Personas with cached global_emb.
+        """
         import time
         t_start = time.perf_counter()
         character_name = character_name.lower()
@@ -208,8 +217,11 @@ class ModelManager:
             ("VITS", _GSVModelFile.VITS_FP32, _GSVModelFile.VITS_WEIGHT_FP16),
         ]
         
-        if model_version == 'v2ProPlus':
+        # Only load PROMPT_ENCODER if v2ProPlus AND not skipping (persona mode with cached ge)
+        if model_version == 'v2ProPlus' and not skip_prompt_encoder:
             model_load_plan.append(("PROMPT_ENCODER", _GSVModelFile.PROMPT_ENCODER_FP32, _GSVModelFile.PROMPT_ENCODER_WEIGHT_FP16))
+        elif skip_prompt_encoder:
+            logger.info("Skipping prompt_encoder loading (Persona has cached global embeddings)")
 
         try:
             total_steps = len(model_load_plan)

@@ -38,19 +38,23 @@ def resolve_reference(language: str):
     wav_file = wav_files[0]
     return str(wav_file), wav_file.stem
 
-# 1. Load Persona (Recommended for v2ProPlus)
-# Using solidified persona (luna_en) which includes pre-computed Speaker Vectors.
-# This skips HuBERT and Speaker Vector extraction at runtime, saving memory and time.
+# 1. Load Universal Persona (Recommended for v2ProPlus)
+# Using Universal Persona (luna_en) which includes pre-computed global embeddings.
+# This skips HuBERT, Speaker Vector extraction, AND prompt_encoder loading at runtime.
+# The load_persona() call automatically loads the base v2ProPlus models.
 char_name = 'luna_v2pp_en'
 persona_dir = str(REPO_ROOT / 'CharacterData' / 'character' / 'luna_en')
-model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2_pro_plus' / 'pretrained')
 
+# Note: load_persona() will auto-load v2ProPlus models AND skip prompt_encoder
+# since the persona has cached global embeddings. No need to call load_character separately.
 lunavox.load_persona(char_name, persona_dir)
-lunavox.load_character(char_name, model_dir)
 
 # 2. Alternative: Reference Audio Mode (Commented out)
 # Use this if you want to clone a voice from a specific WAV file in real-time.
+# In this mode, prompt_encoder WILL be loaded to compute global embeddings on-the-fly.
 """
+model_dir = str(REPO_ROOT / 'CharacterData' / 'model' / 'v2_pro_plus' / 'pretrained')
+lunavox.load_character(char_name, model_dir)  # This loads prompt_encoder
 audio_path, reference_text = resolve_reference('English')
 lunavox.set_reference_audio(char_name, audio_path, reference_text, audio_language='en')
 """
