@@ -1,24 +1,26 @@
 import os
-from typing import Optional
+import logging
+from typing import Optional, TYPE_CHECKING
 
 import numpy as np
-import soxr
 
 from ..Audio.Audio import load_audio
-from ...Core.Frontend import get_language_frontend
-from ...ModelManager import model_manager
-from ...Utils.Shared import context
 from ...Utils.Utils import LRUCacheDict
 
-# Import SV extraction for v2Pro/v2ProPlus
-try:
-    from .SpeakerVector import extract_sv_embedding
-    _SV_AVAILABLE = True
-except ImportError:
-    _SV_AVAILABLE = False
+if TYPE_CHECKING:
+    import onnxruntime
+
+logger = logging.getLogger(__name__)
 
 
 class ReferenceAudio:
+    """
+    Lightweight data container for reference audio and its extracted features.
+    
+    This class acts as a DTO (Data Transfer Object). Actual feature extraction
+    is handled by Core.Processors.FeatureExtractor.
+    """
+    
     _prompt_cache: dict[tuple[str, str, str], "ReferenceAudio"] = LRUCacheDict(
         capacity=int(os.getenv("Max_Cached_Reference_Audio", "5"))
     )
@@ -28,33 +30,12 @@ class ReferenceAudio:
 
     @classmethod
     def from_persona(cls, persona_dir: str) -> "ReferenceAudio":
-        """
-        Create a ReferenceAudio from cached Persona features (no wav required).
-        
-        This enables reference-free TTS by loading pre-computed features
-        instead of extracting them from audio at runtime.
-        
-        Args:
-            persona_dir: Path to the persona directory containing metadata.json and features.npz.
-            
-        Returns:
-            A ReferenceAudio instance with all features pre-loaded.
-        """
+        """Load ReferenceAudio from a Persona directory."""
         from ..Resources.Persona.PersonaManager import PersonaManager
         return PersonaManager.load(persona_dir)
 
     def export_persona(self, save_dir: str, character_name: str, source_audio_path: Optional[str] = None) -> str:
-        """
-        Export current features to a Persona directory for reference-free TTS.
-        
-        Args:
-            save_dir: Directory path to save the persona files.
-            character_name: Name of the character.
-            source_audio_path: Optional path to source audio for MD5 validation.
-            
-        Returns:
-            The path to the saved persona directory.
-        """
+        """Export current features to a Persona directory."""
         from ..Resources.Persona.PersonaManager import PersonaManager
         return PersonaManager.export(self, save_dir, character_name, source_audio_path)
 
@@ -69,7 +50,9 @@ class ReferenceAudio:
         if key in cls._prompt_cache:
             instance = cls._prompt_cache[key]
             if instance.text != prompt_text or instance.language != language:
-                instance.set_text(prompt_text, language)
+                instance.text = prompt_text
+                instance.language = language
+                instance._invalidate_features()
             return instance
 
         instance = super().__new__(cls)
@@ -80,123 +63,57 @@ class ReferenceAudio:
         if hasattr(self, "_initialized"):
             return
 
+        self.wav_path: str = prompt_wav
         self.text: str = prompt_text
         self.language: str = language or "auto"
         self.model_version: str = model_version
+        
+        # Features (lazily populated by FeatureExtractor)
         self.phonemes_seq: Optional[np.ndarray] = None
         self.text_bert: Optional[np.ndarray] = None
         self.sv_emb: Optional[np.ndarray] = None
         self.global_emb: Optional[np.ndarray] = None
         self.global_emb_advanced: Optional[np.ndarray] = None
-        self.set_text(prompt_text, language)
-
-        self.audio_32k: Optional[np.ndarray] = load_audio(
-            audio_path=prompt_wav,
-            target_sampling_rate=32000,
-        )
-        # Check for NaNs immediately after loading
-        if self.audio_32k is not None and np.isnan(self.audio_32k).any():
-            import logging
-            logging.getLogger(__name__).warning(f"NaNs detected in loaded audio: {prompt_wav}. Replacing with zeros.")
-            self.audio_32k = np.nan_to_num(self.audio_32k)
-
-        audio_16k: np.ndarray = soxr.resample(self.audio_32k, 32000, 16000, quality="hq")
-        # Check NaNs after resampling
-        if np.isnan(audio_16k).any():
-             audio_16k = np.nan_to_num(audio_16k)
+        self.ssl_content: Optional[np.ndarray] = None
+        self.resolved_language: Optional[str] = None
         
-        # Ensure extractor resources are available (HuBERT, SV)
-        from ...Utils.ResourceManager import resource_manager
-        resource_manager.ensure_extractor()
-        
-        # Extract SSL content (always needed)
-        audio_16k_batch = np.expand_dims(audio_16k, axis=0)
-        if not model_manager.cn_hubert:
-            model_manager.load_cn_hubert()
-        self.ssl_content: Optional[np.ndarray] = model_manager.cn_hubert.run(
-            None, {"input_values": audio_16k_batch}
-        )[0]
-
-        
-        # Extract speaker vector (Always extract for full version compatibility in Personas)
-        if _SV_AVAILABLE:
-            self.sv_emb = extract_sv_embedding(audio_16k)  # Pass 1D array
-            if self.sv_emb is None:
-                import logging
-                logging.getLogger(__name__).warning(
-                    f"Failed to extract speaker embedding. "
-                    f"v2ProPlus models will not work correctly."
-                )
-            else:
-                # Validate SV embedding shape
-                import logging
-                logger = logging.getLogger(__name__)
-                if self.sv_emb.shape != (1, 20480):
-                    logger.error(
-                        f"Invalid speaker embedding shape: {self.sv_emb.shape}, expected (1, 20480). "
-                    )
-                    raise ValueError(f"Speaker embedding shape mismatch: {self.sv_emb.shape} != (1, 20480)")
-                logger.debug(f"✓ Speaker embedding extracted: shape={self.sv_emb.shape}")
-        else:
-            import logging
-            logging.getLogger(__name__).warning(
-                f"Speaker vector extraction is not available. v2ProPlus features will be skipped."
-            )
+        # Audio buffers
+        self.audio_32k: Optional[np.ndarray] = None
+        self.audio_16k: Optional[np.ndarray] = None
 
         self._initialized = True
 
-        # Optimization: Clear audio_32k to save memory if not needed for v2ProPlus global embedding update
-        # For v2, audio_32k is required for VITS inference (ref_audio).
-        # For v2Pro, audio_32k is required for STFT extraction (ref_audio).
-        # For v2ProPlus, audio_32k is required for Prompt Encoder (global_emb).
-        # We cannot clear it immediately in __init__ as it's needed for inference.
-        # Ideally we clear it after feature extraction, but ReferenceAudio doesn't control that lifecycle.
-        
-    def set_text(self, prompt_text: str, language: str = "auto") -> None:
-        self.text = prompt_text
-        lang = _decide_language(prompt_text, language)
-        self.language = lang
-        
-        frontend = get_language_frontend(lang)
-        ids, bert_features = frontend.process(prompt_text)
-        
-        self.phonemes_seq = np.array([ids], dtype=np.int64)
-        self.text_bert = bert_features
+    def _load_audio(self):
+        """Internal method to load audio data."""
+        if self.audio_32k is not None:
+            return
+            
+        self.audio_32k = load_audio(
+            audio_path=self.wav_path,
+            target_sampling_rate=32000,
+        )
+        if self.audio_32k is not None and np.isnan(self.audio_32k).any():
+            logger.warning(f"NaNs detected in loaded audio: {self.wav_path}. Replacing with zeros.")
+            self.audio_32k = np.nan_to_num(self.audio_32k)
 
-        if lang in {"ja", "en", "zh"}:
-            context.current_language = lang
+    def _invalidate_features(self):
+        """Clear extracted features when text or language changes."""
+        self.phonemes_seq = None
+        self.text_bert = None
+        self.ssl_content = None
+        self.sv_emb = None
+        self.global_emb = None
+        self.global_emb_advanced = None
+        self.resolved_language = None
 
     @classmethod
     def clear_cache(cls) -> None:
         cls._prompt_cache.clear()
 
     def update_global_emb(self, prompt_encoder: "onnxruntime.InferenceSession") -> None:
-        """Extract global embeddings for v2ProPlus using Prompt Encoder."""
-        if self.global_emb is not None:
-            return
-        
-        if self.sv_emb is None:
-            import logging
-            logging.getLogger(__name__).warning("sv_emb is None, cannot update global_emb")
-            return
-
-        try:
-            # Ensure audio_32k has batch dimension (1, N)
-            audio_input = self.audio_32k
-            if audio_input.ndim == 1:
-                audio_input = np.expand_dims(audio_input, axis=0)
-
-            # Prompt Encoder expects: ref_audio (B, N), sv_emb (B, 20480)
-            # Output: ge (B, 512), ge_advanced (B, 512, 1) or similar
-            self.global_emb, self.global_emb_advanced = prompt_encoder.run(None, {
-                'ref_audio': audio_input.astype(np.float32),
-                'sv_emb': self.sv_emb.astype(np.float32),
-            })
-            import logging
-            logging.getLogger(__name__).debug(f"✓ Global embeddings updated: ge={self.global_emb.shape}, ge_adv={self.global_emb_advanced.shape}")
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Failed to update global embeddings: {e}")
+        """Deprecated: Use FeatureExtractor instead."""
+        from ...Core.Processors.feature_extractor import feature_extractor
+        feature_extractor.extract_global_emb(self, prompt_encoder)
 
 
 def _decide_language(text: str, language: Optional[str]) -> str:
@@ -212,9 +129,6 @@ def _decide_language(text: str, language: Optional[str]) -> str:
     return "ja"
 
 
-
-
-
 def _looks_english(text: str) -> bool:
     ascii_letters = sum(ch.isascii() and ch.isalpha() for ch in text)
     non_ascii = sum(not ch.isascii() and not ch.isspace() for ch in text)
@@ -223,5 +137,3 @@ def _looks_english(text: str) -> bool:
 
 def _looks_chinese(text: str) -> bool:
     return any("\u4e00" <= ch <= "\u9fff" for ch in text)
-
-

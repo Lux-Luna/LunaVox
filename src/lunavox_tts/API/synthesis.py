@@ -69,9 +69,7 @@ async def tts_async(
         """This callback is called from the TTS worker thread."""
         loop.call_soon_threadsafe(stream_queue.put_nowait, chunk)
 
-    # 设置 TTS 上下文
     session_language = normalize_language(language)
-    context.current_speaker = character_name
 
     # Lazy load language-specific resources
     if session_language == "zh":
@@ -88,16 +86,15 @@ async def tts_async(
     # Check if persona mode (skip audio preprocessing)
     if ref_info.get('is_persona', False):
         # Use cached prompt audio from load_persona()
-        prompt_audio = context.current_prompt_audio
+        prompt_audio = ref_info.get('prompt_audio')
     else:
         # Standard mode: create ReferenceAudio from wav
-        context.current_prompt_audio = ReferenceAudio(
+        prompt_audio = ReferenceAudio(
             prompt_wav=ref_info['audio_path'],
             prompt_text=ref_info['audio_text'],
             language=ref_info.get('audio_lang') or 'auto',
             model_version=model_version,
         )
-        prompt_audio = context.current_prompt_audio
 
     # 3. 使用新的回调接口启动 TTS 会话
     tts_player.start_session(
@@ -153,9 +150,7 @@ def tts(
         if parent_dir:
             os.makedirs(parent_dir, exist_ok=True)
 
-    context.current_speaker = character_name
     normalized_language = normalize_language(language)
-    context.current_language = normalized_language
     
     # Lazy load language-specific resources
     if normalized_language == "zh":
@@ -164,7 +159,7 @@ def tts(
         resource_manager.ensure_japanese()
     elif normalized_language == "en":
         resource_manager.ensure_base()
-    
+
     ref_info = get_reference_audio(character_name)
     # Always use loaded model's version to ensure correct inference path
     model_version = model_manager.get_character_version(character_name)
@@ -172,16 +167,15 @@ def tts(
     # Check if persona mode (skip audio preprocessing)
     if ref_info.get('is_persona', False):
         # Use cached prompt audio from load_persona()
-        prompt_audio = context.current_prompt_audio
+        prompt_audio = ref_info.get('prompt_audio')
     else:
         # Standard mode: create ReferenceAudio from wav
-        context.current_prompt_audio = ReferenceAudio(
+        prompt_audio = ReferenceAudio(
             prompt_wav=ref_info['audio_path'],
             prompt_text=ref_info['audio_text'],
             language=ref_info.get('audio_lang') or 'auto',
             model_version=model_version,
         )
-        prompt_audio = context.current_prompt_audio
 
     tts_player.start_session(
         play=play,

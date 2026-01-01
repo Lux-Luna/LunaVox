@@ -100,15 +100,17 @@ def set_reference_audio(
     # Get model version for the character
     model_version = model_manager.get_character_version(character_name)
 
-    set_reference_audio_config(character_name, {
-        'audio_path': audio_path_str,
-        'audio_text': audio_text,
-        'audio_lang': audio_language,
-        'model_version': model_version,
-    })
-    context.current_prompt_audio = ReferenceAudio(
+    ref = ReferenceAudio(
         prompt_wav=audio_path_str,
         prompt_text=audio_text,
         language=audio_language or 'auto',
         model_version=model_version,
     )
+
+    set_reference_audio_config(character_name, {
+        'audio_path': audio_path_str,
+        'audio_text': audio_text,
+        'audio_lang': audio_language,
+        'model_version': model_version,
+        'prompt_audio': ref,
+    })

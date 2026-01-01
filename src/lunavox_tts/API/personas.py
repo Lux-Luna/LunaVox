@@ -160,10 +160,8 @@ def load_persona(
         'persona_dir': persona_dir_str,
         'model_version': model_version,
         'is_persona': True,
+        'prompt_audio': ref  # Store the actual ReferenceAudio object
     })
-    
-    # Set as current prompt audio
-    context.current_prompt_audio = ref
     
     # --- AUTO-LOAD BASE MODEL ---
     # Check if persona has cached global embeddings (enables skipping prompt_encoder)
