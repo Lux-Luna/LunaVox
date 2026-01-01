@@ -109,7 +109,10 @@ class TTSPlayer:
                     logger.error("Missing model or reference audio for the current session.")
                     continue
 
-                gsv_model = model_manager.get(speaker)
+                # Optimize: If using a Persona, we can skip fetching/loading prompt_encoder
+                skip_pe = getattr(prompt_audio, 'is_persona_based', False)
+                
+                gsv_model = model_manager.get(speaker, skip_prompt_encoder=skip_pe)
                 if not gsv_model:
                     logger.error("Failed to load model for current speaker.")
                     continue

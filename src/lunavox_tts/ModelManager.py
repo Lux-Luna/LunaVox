@@ -142,7 +142,7 @@ class ModelManager:
                 gc.collect()
                 logger.info("✓ Prompt Encoder unloaded.")
 
-    def get(self, character_name: str) -> Optional[GSVModel]:
+    def get(self, character_name: str, skip_prompt_encoder: bool = False) -> Optional[GSVModel]:
         if character_name in self.character_to_model:
             model_map = self.character_to_model[character_name]
             return GSVModel(
@@ -154,7 +154,7 @@ class ModelManager:
             )
         if character_name in self.model_paths:
             model_dir = self.model_paths[character_name]
-            if self.load_character(character_name, model_dir):
+            if self.load_character(character_name, model_dir, skip_prompt_encoder=skip_prompt_encoder):
                 return self.get(character_name)
             else:
                 del self.model_paths[character_name]
@@ -178,15 +178,21 @@ class ModelManager:
         import time
         t_start = time.perf_counter()
         character_name = character_name.lower()
-        if character_name in self.character_to_model:
-            logger.debug(f"Character '{character_name}' is already in cache; no need to reload.")
-            _ = self.character_to_model[character_name]
-            return True
-        
-        # Determine if we are loading a v2ProPlus model to ensure resources
         is_v2pp_attempt = "v2_pro_plus" in model_dir or "v2pp" in model_dir.lower()
+        
+        if character_name in self.character_to_model:
+            model_dict = self.character_to_model[character_name]
+            # If we transition from Persona -> Reference mode, we might need to load the missing Prompt Encoder
+            if is_v2pp_attempt and not skip_prompt_encoder and model_dict.get("PROMPT_ENCODER") is None:
+                logger.info(f"Upgrading character '{character_name}': Loading missing Prompt Encoder...")
+            else:
+                logger.debug(f"Character '{character_name}' is already in cache; no need to reload.")
+                return True
+        else:
+            model_dict = {}
+
         from .Utils.ResourceManager import resource_manager
-        resource_manager.ensure_character_data(v2pp=is_v2pp_attempt)
+        resource_manager.ensure_character_data(v2pp=is_v2pp_attempt, skip_prompt_encoder=skip_prompt_encoder)
 
         # Load model version metadata
         model_version = 'v2'  # Default
@@ -203,8 +209,6 @@ class ModelManager:
         else:
             logger.debug(f"No model_info.json found, assuming v2")
 
-        model_dict: dict[str, InferenceSession] = {}
-        
         from .Utils.EnvManager import env_manager
         # Refresh providers to reflect any mode changes (CPU/GPU switch)
         self.providers = resolve_providers()
@@ -226,8 +230,12 @@ class ModelManager:
         try:
             total_steps = len(model_load_plan)
             for i, (key, onnx_file, bin_file) in enumerate(model_load_plan):
+                # Skip if already loaded (upgrade scenario)
+                if key in model_dict and model_dict[key] is not None:
+                    continue
+
                 # Simple progress hint
-                logger.info(f"Loading character model '{character_name}'... ({i+1}/{total_steps})")
+                logger.info(f"Loading character model component '{key}'... ({i+1}/{total_steps})")
                 
                 onnx_path = os.path.join(model_dir, onnx_file)
                 bin_path = os.path.join(model_dir, bin_file) if bin_file else None

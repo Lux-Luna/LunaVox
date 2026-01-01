@@ -42,7 +42,7 @@ def load_character(
         if "v2/pretrained" in model_path:
             resource_manager.ensure_base()
         elif "v2_pro_plus/pretrained" in model_path:
-            resource_manager.ensure_v2pp()
+            resource_manager.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
 
     if not os.path.isdir(model_path):
         logger.error(f"Character model directory not found: {model_path}")
