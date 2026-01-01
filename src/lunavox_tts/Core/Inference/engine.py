@@ -25,8 +25,23 @@ logger = logging.getLogger(__name__)
 
 
 class LunaVoxEngine:
-    def __init__(self):
+    """
+    Main TTS inference engine.
+    
+    Supports dependency injection for model_provider to enable testing
+    and custom model management strategies.
+    """
+    
+    def __init__(self, model_provider=None):
+        """
+        Initialize the TTS engine.
+        
+        Args:
+            model_provider: Optional custom model provider. If None, uses global model_manager.
+        """
         self.stop_event: threading.Event = threading.Event()
+        # Dependency injection: allow custom model provider for testing
+        self._model_provider = model_provider
 
     def split_language(self, text: str) -> List[dict]:
         """从文本中提取中文和英文部分，返回一个包含语言和内容的列表。"""

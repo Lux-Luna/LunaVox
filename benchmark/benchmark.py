@@ -50,7 +50,7 @@ logger = logging.getLogger("Benchmark")
 @dataclass
 class BenchmarkConfig:
     """Configuration for benchmark runs."""
-    environments: List[str] = field(default_factory=lambda: ["gpu"])
+    environments: List[str] = field(default_factory=lambda: ["cpu", "gpu"])
     # modes: List[str] = field(default_factory=lambda: ["persona", "reference"])
     modes: List[str] = field(default_factory=lambda: ["persona"])
     versions: List[str] = field(default_factory=lambda: ["v2", "v2pp"])
