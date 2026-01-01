@@ -17,6 +17,10 @@ tokenizers
 # psutil
 # nvidia-ml-py
 
+# --- Optional: Testing ---
+# pytest
+# pytest-mock
+
 # --- Optional: Chinese TTS Support ---
 # pypinyin
 # cn2an
