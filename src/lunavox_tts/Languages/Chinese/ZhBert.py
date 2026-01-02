@@ -69,6 +69,19 @@ def _load_model() -> None:
         logger.error(f"Failed to load RoBERTa ONNX session: {e}")
         raise RuntimeError(f"RoBERTa load failed: {e}")
 
+def unload_model() -> None:
+    """
+    Unload Chinese BERT model to release memory.
+    Called by GlobalResourceManager.unload_zh_bert().
+    """
+    global _tokenizer, _ort_session, _model_dir
+    if _ort_session is not None or _tokenizer is not None:
+        logger.debug("Unloading Chinese RoBERTa model...")
+        _tokenizer = None
+        _ort_session = None
+        _model_dir = None
+
+
 def compute_bert_phone_features(norm_text: str, word2ph: List[int], return_tensor: bool = False) -> np.ndarray:
     """
     Compute BERT features for Chinese text using ONNX Runtime.

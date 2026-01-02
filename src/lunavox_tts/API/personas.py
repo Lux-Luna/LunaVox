@@ -12,7 +12,6 @@ from typing import Union
 from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
 from ..Utils.ResourceManager import resource_manager
-from ..Core.Model.registry import model_registry
 from ..Resources.Persona.PersonaManager import export_persona, load_persona as persona_loader
 from .state import (
     SUPPORTED_AUDIO_EXTS,
@@ -162,6 +161,9 @@ def load_persona(
     # Load persona using PersonaManager
     ref = persona_loader(persona_dir_str)
     
+    # Check if persona has cached global embeddings (determines loading mode)
+    has_cached_ge = ref.global_emb is not None
+    
     # Prioritize loaded model's version over persona metadata
     if model_manager.has_character(character_name):
         model_version = model_manager.get_character_version(character_name)
@@ -176,13 +178,9 @@ def load_persona(
         'prompt_audio': ref  # Store the actual ReferenceAudio object
     })
     
-    # --- STATE HEALING: Set optimization hint in Registry ---
-    # Check if persona has cached global embeddings (enables skipping prompt_encoder)
-    has_cached_ge = ref.global_emb is not None
-    if has_cached_ge:
-        model_registry.set_optimization_hint(character_name, skip_prompt_encoder=True)
-    
-    # --- AUTO-LOAD BASE MODEL ---
+    # --- STRICT ORDER LOADING: Set skip_prompt_encoder BEFORE load_character ---
+    # If persona has cached global embeddings, we can skip prompt_encoder entirely
+    # This avoids the "load then unload" pattern that wastes memory
     
     if not model_manager.has_character(character_name):
         model_version_lower = model_version.lower()
@@ -194,29 +192,15 @@ def load_persona(
             inferred_version = "v2"
             
         logger.info(f"Auto-loading base {inferred_version} models for persona '{character_name}'...")
-        # Skip prompt_encoder if persona has cached global embeddings
-        # load_character will handle downloading if the directory doesn't exist
+        # Pass skip_prompt_encoder upfront - no post-load healing needed
         load_character(character_name, base_model_dir, skip_prompt_encoder=has_cached_ge)
     else:
         logger.info(f"Using already-loaded model for persona '{character_name}'.")
     
-    # --- OPTIMIZATION: Warmup & Cleanup ---
-    from ..Core.Frontend import get_language_frontend
-    try:
-        native_lang = model_version.split('_')[-1] if '_' in model_version else 'en'
-        # Warmup: access the frontend to pre-load resources
-        _ = get_language_frontend(native_lang)
-        
-        if native_lang != 'zh':
-            _ = get_language_frontend('zh')
-    except (ImportError, ValueError) as e:
-        logger.debug(f"Optional language warmup skipped: {e}")
-
-    model_manager.unload_cn_hubert()
-    model_manager.unload_sv_model()
-    
-    # Optimization: Unload Prompt Encoder if Persona has cached global embeddings
-    if ref.global_emb is not None:
-        model_manager.unload_prompt_encoder(character_name)
+    # --- CLEANUP: Unload extraction models used during persona creation ---
+    # These are not needed for inference when features are pre-cached
+    from ..Utils.GlobalResourceManager import global_resource_manager
+    global_resource_manager.unload_hubert()
+    global_resource_manager.unload_sv()
     
     logger.info(f"✓ Persona loaded for '{character_name}' from: {persona_dir_str}")

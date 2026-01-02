@@ -34,6 +34,22 @@ def has_reference_audio(character_name: str) -> bool:
     return character_name in _reference_audios
 
 
+def remove_reference_audio(character_name: str) -> bool:
+    """
+    Remove reference audio configuration for a specific character.
+    
+    Args:
+        character_name: Name of the character to remove.
+        
+    Returns:
+        True if the character was found and removed, False otherwise.
+    """
+    if character_name in _reference_audios:
+        del _reference_audios[character_name]
+        return True
+    return False
+
+
 def clear_all_reference_audio() -> None:
     """Clear all reference audio configurations."""
     _reference_audios.clear()

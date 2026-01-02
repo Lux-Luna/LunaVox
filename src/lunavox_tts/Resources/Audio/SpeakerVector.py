@@ -147,6 +147,18 @@ def load_sv_model(model_path: Optional[str] = None) -> bool:
         return False
 
 
+def unload_sv_model() -> None:
+    """
+    Unload Speaker Vector model to release memory.
+    Called by GlobalResourceManager.unload_sv().
+    """
+    global _sv_model, _sv_model_path
+    if _sv_model is not None:
+        logger.debug("Unloading Speaker Vector model...")
+        _sv_model = None
+        _sv_model_path = None
+
+
 def extract_sv_embedding(waveform_16k: np.ndarray) -> Optional[np.ndarray]:
     """
     Extract speaker vector embedding from 16kHz waveform.

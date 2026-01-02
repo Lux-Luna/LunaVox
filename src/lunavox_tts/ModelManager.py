@@ -45,7 +45,7 @@ class ModelManager:
     """
     
     def __init__(self):
-        capacity_str = os.getenv('Max_Cached_Character_Models', '3')
+        capacity_str = os.getenv('Max_Cached_Character_Models', '1')
         self.character_to_model: Dict[str, Dict[str, InferenceSession]] = LRUCacheDict(
             capacity=int(capacity_str)
         )
@@ -86,30 +86,20 @@ class ModelManager:
             return False
 
     def unload_cn_hubert(self) -> None:
+        """Unload HuBERT model and release memory."""
         if self.cn_hubert is not None:
             logger.info("Unloading HuBERT model...")
             self.cn_hubert = None
             gc.collect()
             logger.info("✓ HuBERT model unloaded.")
 
-    def unload_sv_model(self) -> None:
-        """Unload Speaker Vector extractor model."""
-        from .Resources.Audio import SpeakerVector
-        if hasattr(SpeakerVector, "_sv_model") and SpeakerVector._sv_model is not None:
-            logger.info("Unloading Speaker Vector model...")
-            SpeakerVector._sv_model = None
-            gc.collect()
-            logger.info("✓ Speaker Vector model unloaded.")
-
-    def unload_prompt_encoder(self, character_name: str) -> None:
-        name = character_name.lower()
-        if name in self.character_to_model:
-            model_dict = self.character_to_model[name]
-            if model_dict.get("PROMPT_ENCODER") is not None:
-                logger.info(f"Unloading Prompt Encoder for '{character_name}'...")
-                model_dict["PROMPT_ENCODER"] = None
-                gc.collect()
-                logger.info("✓ Prompt Encoder unloaded.")
+    def cleanup_global_resources(self) -> None:
+        """
+        Clean up all global/singleton resources for fresh measurement.
+        Delegates to GlobalResourceManager.
+        """
+        from .Utils.GlobalResourceManager import global_resource_manager
+        global_resource_manager.cleanup_all()
 
     def get(self, character_name: str, skip_prompt_encoder: bool = False) -> Optional[GSVModel]:
         """Retrieve a character's model sessions, loading them if necessary."""
@@ -138,39 +128,37 @@ class ModelManager:
         return model_registry.has(character_name)
 
     def load_character(self, character_name: str, model_dir: str, skip_prompt_encoder: bool = False) -> bool:
-        """Load all model components for a character."""
+        """
+        Load all model components for a character.
+        
+        Args:
+            character_name: Name of the character.
+            model_dir: Path to the model directory.
+            skip_prompt_encoder: If True, skip loading PROMPT_ENCODER (for Persona mode).
+        """
         import time
         t_start = time.perf_counter()
         name = character_name.lower()
         
-        # 1. Check if already loaded with SAME model_dir BEFORE updating registry
+        # 1. Check if already loaded with SAME model_dir
         existing_entry = model_registry.get(name)
-        already_loaded_same = (
+        already_loaded = (
             name in self.character_to_model and
             existing_entry and 
             existing_entry.path == model_dir
         )
         
-        # 2. Detect version and register (this updates registry entry)
+        if already_loaded:
+            # Already loaded with same path - return early
+            return True
+        
+        # 2. Detect version and register
         version = detect_model_version(model_dir)
         spec = get_model_spec(version)
-        entry = model_registry.register(name, model_dir, force_version=version)
-        
-        # State Healing: auto-detect if persona mode requires skipping prompt_encoder
-        if model_registry.get_optimization_hint(name):
-            skip_prompt_encoder = True
-            logger.debug(f"Auto-applying skip_prompt_encoder for '{character_name}' (Persona mode detected)")
-        
-        if already_loaded_same:
-             m = self.character_to_model[name]
-             # Handle upgrade (Persona -> Reference mode)
-             if not skip_prompt_encoder and spec.prompt_encoder and m.get("PROMPT_ENCODER") is None:
-                 logger.info(f"Upgrading character '{character_name}': Loading missing Prompt Encoder...")
-             else:
-                 return True
+        model_registry.register(name, model_dir, force_version=version)
         
         # If loaded with different model_dir, force reload
-        if name in self.character_to_model and not already_loaded_same:
+        if name in self.character_to_model:
             logger.info(f"Character '{character_name}' model changed from previous, reloading...")
 
         # 3. Resource Pre-check
@@ -209,14 +197,29 @@ class ModelManager:
         return entry.version if entry else 'v2'
 
     def remove_character(self, character_name: str) -> None:
+        """Remove a character model and force memory release."""
         name = character_name.lower()
         if name in self.character_to_model:
+            # Explicitly clear session references to help GC
+            sessions = self.character_to_model[name]
+            for key in list(sessions.keys()):
+                sessions[key] = None
             del self.character_to_model[name]
         model_registry.unregister(name)
+        # Double GC needed for ONNX Session C++ destructor chain
+        gc.collect()
         gc.collect()
 
     def clean_cache(self) -> None:
+        """Clear all cached models with explicit cleanup."""
+        # Explicitly null out all sessions before clearing
+        for char_name in list(self.character_to_model.keys()):
+            sessions = self.character_to_model[char_name]
+            for key in list(sessions.keys()):
+                sessions[key] = None
         self.character_to_model.clear()
+        gc.collect()
+        gc.collect()
 
 
 model_manager: ModelManager = ModelManager()

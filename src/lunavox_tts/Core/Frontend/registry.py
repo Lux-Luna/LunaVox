@@ -13,69 +13,76 @@ logger = logging.getLogger(__name__)
 
 
 class LanguageRegistry:
-    """Central registry for language-specific frontends."""
+    """Central registry for language-specific frontends.
+    
+    Uses lazy import to avoid loading heavy dependencies (jieba, pyopenjtalk)
+    until a language is actually requested.
+    """
+    
+    # Builtin frontend paths (module:class format)
+    _BUILTIN_FRONTENDS = {
+        'en': 'lunavox_tts.Languages.English.EnglishG2P:EnglishFrontend',
+        'zh': 'lunavox_tts.Languages.Chinese.ChineseG2P:ChineseFrontend',
+        'ja': 'lunavox_tts.Languages.Japanese.JapaneseG2P:JapaneseFrontend',
+    }
     
     def __init__(self):
-        self._frontends: Dict[str, Type["AbstractFrontend"]] = {}
+        # Store module paths as strings for lazy import
+        self._frontend_paths: Dict[str, str] = dict(self._BUILTIN_FRONTENDS)
         self._instances: Dict[str, "AbstractFrontend"] = {}
-        self._builtin_registered = False
     
     def register(self, language: str, frontend_class: Type["AbstractFrontend"]) -> None:
+        """Register a frontend class directly (for plugins)."""
         lang = language.lower()
-        self._frontends[lang] = frontend_class
+        # Store the class directly, not as path
+        self._frontend_paths[lang] = frontend_class
         if lang in self._instances:
             del self._instances[lang]
         logger.debug(f"Registered frontend for language: {lang}")
     
     def get(self, language: str) -> "AbstractFrontend":
+        """Get frontend instance, lazily importing if needed."""
         lang = language.lower()
         
         if lang in self._instances:
             return self._instances[lang]
         
-        if not self._builtin_registered:
-            self._register_builtins()
+        if lang not in self._frontend_paths:
+            raise ValueError(f"Unsupported language: {language}. Available: {self.list_languages()}")
         
-        if lang in self._frontends:
-            instance = self._frontends[lang]()
-            self._instances[lang] = instance
-            return instance
+        frontend_ref = self._frontend_paths[lang]
         
-        raise ValueError(f"Unsupported language: {language}. Available: {self.list_languages()}")
+        # Handle both string paths and direct class references
+        if isinstance(frontend_ref, str):
+            frontend_class = self._import_frontend(frontend_ref)
+        else:
+            frontend_class = frontend_ref
+        
+        instance = frontend_class()
+        self._instances[lang] = instance
+        return instance
     
-    def _register_builtins(self) -> None:
-        if self._builtin_registered:
-            return
-        
+    def _import_frontend(self, path: str) -> Type["AbstractFrontend"]:
+        """Dynamically import a frontend class from module:class path."""
+        import importlib
+        module_path, class_name = path.rsplit(':', 1)
         try:
-            from ...Languages.English.EnglishG2P import EnglishFrontend
-            self.register("en", EnglishFrontend)
-        except ImportError:
-            logger.debug("English frontend not available")
-        
-        try:
-            from ...Languages.Chinese.ChineseG2P import ChineseFrontend
-            self.register("zh", ChineseFrontend)
-        except ImportError:
-            logger.debug("Chinese frontend not available")
-        
-        try:
-            from ...Languages.Japanese.JapaneseG2P import JapaneseFrontend
-            self.register("ja", JapaneseFrontend)
-        except ImportError:
-            logger.debug("Japanese frontend not available")
-        
-        self._builtin_registered = True
+            module = importlib.import_module(module_path)
+            return getattr(module, class_name)
+        except ImportError as e:
+            logger.error(f"Failed to import frontend from {path}: {e}")
+            raise
     
     def list_languages(self) -> List[str]:
-        if not self._builtin_registered:
-            self._register_builtins()
-        return list(self._frontends.keys())
+        return list(self._frontend_paths.keys())
     
     def is_supported(self, language: str) -> bool:
-        if not self._builtin_registered:
-            self._register_builtins()
-        return language.lower() in self._frontends
+        return language.lower() in self._frontend_paths
+    
+    def clear_instances(self) -> None:
+        """Clear cached frontend instances to release memory."""
+        self._instances.clear()
+        logger.debug("Frontend instances cleared.")
 
 
 # Global registry instance

@@ -82,6 +82,13 @@ class PerformanceMonitor:
             except: pass
         
         self._baselines_set = True
+    
+    def reset_baselines(self):
+        """Reset baselines for fresh measurement (used between benchmark tests)."""
+        self._baselines_set = False
+        self.base_rss = 0
+        self.base_vram = 0
+        self._ensure_baselines()
 
     @property
     def is_enabled(self) -> bool:

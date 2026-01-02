@@ -1,87 +1,91 @@
 """
-Unit tests for ModelManager State Healing logic.
+Unit tests for ModelManager simplified loading behavior.
+
+After refactoring, state healing (optimization hints) has been removed.
+Loading behavior is now determined by explicit skip_prompt_encoder parameter.
 """
 import pytest
 from unittest.mock import MagicMock, patch, Mock
 from lunavox_tts.ModelManager import ModelManager
-from lunavox_tts.Core.Model.registry import model_registry
 
-class TestStateHealing:
+
+class TestSimplifiedLoading:
+    """Tests for simplified ModelManager without state healing."""
+    
     @pytest.fixture
     def mm(self):
         with patch("lunavox_tts.ModelManager.monitor"):
             return ModelManager()
 
-    def test_load_character_auto_skips_pe_with_hint(self, mm, temp_v2pp_model_dir):
-        """Test that load_character skips PE if registry has an optimization hint."""
-        char_name = "test_luna_skip"
+    def test_load_character_with_skip_prompt_encoder_true(self, mm, temp_v2pp_model_dir):
+        """load_character with skip_prompt_encoder=True skips PROMPT_ENCODER."""
+        char_name = "test_persona_mode"
         
-        # 1. Set the optimization hint in the registry
-        model_registry.set_optimization_hint(char_name, skip_prompt_encoder=True)
-        
-        # 2. Mock the model loader to see what components it gets
         with patch("lunavox_tts.ModelManager.model_loader") as mock_loader:
             mock_loader.load_all.return_value = {"T2S_ENCODER": Mock()}
             
-            # 3. Call load_character WITHOUT explicitly passing skip_prompt_encoder=True
-            mm.load_character(char_name, str(temp_v2pp_model_dir))
+            mm.load_character(char_name, str(temp_v2pp_model_dir), skip_prompt_encoder=True)
             
-            # 4. Verify that skip_components in load_all included PROMPT_ENCODER
             args, kwargs = mock_loader.load_all.call_args
             assert "PROMPT_ENCODER" in kwargs.get("skip_components", set())
 
-    @patch("lunavox_tts.API.personas.set_reference_audio_config")
-    @patch("lunavox_tts.API.personas.persona_loader")
-    def test_load_persona_unloads_pe_if_already_loaded(self, mock_loader, mock_state, mm, tmp_path):
-        """Test that load_persona unloads PE if the model was already loaded with it."""
-        from lunavox_tts.API.personas import load_persona
-        char_name = "test_luna_unload"
-        persona_dir = tmp_path / "persona"
-        persona_dir.mkdir()
+    def test_load_character_with_skip_prompt_encoder_false(self, mm, temp_v2pp_model_dir):
+        """load_character with skip_prompt_encoder=False loads all components."""
+        char_name = "test_reference_mode"
         
-        # Setup mock persona with cached embeddings
-        mock_ref = MagicMock()
-        mock_ref.global_emb = [0.1, 0.2] # Cached
-        mock_loader.return_value = mock_ref
-        
-        # Mock ModelManager instance methods
-        mm.has_character = MagicMock(return_value=True)
-        mm.get_character_version = MagicMock(return_value="v2ProPlus")
-        mm.unload_prompt_encoder = MagicMock()
-        
-        with patch("lunavox_tts.API.personas.model_manager", mm):
-            # 1. Call load_persona
-            load_persona(char_name, str(persona_dir))
+        with patch("lunavox_tts.ModelManager.model_loader") as mock_loader:
+            mock_loader.load_all.return_value = {"T2S_ENCODER": Mock(), "PROMPT_ENCODER": Mock()}
             
-            # 2. Verify Registry hint was set
-            assert model_registry.get_optimization_hint(char_name) is True
+            mm.load_character(char_name, str(temp_v2pp_model_dir), skip_prompt_encoder=False)
             
-            # 3. Verify ModelManager.unload_prompt_encoder was called
-            mm.unload_prompt_encoder.assert_called_with(char_name)
+            args, kwargs = mock_loader.load_all.call_args
+            skip_components = kwargs.get("skip_components", set())
+            assert "PROMPT_ENCODER" not in skip_components
 
-    def test_load_character_upgrades_from_persona_to_reference(self, mm, temp_v2pp_model_dir):
-        """Test that calling load_character without skip_prompt_encoder loads missing PE."""
-        char_name = "test_luna_upgrade"
+    def test_load_character_same_path_returns_early(self, mm, temp_v2pp_model_dir):
+        """load_character with same path returns early without reloading."""
+        char_name = "test_cached"
         
-        # 1. Initial load WITH skip hint (Persona mode)
-        model_registry.set_optimization_hint(char_name, skip_prompt_encoder=True)
         with patch("lunavox_tts.ModelManager.model_loader") as mock_loader:
             mock_loader.load_all.return_value = {"T2S_ENCODER": Mock()}
-            mm.load_character(char_name, str(temp_v2pp_model_dir))
             
-            # Simulate entry in mm.character_to_model that lacks PE
-            mm.character_to_model[char_name] = {"T2S_ENCODER": Mock(), "PROMPT_ENCODER": None}
-        
-        # 2. Reset hint (Reference mode requested by user)
-        model_registry.set_optimization_hint(char_name, skip_prompt_encoder=False)
-        
-        # 3. Call load_character again (should trigger "Upgrading" logic)
-        with patch("lunavox_tts.ModelManager.model_loader") as mock_loader:
-            mock_loader.load_all.return_value = {"PROMPT_ENCODER": Mock()}
+            # First load
             mm.load_character(char_name, str(temp_v2pp_model_dir))
+            first_call_count = mock_loader.load_all.call_count
             
-            # Verify load_all was called
-            assert mock_loader.load_all.called
-            # Verify skip_components did NOT include PROMPT_ENCODER this time
-            args, kwargs = mock_loader.load_all.call_args
-            assert "PROMPT_ENCODER" not in kwargs.get("skip_components", set())
+            # Second load with same path
+            mm.load_character(char_name, str(temp_v2pp_model_dir))
+            second_call_count = mock_loader.load_all.call_count
+            
+            # Should not have loaded again
+            assert second_call_count == first_call_count
+
+    def test_cleanup_global_resources_delegates(self, mm):
+        """cleanup_global_resources delegates to GlobalResourceManager."""
+        with patch("lunavox_tts.Utils.GlobalResourceManager.global_resource_manager") as mock_grm:
+            mm.cleanup_global_resources()
+            mock_grm.cleanup_all.assert_called_once()
+
+
+class TestNoStateHealing:
+    """Verify state healing removal."""
+    
+    def test_no_optimization_hint_in_load_character(self):
+        """ModelManager.load_character does not check optimization hints."""
+        import inspect
+        source = inspect.getsource(ModelManager.load_character)
+        
+        assert "get_optimization_hint" not in source
+        assert "set_optimization_hint" not in source
+        assert "Upgrading" not in source  # No upgrade logic
+    
+    def test_no_unload_prompt_encoder_method(self):
+        """ModelManager no longer has unload_prompt_encoder method."""
+        mm = ModelManager()
+        assert not hasattr(mm, "unload_prompt_encoder")
+    
+    def test_no_unload_sv_model_method(self):
+        """ModelManager no longer has unload_sv_model method."""
+        mm = ModelManager()
+        assert not hasattr(mm, "unload_sv_model")
+

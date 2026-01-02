@@ -22,7 +22,7 @@ class ReferenceAudio:
     """
     
     _prompt_cache: dict[tuple[str, str, str], "ReferenceAudio"] = LRUCacheDict(
-        capacity=int(os.getenv("Max_Cached_Reference_Audio", "5"))
+        capacity=int(os.getenv("Max_Cached_Reference_Audio", "2"))
     )
     
     # Persona support: indicates if this instance was loaded from cached features

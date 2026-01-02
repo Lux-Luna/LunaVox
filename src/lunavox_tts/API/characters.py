@@ -60,10 +60,18 @@ def unload_character(
 ) -> None:
     """
     Unloads a previously loaded character model to free up resources.
+    
+    Also clears any associated reference audio configuration to prevent
+    memory leaks from orphaned ReferenceAudio objects.
 
     Args:
         character_name (str): The name of the character to unload.
     """
+    # Clean up API state first (removes ReferenceAudio reference)
+    from .state import remove_reference_audio
+    remove_reference_audio(character_name)
+    
+    # Then remove the model session
     model_manager.remove_character(
         character_name=character_name,
     )
