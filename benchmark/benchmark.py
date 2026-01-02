@@ -51,11 +51,11 @@ logger = logging.getLogger("Benchmark")
 class BenchmarkConfig:
     """Configuration for benchmark runs."""
     environments: List[str] = field(default_factory=lambda: ["gpu"]) # "cpu"、"gpu"
-    modes: List[str] = field(default_factory=lambda: ["reference"]) # "reference"、"persona"
-    versions: List[str] = field(default_factory=lambda: ["v2"]) # "v2"、"v2pp"
-    languages: List[str] = field(default_factory=lambda: ["zh"]) # "zh"、"en"、"ja"
-    warmup_rounds: int = 1
-    test_rounds: int = 1
+    modes: List[str] = field(default_factory=lambda: ["persona"]) # "reference"、"persona"
+    versions: List[str] = field(default_factory=lambda: ["v2", "v2pp"]) # "v2"、"v2pp"
+    languages: List[str] = field(default_factory=lambda: ["zh", "en", "ja"]) # "zh"、"en"、"ja"
+    warmup_rounds: int = 3
+    test_rounds: int = 20
     _internal_env: Optional[str] = None
     _result_file: Optional[str] = None
 
