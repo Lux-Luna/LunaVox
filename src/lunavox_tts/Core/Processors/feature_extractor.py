@@ -98,8 +98,8 @@ class FeatureExtractor:
     @staticmethod
     def extract_ssl_content(ref_audio: "ReferenceAudio"):
         """Extract SSL content using HuBERT."""
-        from ...Utils.ResourceManager import resource_manager
-        resource_manager.ensure_extractor()
+        from ...Utils.AssetManager import asset_manager
+        asset_manager.ensure_extractor()
         
         if not model_manager.cn_hubert:
             model_manager.load_cn_hubert()

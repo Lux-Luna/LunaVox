@@ -64,27 +64,27 @@ class TestEnvLogic:
             
             assert em.get_environment_status() == EnvironmentStatus.CPU_ONLY
 
-    def test_ensure_environment_mismatch_raises(self):
+    @patch("lunavox_tts.Utils.EnvManager.print_gpu_instruction")
+    def test_ensure_environment_mismatch_raises(self, mock_print_gpu):
         with patch.object(EnvManager, '__init__', lambda x: None):
             em = EnvManager()
             em.get_mode = MagicMock(return_value="gpu")
             em.get_environment_status = MagicMock(return_value=EnvironmentStatus.CPU_ONLY)
-            em._print_gpu_instruction = MagicMock()
             
             from lunavox_tts.Core.Model.ExecutionPolicy import EnvironmentMismatchError
             with pytest.raises(EnvironmentMismatchError):
                 em.ensure_environment()
             
-            em._print_gpu_instruction.assert_called_once()
+            mock_print_gpu.assert_called_once()
 
-    def test_set_mode_warns_on_mismatch(self):
+    @patch("lunavox_tts.Utils.EnvManager.print_gpu_instruction")
+    def test_set_mode_warns_on_mismatch(self, mock_print_gpu):
         with patch.object(EnvManager, '__init__', lambda x: None):
             em = EnvManager()
             em._config = {}
             em._save_config = MagicMock()
             em.get_environment_status = MagicMock(return_value=EnvironmentStatus.CPU_ONLY)
-            em._print_gpu_instruction = MagicMock()
             
             em.set_mode("gpu")
-            em._print_gpu_instruction.assert_called_once()
+            mock_print_gpu.assert_called_once()
             assert em._config["mode"] == "gpu"

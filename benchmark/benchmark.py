@@ -54,8 +54,8 @@ class BenchmarkConfig:
     modes: List[str] = field(default_factory=lambda: ["persona", "reference"]) # "reference"、"persona"
     versions: List[str] = field(default_factory=lambda: ["v2", "v2pp"]) # "v2"、"v2pp"
     languages: List[str] = field(default_factory=lambda: ["zh", "en", "ja"]) # "zh"、"en"、"ja"
-    warmup_rounds: int = 3
-    test_rounds: int = 20
+    warmup_rounds: int = 1
+    test_rounds: int = 1
     _internal_env: Optional[str] = None
     _internal_lang: Optional[str] = None
     _result_file: Optional[str] = None
@@ -207,8 +207,8 @@ def run_single_test(
     logger.info(f"{'='*60}")
     
     # --- CLEANUP: Ensure fresh state before each test ---
-    from lunavox_tts.Utils.GlobalResourceManager import global_resource_manager
-    global_resource_manager.cleanup_all()
+    from lunavox_tts.Utils.RuntimeManager import runtime_manager
+    runtime_manager.cleanup_all()
     
     # Reset memory baselines for accurate measurement
     monitor.reset_baselines()
@@ -314,8 +314,8 @@ def run_single_test(
         pass
     
     # Cleanup global resources for next test isolation
-    from lunavox_tts.Utils.GlobalResourceManager import global_resource_manager
-    global_resource_manager.cleanup_all()
+    from lunavox_tts.Utils.RuntimeManager import runtime_manager
+    runtime_manager.cleanup_all()
 
     # Aggregate statistics
     if not round_data:

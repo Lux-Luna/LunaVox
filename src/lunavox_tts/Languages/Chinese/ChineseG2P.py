@@ -268,7 +268,7 @@ class ChineseFrontend:
         Uses RoBERTa model for Chinese semantic understanding.
         """
         import numpy as np
-        from ...Utils.Constants import BERT_FEATURE_DIM
+        from ...Utils.Utils import BERT_FEATURE_DIM
         from .ZhBert import compute_bert_phone_features
         
         # Get normalized text and word2ph from processor

@@ -84,7 +84,7 @@ _PACK_DEPENDENCIES = {
 }
 
 
-class ResourceManager:
+class AssetManager:
     """
     Manages on-demand resource fetching from HuggingFace Hub.
     
@@ -202,4 +202,4 @@ class ResourceManager:
         ignore = ["*prompt_encoder*"] if skip_prompt_encoder else None
         return self.ensure_pack(ResourcePack.V2PP, ignore_patterns=ignore)
 
-resource_manager = ResourceManager()
+asset_manager = AssetManager()

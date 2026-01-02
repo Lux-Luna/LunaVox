@@ -25,8 +25,8 @@ def _resolve_bert_paths() -> tuple[Path, Path]:
     from ...Utils.EnvManager import env_manager
     base_dir = env_manager.data_root / "RoBERTa"
     
-    from ...Utils.ResourceManager import resource_manager
-    resource_manager.ensure_chinese()
+    from ...Utils.AssetManager import asset_manager
+    asset_manager.ensure_chinese()
 
     if not base_dir.exists():
         base_dir.mkdir(parents=True, exist_ok=True)
@@ -72,7 +72,7 @@ def _load_model() -> None:
 def unload_model() -> None:
     """
     Unload Chinese BERT model to release memory.
-    Called by GlobalResourceManager.unload_zh_bert().
+    Called by RuntimeManager.unload_zh_bert().
     """
     global _tokenizer, _ort_session, _model_dir
     if _ort_session is not None or _tokenizer is not None:

@@ -54,13 +54,13 @@ class ModelManager:
 
     def load_cn_hubert(self) -> bool:
         """Load the Chinese HuBERT model (used for SSL feature extraction)."""
-        from .Utils.ResourceManager import resource_manager
-        resource_manager.ensure_base()
-        resource_manager.ensure_extractor()
+        from .Utils.AssetManager import asset_manager
+        asset_manager.ensure_base()
+        asset_manager.ensure_extractor()
         
         model_path = os.getenv("HUBERT_MODEL_PATH")
         if not (model_path and os.path.isfile(model_path)):
-            potential_path = resource_manager.tts_data_dir / "chinese-hubert-base" / "chinese-hubert-base.onnx"
+            potential_path = asset_manager.tts_data_dir / "chinese-hubert-base" / "chinese-hubert-base.onnx"
             if potential_path.is_file():
                 model_path = str(potential_path)
             else:
@@ -98,8 +98,8 @@ class ModelManager:
         Clean up all global/singleton resources for fresh measurement.
         Delegates to GlobalResourceManager.
         """
-        from .Utils.GlobalResourceManager import global_resource_manager
-        global_resource_manager.cleanup_all()
+        from .Utils.RuntimeManager import runtime_manager
+        runtime_manager.cleanup_all()
 
     def get(self, character_name: str, skip_prompt_encoder: bool = False) -> Optional[GSVModel]:
         """Retrieve a character's model sessions, loading them if necessary."""
@@ -162,11 +162,11 @@ class ModelManager:
             logger.info(f"Character '{character_name}' model changed from previous, reloading...")
 
         # 3. Resource Pre-check
-        from .Utils.ResourceManager import resource_manager
+        from .Utils.AssetManager import asset_manager
         is_v2pp = version in ('v2ProPlus', 'v2pp')
-        resource_manager.ensure_base()
+        asset_manager.ensure_base()
         if is_v2pp:
-            resource_manager.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
+            asset_manager.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
         
         # 4. Actual Loading via ModelLoader (wrapped in monitoring)
         with monitor.measure(f"Model Loading ({character_name})", category="USER_PERCEIVED"):

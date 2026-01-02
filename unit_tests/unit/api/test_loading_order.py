@@ -73,10 +73,10 @@ class TestLoadPersonaOrder:
     @patch("lunavox_tts.API.personas.set_reference_audio_config")
     @patch("lunavox_tts.API.personas.load_character")
     @patch("lunavox_tts.API.personas.model_manager")
-    @patch("lunavox_tts.API.personas.resource_manager")
-    @patch("lunavox_tts.Utils.GlobalResourceManager.global_resource_manager")
+    @patch("lunavox_tts.API.personas.asset_manager")
+    @patch("lunavox_tts.Utils.RuntimeManager.runtime_manager")
     def test_persona_with_ge_passes_skip_prompt_encoder(
-        self, mock_grm, mock_rm, mock_mm, mock_load_char, mock_set_ref, mock_loader, mock_isdir
+        self, mock_rm, mock_am, mock_mm, mock_load_char, mock_set_ref, mock_loader, mock_isdir
     ):
         """load_persona with cached global_emb passes skip_prompt_encoder=True."""
         from lunavox_tts.API.personas import load_persona
@@ -88,8 +88,8 @@ class TestLoadPersonaOrder:
         mock_loader.return_value = mock_ref
         
         mock_mm.has_character.return_value = False
-        mock_rm.char_data_dir = MagicMock()
-        mock_rm.char_data_dir.__truediv__ = MagicMock(return_value=MagicMock())
+        mock_am.char_data_dir = MagicMock()
+        mock_am.char_data_dir.__truediv__ = MagicMock(return_value=MagicMock())
         
         # Action
         load_persona("test_char", "/fake/persona/dir")
@@ -104,10 +104,10 @@ class TestLoadPersonaOrder:
     @patch("lunavox_tts.API.personas.set_reference_audio_config")
     @patch("lunavox_tts.API.personas.load_character")
     @patch("lunavox_tts.API.personas.model_manager")
-    @patch("lunavox_tts.API.personas.resource_manager")
-    @patch("lunavox_tts.Utils.GlobalResourceManager.global_resource_manager")
+    @patch("lunavox_tts.API.personas.asset_manager")
+    @patch("lunavox_tts.Utils.RuntimeManager.runtime_manager")
     def test_persona_without_ge_passes_skip_false(
-        self, mock_grm, mock_rm, mock_mm, mock_load_char, mock_set_ref, mock_loader, mock_isdir
+        self, mock_rm, mock_am, mock_mm, mock_load_char, mock_set_ref, mock_loader, mock_isdir
     ):
         """load_persona without cached global_emb passes skip_prompt_encoder=False."""
         from lunavox_tts.API.personas import load_persona
@@ -119,8 +119,8 @@ class TestLoadPersonaOrder:
         mock_loader.return_value = mock_ref
         
         mock_mm.has_character.return_value = False
-        mock_rm.char_data_dir = MagicMock()
-        mock_rm.char_data_dir.__truediv__ = MagicMock(return_value=MagicMock())
+        mock_am.char_data_dir = MagicMock()
+        mock_am.char_data_dir.__truediv__ = MagicMock(return_value=MagicMock())
         
         # Action
         load_persona("test_char", "/fake/persona/dir")

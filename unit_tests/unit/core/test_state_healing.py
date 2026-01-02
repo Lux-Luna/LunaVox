@@ -61,10 +61,10 @@ class TestSimplifiedLoading:
             assert second_call_count == first_call_count
 
     def test_cleanup_global_resources_delegates(self, mm):
-        """cleanup_global_resources delegates to GlobalResourceManager."""
-        with patch("lunavox_tts.Utils.GlobalResourceManager.global_resource_manager") as mock_grm:
+        """cleanup_global_resources delegates to RuntimeManager."""
+        with patch("lunavox_tts.Utils.RuntimeManager.runtime_manager") as mock_rm:
             mm.cleanup_global_resources()
-            mock_grm.cleanup_all.assert_called_once()
+            mock_rm.cleanup_all.assert_called_once()
 
 
 class TestNoStateHealing:

@@ -16,18 +16,18 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
-class GlobalResourceManager:
+class RuntimeManager:
     """
     Singleton manager for heavyweight global models.
     
     Usage:
-        from lunavox_tts.Utils.GlobalResourceManager import global_resource_manager
-        global_resource_manager.cleanup_all()  # Clean everything for fresh measurement
+        from lunavox_tts.Utils.RuntimeManager import runtime_manager
+        runtime_manager.cleanup_all()  # Clean everything for fresh measurement
     """
     
-    _instance: Optional["GlobalResourceManager"] = None
+    _instance: Optional["RuntimeManager"] = None
     
-    def __new__(cls) -> "GlobalResourceManager":
+    def __new__(cls) -> "RuntimeManager":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -139,7 +139,7 @@ class GlobalResourceManager:
         """
         import time
         
-        logger.info("=== GlobalResourceManager: Full Cleanup ===")
+        logger.info("=== RuntimeManager: Full Cleanup ===")
         self.unload_hubert()
         self.unload_all_bert()
         self.unload_sv()
@@ -213,4 +213,4 @@ class GlobalResourceManager:
 
 
 # Global singleton instance
-global_resource_manager = GlobalResourceManager()
+runtime_manager = RuntimeManager()

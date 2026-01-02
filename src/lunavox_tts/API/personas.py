@@ -11,7 +11,7 @@ from typing import Union
 
 from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
-from ..Utils.ResourceManager import resource_manager
+from ..Utils.AssetManager import asset_manager
 from ..Resources.Persona.PersonaManager import export_persona, load_persona as persona_loader
 from .state import (
     SUPPORTED_AUDIO_EXTS,
@@ -67,7 +67,7 @@ def create_persona(
     from ..Utils.EnvManager import env_manager
     with env_manager.temporary_mode("cpu"):
         # Ensure all extractor resources (HuBERT + SV + PromptEncoder)
-        resource_manager.ensure_extractor()
+        asset_manager.ensure_extractor()
         
         # Create ReferenceAudio with v2ProPlus to extract all features
         ref = ReferenceAudio(
@@ -78,8 +78,8 @@ def create_persona(
         )
         
         # Compute global embeddings for v2ProPlus compatibility
-        resource_manager.ensure_v2pp()
-        model_dir = resource_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
+        asset_manager.ensure_v2pp()
+        model_dir = asset_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
         prompt_encoder_path = model_dir / "prompt_encoder_fp32.onnx"
         prompt_encoder_bin = model_dir / "prompt_encoder_fp16.bin"
         
@@ -149,11 +149,11 @@ def load_persona(
     # --- AUTO-DOWNLOAD BUILT-IN PERSONAS ---
     if not os.path.isdir(persona_dir_str):
         if "luna_en" in persona_dir_str:
-            resource_manager.ensure_base()
+            asset_manager.ensure_base()
         elif "luna_zh" in persona_dir_str:
-            resource_manager.ensure_chinese()
+            asset_manager.ensure_chinese()
         elif "luna_ja" in persona_dir_str:
-            resource_manager.ensure_japanese()
+            asset_manager.ensure_japanese()
 
     if not os.path.isdir(persona_dir_str):
         raise FileNotFoundError(f"Persona directory not found: {persona_dir_str}")
@@ -185,10 +185,10 @@ def load_persona(
     if not model_manager.has_character(character_name):
         model_version_lower = model_version.lower()
         if "v2_pro_plus" in model_version_lower or "v2pp" in model_version_lower or "v2proplus" in model_version_lower:
-            base_model_dir = resource_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
+            base_model_dir = asset_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
             inferred_version = "v2ProPlus"
         else:
-            base_model_dir = resource_manager.char_data_dir / "model" / "v2" / "pretrained"
+            base_model_dir = asset_manager.char_data_dir / "model" / "v2" / "pretrained"
             inferred_version = "v2"
             
         logger.info(f"Auto-loading base {inferred_version} models for persona '{character_name}'...")
@@ -199,8 +199,8 @@ def load_persona(
     
     # --- CLEANUP: Unload extraction models used during persona creation ---
     # These are not needed for inference when features are pre-cached
-    from ..Utils.GlobalResourceManager import global_resource_manager
-    global_resource_manager.unload_hubert()
-    global_resource_manager.unload_sv()
+    from ..Utils.RuntimeManager import runtime_manager
+    runtime_manager.unload_hubert()
+    runtime_manager.unload_sv()
     
     logger.info(f"✓ Persona loaded for '{character_name}' from: {persona_dir_str}")

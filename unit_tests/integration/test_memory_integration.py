@@ -15,13 +15,13 @@ class TestMemoryLifecycleIntegration:
     
     def test_cleanup_all_method_exists(self):
         """Verify cleanup_all method is callable."""
-        from lunavox_tts.Utils.GlobalResourceManager import global_resource_manager
+        from lunavox_tts.Utils.RuntimeManager import runtime_manager
         
-        assert hasattr(global_resource_manager, 'cleanup_all')
-        assert callable(global_resource_manager.cleanup_all)
+        assert hasattr(runtime_manager, 'cleanup_all')
+        assert callable(runtime_manager.cleanup_all)
         
         # Should not raise
-        global_resource_manager.cleanup_all()
+        runtime_manager.cleanup_all()
     
     def test_reset_baselines_method_exists(self):
         """Verify PerformanceMonitor has reset_baselines method."""

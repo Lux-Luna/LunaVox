@@ -13,7 +13,7 @@ from typing import AsyncIterator, Optional, Union
 from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..Core.TTSPlayer import tts_player
 from ..ModelManager import model_manager
-from ..Utils.ResourceManager import resource_manager
+from ..Utils.AssetManager import asset_manager
 from .state import (
     normalize_language,
     get_reference_audio,
@@ -72,11 +72,11 @@ async def tts_async(
 
     # Lazy load language-specific resources
     if session_language == "zh":
-        resource_manager.ensure_chinese()
+        asset_manager.ensure_chinese()
     elif session_language == "ja":
-        resource_manager.ensure_japanese()
+        asset_manager.ensure_japanese()
     elif session_language == "en":
-        resource_manager.ensure_base()
+        asset_manager.ensure_base()
 
     ref_info = get_reference_audio(character_name)
     # Always use loaded model's version to ensure correct inference path
@@ -153,11 +153,11 @@ def tts(
     
     # Lazy load language-specific resources
     if normalized_language == "zh":
-        resource_manager.ensure_chinese()
+        asset_manager.ensure_chinese()
     elif normalized_language == "ja":
-        resource_manager.ensure_japanese()
+        asset_manager.ensure_japanese()
     elif normalized_language == "en":
-        resource_manager.ensure_base()
+        asset_manager.ensure_base()
 
     ref_info = get_reference_audio(character_name)
     # Always use loaded model's version to ensure correct inference path
@@ -189,8 +189,122 @@ def tts(
     tts_player.wait_for_tts_completion()
 
 
+
 def stop() -> None:
     """
     Stops the currently playing text-to-speech audio.
     """
     tts_player.stop()
+
+
+# =============================================================================
+# Multi-Reference Audio Support (moved from Experimental)
+# =============================================================================
+
+from typing import List
+
+try:
+    from ..Resources.Audio.SpeakerVector import average_sv_embeddings
+    _SV_AVERAGING_AVAILABLE = True
+except ImportError:
+    _SV_AVERAGING_AVAILABLE = False
+
+SUPPORTED_AUDIO_EXTS = {'.wav', '.flac', '.ogg', '.aiff', '.aif', '.mp3'}
+
+
+def create_multi_reference_audio(
+    character_name: str,
+    audio_paths: List[Union[str, PathLike]],
+    audio_texts: List[str],
+    audio_languages: Optional[List[str]] = None,
+) -> Optional[ReferenceAudio]:
+    """
+    Create a reference audio with averaged speaker vectors from multiple reference audios.
+    """
+    if not audio_paths or not audio_texts:
+        logger.error("audio_paths and audio_texts must not be empty")
+        return None
+    
+    if len(audio_paths) != len(audio_texts):
+        logger.error("audio_paths and audio_texts must have the same length")
+        return None
+    
+    model_version = model_manager.get_character_version(character_name)
+    
+    if model_version not in ['v2Pro', 'v2ProPlus']:
+        audio_paths = audio_paths[:1]
+        audio_texts = audio_texts[:1]
+        if audio_languages:
+            audio_languages = audio_languages[:1]
+    
+    for i, audio_path in enumerate(audio_paths):
+        audio_path_str = os.fspath(audio_path)
+        ext = os.path.splitext(audio_path_str)[1].lower()
+        if ext not in SUPPORTED_AUDIO_EXTS:
+            logger.error(f"Audio {i+1} format '{ext}' is not supported.")
+            return None
+        if not os.path.exists(audio_path_str):
+            logger.error(f"Audio {i+1} not found: {audio_path_str}")
+            return None
+    
+    if audio_languages is None:
+        audio_languages = ['auto'] * len(audio_paths)
+    elif len(audio_languages) != len(audio_paths):
+        audio_languages = ['auto'] * len(audio_paths)
+    
+    ref_audios: List[ReferenceAudio] = []
+    for i, (path, text, lang) in enumerate(zip(audio_paths, audio_texts, audio_languages)):
+        try:
+            ref_audios.append(ReferenceAudio(
+                prompt_wav=os.fspath(path), prompt_text=text,
+                language=lang, model_version=model_version,
+            ))
+        except Exception as e:
+            logger.error(f"Failed to load reference audio {i+1}: {e}")
+            return None
+    
+    if not ref_audios:
+        return None
+    if model_version == 'v2' or not _SV_AVERAGING_AVAILABLE:
+        return ref_audios[0]
+    
+    sv_embs = [ref.sv_emb for ref in ref_audios if ref.sv_emb is not None]
+    if not sv_embs:
+        return ref_audios[0]
+    
+    averaged_sv = average_sv_embeddings(sv_embs)
+    if averaged_sv is None:
+        return ref_audios[0]
+    
+    base_ref = ref_audios[0]
+    base_ref.sv_emb = averaged_sv
+    return base_ref
+
+
+def set_multi_reference_audio(
+    character_name: str,
+    audio_paths: List[Union[str, PathLike]],
+    audio_texts: List[str],
+    audio_languages: Optional[List[str]] = None,
+) -> bool:
+    """Set multiple reference audios for a character (v2Pro/v2ProPlus)."""
+    from .state import set_reference_audio_config
+    
+    ref_audio = create_multi_reference_audio(
+        character_name, audio_paths, audio_texts, audio_languages
+    )
+    if ref_audio is None:
+        return False
+    
+    model_version = model_manager.get_character_version(character_name)
+    set_reference_audio_config(character_name, {
+        'audio_path': audio_paths[0],
+        'audio_text': audio_texts[0],
+        'audio_lang': audio_languages[0] if audio_languages else 'auto',
+        'model_version': model_version,
+        'multi_ref': True,
+        'num_refs': len(audio_paths),
+        'prompt_audio': ref_audio,
+    })
+    return True
+

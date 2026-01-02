@@ -11,7 +11,7 @@ from typing import Optional, Union
 
 from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
-from ..Utils.ResourceManager import resource_manager
+from ..Utils.AssetManager import asset_manager
 from .state import (
     SUPPORTED_AUDIO_EXTS,
     set_reference_audio_config,
@@ -40,9 +40,9 @@ def load_character(
     if not os.path.isdir(model_path):
         normalized_path = model_path.replace("\\", "/")
         if "lunavoxData/CharacterData/model/v2/pretrained" in normalized_path:
-            resource_manager.ensure_base()
+            asset_manager.ensure_base()
         elif "lunavoxData/CharacterData/model/v2_pro_plus/pretrained" in normalized_path:
-            resource_manager.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
+            asset_manager.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
 
     if not os.path.isdir(model_path):
         logger.error(f"Character model directory not found: {model_path}")

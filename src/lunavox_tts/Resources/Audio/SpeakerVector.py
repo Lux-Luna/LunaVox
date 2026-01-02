@@ -114,8 +114,8 @@ def load_sv_model(model_path: Optional[str] = None) -> bool:
         # Default location: LunaVox/TTSData/sv/eres2netv2.onnx
         from pathlib import Path
         from ...Utils.EnvManager import env_manager
-        from ...Utils.ResourceManager import resource_manager
-        resource_manager.ensure_extractor()
+        from ...Utils.AssetManager import asset_manager
+        asset_manager.ensure_extractor()
         model_path = str(env_manager.data_root / "TTSData" / "sv" / "eres2netv2.onnx")
     
     if not os.path.exists(model_path):
@@ -150,7 +150,7 @@ def load_sv_model(model_path: Optional[str] = None) -> bool:
 def unload_sv_model() -> None:
     """
     Unload Speaker Vector model to release memory.
-    Called by GlobalResourceManager.unload_sv().
+    Called by RuntimeManager.unload_sv().
     """
     global _sv_model, _sv_model_path
     if _sv_model is not None:

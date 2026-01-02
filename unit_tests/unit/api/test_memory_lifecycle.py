@@ -1,7 +1,7 @@
 """
 Unit tests for memory lifecycle management.
 
-Tests cleanup cascade logic between unload_character, GlobalResourceManager,
+Tests cleanup cascade logic between unload_character, RuntimeManager,
 and API state to prevent memory leaks.
 """
 import pytest
@@ -94,7 +94,7 @@ class TestUnloadCharacterCleansState:
 
 
 class TestCleanupAllClearsApiState:
-    """Tests for GlobalResourceManager.cleanup_all API state clearing."""
+    """Tests for RuntimeManager.cleanup_all API state clearing."""
     
     def test_cleanup_all_clears_reference_audios(self):
         """cleanup_all() clears all reference audio configurations."""
@@ -102,14 +102,14 @@ class TestCleanupAllClearsApiState:
             set_reference_audio_config,
             has_reference_audio
         )
-        from lunavox_tts.Utils.GlobalResourceManager import global_resource_manager
+        from lunavox_tts.Utils.RuntimeManager import runtime_manager
         
         # Setup: add multiple characters
         set_reference_audio_config("char1", {'audio_path': 'test1.wav'})
         set_reference_audio_config("char2", {'audio_path': 'test2.wav'})
         
         # Action
-        global_resource_manager.cleanup_all()
+        runtime_manager.cleanup_all()
         
         # Verify
         assert has_reference_audio("char1") is False
@@ -118,11 +118,11 @@ class TestCleanupAllClearsApiState:
     def test_cleanup_all_clears_reference_audio_cache(self):
         """cleanup_all() clears ReferenceAudio._prompt_cache."""
         from lunavox_tts.Resources.Audio.ReferenceAudio import ReferenceAudio
-        from lunavox_tts.Utils.GlobalResourceManager import global_resource_manager
+        from lunavox_tts.Utils.RuntimeManager import runtime_manager
         
         # Verify cache access doesn't error and is clearable
         cache_before = len(ReferenceAudio._prompt_cache)
-        global_resource_manager.cleanup_all()
+        runtime_manager.cleanup_all()
         cache_after = len(ReferenceAudio._prompt_cache)
         
         # After cleanup, cache should be empty
@@ -162,21 +162,21 @@ class TestMultiCycleStability:
 
 
 class TestClearApiStateMethod:
-    """Tests for GlobalResourceManager.clear_api_state specifically."""
+    """Tests for RuntimeManager.clear_api_state specifically."""
     
     def test_clear_api_state_exists(self):
-        """GlobalResourceManager has clear_api_state method."""
-        from lunavox_tts.Utils.GlobalResourceManager import global_resource_manager
+        """RuntimeManager has clear_api_state method."""
+        from lunavox_tts.Utils.RuntimeManager import runtime_manager
         
-        assert hasattr(global_resource_manager, 'clear_api_state')
-        assert callable(global_resource_manager.clear_api_state)
+        assert hasattr(runtime_manager, 'clear_api_state')
+        assert callable(runtime_manager.clear_api_state)
     
     def test_try_empty_vram_exists(self):
-        """GlobalResourceManager has try_empty_vram method."""
-        from lunavox_tts.Utils.GlobalResourceManager import global_resource_manager
+        """RuntimeManager has try_empty_vram method."""
+        from lunavox_tts.Utils.RuntimeManager import runtime_manager
         
-        assert hasattr(global_resource_manager, 'try_empty_vram')
-        assert callable(global_resource_manager.try_empty_vram)
+        assert hasattr(runtime_manager, 'try_empty_vram')
+        assert callable(runtime_manager.try_empty_vram)
     
     def test_clear_api_state_standalone(self):
         """clear_api_state can be called independently."""
@@ -184,10 +184,10 @@ class TestClearApiStateMethod:
             set_reference_audio_config,
             has_reference_audio
         )
-        from lunavox_tts.Utils.GlobalResourceManager import global_resource_manager
+        from lunavox_tts.Utils.RuntimeManager import runtime_manager
         
         set_reference_audio_config("standalone_test", {'audio_path': 'test.wav'})
         
-        global_resource_manager.clear_api_state()
+        runtime_manager.clear_api_state()
         
         assert has_reference_audio("standalone_test") is False
