@@ -45,8 +45,8 @@ char_name = 'luna_v2pp_zh'
 persona_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'character' / 'luna_zh')
 model_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'model' / 'v2_pro_plus' / 'pretrained')
 
-lunavox.load_persona(char_name, persona_dir)
 lunavox.load_character(char_name, model_dir)
+lunavox.load_persona(char_name, persona_dir)
 
 # 2. 备选方案：参考音频模式 (已注释)
 # 如果您想要使用特定的 WAV 文件进行实时声音克隆，请使用此代码。

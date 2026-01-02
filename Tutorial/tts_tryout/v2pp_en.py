@@ -44,9 +44,10 @@ def resolve_reference(language: str):
 # The load_persona() call automatically loads the base v2ProPlus models.
 char_name = 'luna_v2pp_en'
 persona_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'character' / 'luna_en')
+model_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'model' / 'v2_pro_plus' / 'pretrained')
 
 # Note: load_persona() will auto-load v2ProPlus models AND skip prompt_encoder
-# since the persona has cached global embeddings. No need to call load_character separately.
+lunavox.load_character(char_name, model_dir)
 lunavox.load_persona(char_name, persona_dir)
 
 # 2. Alternative: Reference Audio Mode (Commented out)

@@ -59,6 +59,9 @@ class PerformanceMonitor:
         self._buffer = []
         self._buffering_enabled = False
         self._initialized = True
+        
+        # Early baseline calibration to capture pre-model-load state
+        self._ensure_baselines()
 
     def _ensure_baselines(self):
         """Capture background noise once to filter it from future measurements."""
@@ -154,7 +157,8 @@ class PerformanceMonitor:
                 })
             else:
                 if category == "USER_PERCEIVED":
-                    logger.info(f"[Perf][{category}] {task_name} took: {duration_ms:.2f}ms | RAM+: {rss_mb:.2f}MB | VRAM+: {vram_mb:.2f}MB")
+                    mode_tag = env_manager.get_mode().upper()
+                    logger.info(f"[Perf][{category}][Mode: {mode_tag}] {task_name} took: {duration_ms:.2f}ms | RAM+: {rss_mb:.2f}MB | VRAM+: {vram_mb:.2f}MB")
                 else:
                     logger.info(f"[Perf][{category}] {task_name} took: {duration_ms:.2f}ms")
 

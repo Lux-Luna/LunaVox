@@ -1,11 +1,21 @@
 import os
 import sys
-import subprocess
 import logging
 import json
 from pathlib import Path
+from enum import Enum
+from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+class EnvironmentStatus(Enum):
+    """Runtime environment detection status."""
+    CPU_ONLY = "cpu_only"           # Only onnxruntime installed (no GPU support)
+    GPU_READY = "gpu_ready"         # onnxruntime-gpu installed and CUDA available
+    GPU_DEPS_MISSING = "gpu_deps_missing"  # GPU package installed but CUDA DLLs missing
+
+
 
 class EnvManager:
     def __init__(self):
@@ -34,6 +44,7 @@ class EnvManager:
         self.config_file = self.config_dir / "env_config.json"
         self._config = self._load_config()
         self._mode_override: Optional[str] = None
+        self._cached_env_status: Optional[EnvironmentStatus] = None
         
         # Setup portable CUDA paths if on Windows and GPU mode is active
         if sys.platform == "win32" and self.get_mode() == "gpu":
@@ -130,6 +141,27 @@ class EnvManager:
         self._save_config()
         logger.info(f"Developer mode set to: {enabled}")
 
+    def _print_gpu_instruction(self):
+        """Prints a detailed, pretty English instruction for GPU setup."""
+        print("\n" + "=" * 70)
+        print("  LUNAVOX - GPU Acceleration Not Found")
+        print("=" * 70)
+        print("\nYou have requested GPU mode, but the GPU runtime is not installed")
+        print("or its CUDA dependencies are missing.")
+        print("\nTo enable high-performance GPU inference, please run:")
+        
+        if sys.platform == "win32":
+            print(f"\n  > scripts\\setup_gpu.bat")
+        else:
+            print(f"\n  $ bash scripts/setup_gpu.sh")
+            
+        print("\nThis script will:")
+        print("  1. Uninstall the standard 'onnxruntime' (CPU)")
+        print("  2. Install 'onnxruntime-gpu' (CUDA 12)")
+        print("  3. Download portable CUDA/cuDNN DLLs (~600MB)")
+        print("\nNote: You need an NVIDIA GPU with compatible drivers.")
+        print("-" * 70 + "\n")
+
     def _ensure_developer_dependencies(self) -> bool:
         """
         Checks for optional developer dependencies and prompts for installation if missing.
@@ -191,6 +223,12 @@ class EnvManager:
         """Sets the desired mode and saves configuration."""
         if mode not in ["cpu", "gpu"]:
             raise ValueError("Mode must be 'cpu' or 'gpu'")
+        
+        # Check for immediate mismatch and provide guidance
+        if mode == "gpu" and self.get_environment_status() == EnvironmentStatus.CPU_ONLY:
+             self._print_gpu_instruction()
+             logger.warning("GPU mode set, but environment is CPU-only. Please run setup_gpu script to fix.")
+             
         self._config["mode"] = mode
         self._save_config()
         logger.info(f"LunaVox mode set to: {mode}")
@@ -216,6 +254,52 @@ class EnvManager:
         except Exception:
             return False
 
+    def get_environment_status(self) -> EnvironmentStatus:
+        """
+        Detect the current runtime environment status.
+        
+        Returns:
+            EnvironmentStatus.CPU_ONLY: Only CPU runtime available
+            EnvironmentStatus.GPU_READY: GPU runtime ready
+            EnvironmentStatus.GPU_DEPS_MISSING: GPU package installed but CUDA unavailable
+        """
+        if self._cached_env_status is not None:
+            return self._cached_env_status
+        
+        try:
+            import onnxruntime as ort
+            available_providers = set(ort.get_available_providers())
+            
+            if "CUDAExecutionProvider" in available_providers:
+                # Test if CUDA is actually functional
+                self._cached_env_status = EnvironmentStatus.GPU_READY
+                return self._cached_env_status
+            
+            # Check if onnxruntime-gpu is installed but CUDA not working
+            # This happens when GPU package is installed but CUDA DLLs are missing
+            try:
+                # Check package name via distribution info
+                from importlib.metadata import distribution
+                dist = distribution('onnxruntime-gpu')
+                if dist:
+                    # GPU package installed but CUDA provider not available
+                    self._cached_env_status = EnvironmentStatus.GPU_DEPS_MISSING
+                    return self._cached_env_status
+            except Exception:
+                pass
+            
+            # Default: CPU only
+            self._cached_env_status = EnvironmentStatus.CPU_ONLY
+            return self._cached_env_status
+            
+        except ImportError:
+            self._cached_env_status = EnvironmentStatus.CPU_ONLY
+            return self._cached_env_status
+
+    def invalidate_cache(self) -> None:
+        """Clear cached environment status (call after environment changes)."""
+        self._cached_env_status = None
+
     def temporary_mode(self, mode: str):
         """
         Context manager to temporarily override the mode without saving to disk.
@@ -236,93 +320,36 @@ class EnvManager:
         
         return _override()
 
-    def ensure_environment(self):
+    def ensure_environment(self) -> bool:
         """
         Validates the current environment against the requested mode.
-        If a mismatch is found, it attempts to install the correct dependencies.
-        Returns True if environment matches, False if a change was made (requires restart).
+        
+        Returns:
+            True if environment matches the requested mode.
+            
+        Raises:
+            EnvironmentMismatchError: If mode is 'gpu' but environment is CPU_ONLY.
         """
         target_mode = self.get_mode()
-        current_is_gpu = self.is_gpu_installed()
+        status = self.get_environment_status()
 
-        if target_mode == "gpu" and not current_is_gpu:
-            logger.warning("Target mode is GPU but onnxruntime-gpu or CUDA dependencies are not found.")
-            
-            # Terminal prompt for user confirmation (English)
-            print("\n" + "="*60)
-            print("GPU MODE DETECTED")
-            print("="*60)
-            print("The following dependencies are required for GPU acceleration but are missing:")
-            print("  - onnxruntime-gpu==1.22.0")
-            print("  - nvidia-*-cu12 (CUDA 12 Runtime Libraries)")
-            print("\nThis process will uninstall the current CPU-only 'onnxruntime' if it exists.")
-            
-            try:
-                choice = input("\nWould you like to install the required GPU dependencies now? (y/n): ").strip().lower()
-                if choice == 'y':
-                    self.install_gpu_runtime()
-                    return False
-                else:
-                    print("\nSkipping GPU dependency installation. The application may run on CPU or fail if GPU is forced.")
-                    return True # Let it proceed, though it might fail later
-            except EOFError:
-                # Handle non-interactive environments by defaulting to NO to avoid hanging
-                logger.error("Non-interactive environment detected. Automatic GPU installation skipped.")
-                return True
+        if target_mode == "gpu":
+            if status == EnvironmentStatus.CPU_ONLY:
+                # Print detailed instruction before raising
+                self._print_gpu_instruction()
+                
+                from ..Core.Model.ExecutionPolicy import EnvironmentMismatchError
+                raise EnvironmentMismatchError(
+                    "GPU mode requested but only CPU runtime is installed.\n"
+                    "Please run scripts/setup_gpu to install the GPU acceleration package."
+                )
+            elif status == EnvironmentStatus.GPU_DEPS_MISSING:
+                logger.warning(
+                    "GPU package installed but CUDA dependencies are missing. "
+                    "Falling back to CPU execution. Run setup_gpu script to fix."
+                )
         
-        if target_mode == "cpu" and current_is_gpu:
-            logger.info("Target mode is CPU but onnxruntime-gpu is currently installed. Switching back to CPU runtime...")
-            self.install_cpu_runtime()
-            return False
-            
         return True
 
-    def install_gpu_runtime(self):
-        """Uninstalls CPU runtime and installs GPU runtime with portable CUDA 12 dependencies."""
-        logger.info("Switching to GPU runtime. This will uninstall onnxruntime and install onnxruntime-gpu with CUDA 12 libraries.")
-        try:
-            # Uninstall both just to be clean, though usually only one exists
-            subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "onnxruntime", "-y"])
-            subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "onnxruntime-gpu", "-y"])
-            
-            # Using 1.22.0 as requested
-            logger.info("Installing onnxruntime-gpu==1.22.0 and full CUDA 12 runtime libraries...")
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", 
-                "onnxruntime-gpu==1.22.0", 
-                "nvidia-cudnn-cu12", 
-                "nvidia-cublas-cu12", 
-                "nvidia-cuda-runtime-cu12",
-                "nvidia-cuda-nvrtc-cu12",
-                "nvidia-cufft-cu12",
-                "nvidia-curand-cu12",
-                "nvidia-cusolver-cu12",
-                "nvidia-cusparse-cu12",
-                "numpy<2"
-            ])
-            
-            logger.info("onnxruntime-gpu and portable CUDA libraries installed successfully.")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to install GPU runtime: {e}")
-            raise RuntimeError(f"Dependency installation failed: {e}")
-
-    def install_cpu_runtime(self):
-        """Uninstalls GPU runtime and installs CPU runtime."""
-        logger.info("Switching to CPU runtime. This will uninstall onnxruntime-gpu and install onnxruntime.")
-        try:
-            subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "onnxruntime-gpu", "-y"])
-            subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "onnxruntime", "-y"])
-            
-            # Explicitly lock to 1.22.1 for optimized CPU performance
-            logger.info("Installing onnxruntime==1.22.1...")
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", 
-                "onnxruntime==1.22.1",
-                "numpy<2"
-            ])
-            logger.info("onnxruntime installed successfully.")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to install CPU runtime: {e}")
-            raise RuntimeError(f"Dependency installation failed: {e}")
 
 env_manager = EnvManager()

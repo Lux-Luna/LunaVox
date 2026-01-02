@@ -12,6 +12,7 @@ from typing import Union
 from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
 from ..Utils.ResourceManager import resource_manager
+from ..Core.Model.registry import model_registry
 from ..Resources.Persona.PersonaManager import export_persona, load_persona as persona_loader
 from .state import (
     SUPPORTED_AUDIO_EXTS,
@@ -175,21 +176,29 @@ def load_persona(
         'prompt_audio': ref  # Store the actual ReferenceAudio object
     })
     
-    # --- AUTO-LOAD BASE MODEL ---
+    # --- STATE HEALING: Set optimization hint in Registry ---
     # Check if persona has cached global embeddings (enables skipping prompt_encoder)
     has_cached_ge = ref.global_emb is not None
+    if has_cached_ge:
+        model_registry.set_optimization_hint(character_name, skip_prompt_encoder=True)
+    
+    # --- AUTO-LOAD BASE MODEL ---
     
     if not model_manager.has_character(character_name):
         model_version_lower = model_version.lower()
         if "v2_pro_plus" in model_version_lower or "v2pp" in model_version_lower or "v2proplus" in model_version_lower:
             base_model_dir = resource_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
+            inferred_version = "v2ProPlus"
         else:
             base_model_dir = resource_manager.char_data_dir / "model" / "v2" / "pretrained"
+            inferred_version = "v2"
             
-        logger.info(f"Auto-loading base {model_version} models for persona '{character_name}'...")
+        logger.info(f"Auto-loading base {inferred_version} models for persona '{character_name}'...")
         # Skip prompt_encoder if persona has cached global embeddings
         # load_character will handle downloading if the directory doesn't exist
         load_character(character_name, base_model_dir, skip_prompt_encoder=has_cached_ge)
+    else:
+        logger.info(f"Using already-loaded model for persona '{character_name}'.")
     
     # --- OPTIMIZATION: Warmup & Cleanup ---
     from ..Core.Frontend import get_language_frontend

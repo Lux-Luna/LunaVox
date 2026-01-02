@@ -4,12 +4,11 @@ LunaVox TTS Engine.
 Centralized inference engine that orchestrates text processing, 
 feature extraction, and model execution via a modular pipeline.
 """
-import os
 import logging
 import threading
 import numpy as np
-from typing import List, Optional, Tuple, Dict, Any
-import onnxruntime as ort
+from typing import Optional, Tuple
+
 
 from ...Core.Frontend.processor import text_processor
 from ...Core.Processors.feature_extractor import feature_extractor
@@ -33,39 +32,7 @@ class LunaVoxEngine:
     
     def __init__(self, model_provider=None):
         self._model_provider = model_provider
-
-    def tts(
-        self,
-        text: str,
-        prompt_audio: Any,
-        encoder: ort.InferenceSession,
-        first_stage_decoder: ort.InferenceSession,
-        stage_decoder: ort.InferenceSession,
-        vocoder: ort.InferenceSession,
-        prompt_encoder: Optional[ort.InferenceSession] = None,
-        language: str = "ja",
-    ) -> Optional[np.ndarray]:
-        """Backward compatible entry point."""
-        # Wrap legacy call into session-based pipeline logic internally
-        # Note: This is a bridge until all callers use SynthesisSession
-        session = SynthesisSession(
-            speaker="legacy",
-            language=language,
-            prompt_audio=prompt_audio,
-            model_version='v2ProPlus' if prompt_encoder else getattr(prompt_audio, 'model_version', 'v2')
-        )
-        # Create a mock GSVModel-like object for the sessions
-        from dataclasses import dataclass
-        @dataclass
-        class MockModel:
-            T2S_ENCODER: ort.InferenceSession
-            T2S_FIRST_STAGE_DECODER: ort.InferenceSession
-            T2S_STAGE_DECODER: ort.InferenceSession
-            VITS: ort.InferenceSession
-            PROMPT_ENCODER: Optional[ort.InferenceSession]
-        
-        session.model = MockModel(encoder, first_stage_decoder, stage_decoder, vocoder, prompt_encoder)
-        return self.generate(text, session)
+        self.stop_event = threading.Event()
 
     def generate(self, text: str, session: SynthesisSession, stop_event: threading.Event = None) -> Optional[np.ndarray]:
         """
@@ -190,15 +157,6 @@ class LunaVoxEngine:
                     run_prompt_encoder(session.model.PROMPT_ENCODER, prompt_audio)
             else:
                 raise RuntimeError(f"{model_version} requires global_emb or prompt_encoder")
-        
-        # WORKAROUND: Truncate reference audio for VITS if too long on GPU (v2 only)
-        if model_version not in ('v2ProPlus', 'v2Pro', 'v2pp'):
-            if device_mode == "gpu" and not prompt_audio.is_persona_based:
-                if prompt_audio.audio_32k is not None and len(prompt_audio.audio_32k) > 128000:
-                    # Create a copy to avoid mutating the cached reference
-                    import copy
-                    prompt_audio = copy.copy(prompt_audio)
-                    prompt_audio.audio_32k = prompt_audio.audio_32k[:128000]
         
         # Use spec-driven input assembly
         vocoder_inputs = spec.assemble_vocoder_inputs(

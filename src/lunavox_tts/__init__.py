@@ -41,7 +41,7 @@ except ImportError:
     # Fallback to experimental if not yet integrated into API
     from .Experimental._internal_multi_ref import set_multi_reference_audio, create_multi_reference_audio
 
-from .Server import start_server
+from .Interface.Server import start_server
 
 __all__ = [
     "load_character",

@@ -1,0 +1,20 @@
+# LunaVox GPU Acceleration Requirements
+# This replaces onnxruntime with onnxruntime-gpu and includes CUDA 12 runtime libraries.
+#
+# USAGE:
+#   pip uninstall onnxruntime -y
+#   pip install -r requirements-gpu.txt
+#
+# NOTE: Installing this will add ~600MB of dependencies but enables significant speedup.
+# The GPU package is backward compatible with CPU-only mode.
+
+onnxruntime-gpu==1.22.0
+nvidia-cudnn-cu12
+nvidia-cublas-cu12
+nvidia-cuda-runtime-cu12
+nvidia-cuda-nvrtc-cu12
+nvidia-cufft-cu12
+nvidia-curand-cu12
+nvidia-cusolver-cu12
+nvidia-cusparse-cu12
+numpy<2

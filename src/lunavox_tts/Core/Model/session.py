@@ -27,13 +27,43 @@ _DEFAULT_PROVIDER_ORDER: list[str] = [
 ]
 
 def resolve_providers() -> list[str]:
-    from ...Utils.EnvManager import env_manager
+    """
+    Resolve ONNX Runtime execution providers based on configured mode and environment.
+    
+    Returns:
+        List of available providers in priority order.
+        
+    Raises:
+        EnvironmentMismatchError: If GPU mode is requested but environment is CPU-only.
+    """
+    from ...Utils.EnvManager import env_manager, EnvironmentStatus
+    from .ExecutionPolicy import EnvironmentMismatchError
     
     target_mode = env_manager.get_mode()
+    
+    # CPU mode: always use CPU provider regardless of environment
     if target_mode == "cpu":
         logger.debug("LunaVox is running in CPU mode as configured.")
         return ["CPUExecutionProvider"]
-
+    
+    # GPU mode: check environment status
+    status = env_manager.get_environment_status()
+    
+    if status == EnvironmentStatus.CPU_ONLY:
+        raise EnvironmentMismatchError(
+            "GPU mode requested but only CPU runtime is installed.\n"
+            "To enable GPU acceleration, run: scripts/setup_gpu.bat (Windows) or scripts/setup_gpu.sh (Linux/Mac)\n"
+            "This will install onnxruntime-gpu and required CUDA libraries (~600MB)."
+        )
+    
+    if status == EnvironmentStatus.GPU_DEPS_MISSING:
+        logger.warning(
+            "GPU package installed but CUDA dependencies are missing. "
+            "Falling back to CPU execution. Run setup_gpu script to fix."
+        )
+        return ["CPUExecutionProvider"]
+    
+    # GPU_READY: proceed with GPU provider resolution
     try:
         available = set(onnxruntime.get_available_providers())
     except Exception as e:
@@ -54,6 +84,7 @@ def resolve_providers() -> list[str]:
         return resolved
     
     return ["CPUExecutionProvider"]
+
 
 def load_session_with_fp16_conversion(
     onnx_path: str,

@@ -45,8 +45,9 @@ char_name = 'luna_ja'
 persona_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'character' / 'luna_ja')
 model_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'model' / 'v2' / 'pretrained')
 
-lunavox.load_persona(char_name, persona_dir)
+
 lunavox.load_character(char_name, model_dir)
+lunavox.load_persona(char_name, persona_dir)
 
 # 2. 代替案: 参照オーディオモード (コメントアウト)
 # 特定の WAV ファイルを使用してリアルタイムでボイス克隆を行う場合に使用します。

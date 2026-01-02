@@ -156,6 +156,11 @@ class ModelManager:
         spec = get_model_spec(version)
         entry = model_registry.register(name, model_dir, force_version=version)
         
+        # State Healing: auto-detect if persona mode requires skipping prompt_encoder
+        if model_registry.get_optimization_hint(name):
+            skip_prompt_encoder = True
+            logger.debug(f"Auto-applying skip_prompt_encoder for '{character_name}' (Persona mode detected)")
+        
         if already_loaded_same:
              m = self.character_to_model[name]
              # Handle upgrade (Persona -> Reference mode)
@@ -175,28 +180,29 @@ class ModelManager:
         if is_v2pp:
             resource_manager.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
         
-        # 4. Actual Loading via ModelLoader
-        model_loader.refresh_providers()
-        self.providers = model_loader.providers
-        
-        skip = set()
-        if skip_prompt_encoder:
-            skip.add("PROMPT_ENCODER")
+        # 4. Actual Loading via ModelLoader (wrapped in monitoring)
+        with monitor.measure(f"Model Loading ({character_name})", category="USER_PERCEIVED"):
+            model_loader.refresh_providers()
+            self.providers = model_loader.providers
             
-        try:
-            model_dict = model_loader.load_all(model_dir, spec, skip_components=skip)
-            self.character_to_model[name] = model_dict
-            model_registry.mark_loaded(name, set(model_dict.keys()))
-            
-            t_end = time.perf_counter()
-            duration = t_end - t_start
-            
-            logger.info(f"✓ Character '{character_name.capitalize()}' loaded: type={version}, providers={self.providers}")
-            monitor.log_metric(f"Load time ({name})", f"{duration:.2f}", "s")
-            return True
-        except Exception as e:
-            logger.error(f"Error loading character '{character_name}': {e}", exc_info=True)
-            return False
+            skip = set()
+            if skip_prompt_encoder:
+                skip.add("PROMPT_ENCODER")
+                
+            try:
+                model_dict = model_loader.load_all(model_dir, spec, skip_components=skip)
+                self.character_to_model[name] = model_dict
+                model_registry.mark_loaded(name, set(model_dict.keys()))
+                
+                t_end = time.perf_counter()
+                duration = t_end - t_start
+                
+                logger.info(f"✓ Character '{character_name.capitalize()}' loaded: type={version}, providers={self.providers}")
+                monitor.log_metric(f"Load time ({name})", f"{duration:.2f}", "s")
+                return True
+            except Exception as e:
+                logger.error(f"Error loading character '{character_name}': {e}", exc_info=True)
+                return False
 
     def get_character_version(self, character_name: str) -> str:
         entry = model_registry.get(character_name)

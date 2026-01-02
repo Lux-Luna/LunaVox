@@ -6,7 +6,7 @@ Three-tier model management architecture:
 - registry: Model metadata tracking
 - session: ONNX session utilities
 - loader: Model loading operations
-- ExecutionPolicy: Provider selection for hybrid modes
+- ExecutionPolicy: Provider selection for CPU/GPU modes
 """
 from .spec import (
     ModelSpec, 
@@ -25,9 +25,9 @@ from .loader import ModelLoader, model_loader
 from .ExecutionPolicy import (
     ExecutionPolicy,
     ExecutionMode,
+    EnvironmentMismatchError,
     CPU_ONLY_POLICY,
     GPU_ACCELERATED_POLICY,
-    HYBRID_POLICY,
     get_default_policy,
     get_policy_by_name,
 )
@@ -57,9 +57,9 @@ __all__ = [
     # ExecutionPolicy
     "ExecutionPolicy",
     "ExecutionMode",
+    "EnvironmentMismatchError",
     "CPU_ONLY_POLICY",
     "GPU_ACCELERATED_POLICY",
-    "HYBRID_POLICY",
     "get_default_policy",
     "get_policy_by_name",
 ]

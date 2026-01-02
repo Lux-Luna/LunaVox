@@ -24,6 +24,8 @@ class ModelEntry:
     spec: ModelSpec
     is_loaded: bool = False
     components_loaded: Set[str] = field(default_factory=set)
+    # State Healing: hint from API layer that prompt_encoder is not needed
+    skip_prompt_encoder_hint: bool = False
 
 
 class ModelRegistry:
@@ -35,16 +37,18 @@ class ModelRegistry:
     def register(self, name: str, path: str, force_version: Optional[str] = None) -> ModelEntry:
         name = name.lower()
         
+        old_hint = False
         if name in self._entries:
             entry = self._entries[name]
-            if entry.path == path:
+            old_hint = entry.skip_prompt_encoder_hint
+            if entry.path == path and entry.path != "":
                 return entry
             logger.debug(f"Re-registering model '{name}' with new path")
         
         version = force_version or detect_model_version(path)
         spec = get_model_spec(version)
         
-        entry = ModelEntry(name=name, path=path, version=version, spec=spec)
+        entry = ModelEntry(name=name, path=path, version=version, spec=spec, skip_prompt_encoder_hint=old_hint)
         self._entries[name] = entry
         
         logger.debug(f"Registered model '{name}': version={version}, path={path}")
@@ -72,6 +76,24 @@ class ModelRegistry:
             self._entries[name].is_loaded = True
             if components:
                 self._entries[name].components_loaded = components
+    
+    def set_optimization_hint(self, name: str, skip_prompt_encoder: bool) -> None:
+        """Set optimization hint for a character (called by API.load_persona)."""
+        name = name.lower()
+        if name not in self._entries:
+            # Pre-register a placeholder entry for the hint
+            self._entries[name] = ModelEntry(
+                name=name, path="", version="", spec=None,
+                skip_prompt_encoder_hint=skip_prompt_encoder
+            )
+        else:
+            self._entries[name].skip_prompt_encoder_hint = skip_prompt_encoder
+        logger.debug(f"Set optimization hint for '{name}': skip_prompt_encoder={skip_prompt_encoder}")
+    
+    def get_optimization_hint(self, name: str) -> bool:
+        """Get optimization hint for a character."""
+        entry = self._entries.get(name.lower())
+        return entry.skip_prompt_encoder_hint if entry else False
 
 
 # Global registry instance

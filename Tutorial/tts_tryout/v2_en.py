@@ -45,6 +45,7 @@ char_name = 'luna_en'
 persona_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'character' / 'luna_en')
 model_dir = str(REPO_ROOT / 'lunavoxData' / 'CharacterData' / 'model' / 'v2' / 'pretrained')
 
+# State Healing: call order no longer matters - system auto-detects Persona mode
 lunavox.load_persona(char_name, persona_dir)
 lunavox.load_character(char_name, model_dir)
 
