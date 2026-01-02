@@ -115,7 +115,7 @@ def load_sv_model(model_path: Optional[str] = None) -> bool:
         from pathlib import Path
         from ...Utils.EnvManager import env_manager
         from ...Utils.ResourceManager import resource_manager
-        resource_manager.ensure_tts_data(v2pp=True)
+        resource_manager.ensure_extractor()
         model_path = str(env_manager.data_root / "TTSData" / "sv" / "eres2netv2.onnx")
     
     if not os.path.exists(model_path):

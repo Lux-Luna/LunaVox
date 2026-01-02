@@ -55,7 +55,8 @@ class ModelManager:
     def load_cn_hubert(self) -> bool:
         """Load the Chinese HuBERT model (used for SSL feature extraction)."""
         from .Utils.ResourceManager import resource_manager
-        resource_manager.ensure_tts_data()
+        resource_manager.ensure_base()
+        resource_manager.ensure_extractor()
         
         model_path = os.getenv("HUBERT_MODEL_PATH")
         if not (model_path and os.path.isfile(model_path)):
@@ -170,7 +171,9 @@ class ModelManager:
         # 3. Resource Pre-check
         from .Utils.ResourceManager import resource_manager
         is_v2pp = version in ('v2ProPlus', 'v2pp')
-        resource_manager.ensure_character_data(v2pp=is_v2pp, skip_prompt_encoder=skip_prompt_encoder)
+        resource_manager.ensure_base()
+        if is_v2pp:
+            resource_manager.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
         
         # 4. Actual Loading via ModelLoader
         model_loader.refresh_providers()

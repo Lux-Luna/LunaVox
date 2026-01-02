@@ -78,7 +78,7 @@ def create_persona(
         )
         
         # Compute global embeddings for v2ProPlus compatibility
-        resource_manager.ensure_character_data(v2pp=True)
+        resource_manager.ensure_v2pp()
         model_dir = resource_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
         prompt_encoder_path = model_dir / "prompt_encoder_fp32.onnx"
         prompt_encoder_bin = model_dir / "prompt_encoder_fp16.bin"

@@ -202,24 +202,4 @@ class ResourceManager:
         ignore = ["*prompt_encoder*"] if skip_prompt_encoder else None
         return self.ensure_pack(ResourcePack.V2PP, ignore_patterns=ignore)
 
-    # ===== Legacy API (Deprecated, for backward compatibility) =====
-    
-    def ensure_tts_data(self, v2pp: bool = False, skip_prompt_encoder: bool = False) -> None:
-        """[Deprecated] Use ensure_base() / ensure_extractor() instead."""
-        self.ensure_base()
-        if v2pp:
-            self.ensure_extractor()
-            self.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
-
-    def ensure_character_data(self, v2pp: bool = False, skip_prompt_encoder: bool = False) -> None:
-        """[Deprecated] Use ensure_base() / ensure_v2pp() instead."""
-        self.ensure_base()
-        if v2pp:
-            self.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
-
-    def ensure_roberta(self) -> None:
-        """[Deprecated] Use ensure_chinese() instead."""
-        self.ensure_chinese()
-
-
 resource_manager = ResourceManager()

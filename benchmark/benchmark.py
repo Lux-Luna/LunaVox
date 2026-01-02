@@ -50,11 +50,10 @@ logger = logging.getLogger("Benchmark")
 @dataclass
 class BenchmarkConfig:
     """Configuration for benchmark runs."""
-    environments: List[str] = field(default_factory=lambda: ["cpu", "gpu"])
-    modes: List[str] = field(default_factory=lambda: ["persona", "reference"])
-    # modes: List[str] = field(default_factory=lambda: ["persona"])
-    versions: List[str] = field(default_factory=lambda: ["v2", "v2pp"])
-    languages: List[str] = field(default_factory=lambda: ["zh", "en", "ja"])
+    environments: List[str] = field(default_factory=lambda: ["gpu"]) # "cpu"、"gpu"
+    modes: List[str] = field(default_factory=lambda: ["reference"]) # "reference"、"persona"
+    versions: List[str] = field(default_factory=lambda: ["v2"]) # "v2"、"v2pp"
+    languages: List[str] = field(default_factory=lambda: ["zh"]) # "zh"、"en"、"ja"
     warmup_rounds: int = 1
     test_rounds: int = 1
     _internal_env: Optional[str] = None
@@ -164,7 +163,7 @@ def get_character_name(version: str, lang: str, mode: str) -> str:
 def resolve_reference_audio(lang: str) -> tuple:
     """Find reference audio file for a language."""
     lang_conf = LANGUAGE_CONFIG[lang]
-    audio_dir = REPO_ROOT / "CharacterData" / "audio" / lang_conf["audio_dir"]
+    audio_dir = REPO_ROOT / "lunavoxData" / "CharacterData" / "audio" / lang_conf["audio_dir"]
     wav_files = list(audio_dir.glob("*.wav"))
     if not wav_files:
         raise FileNotFoundError(f"No .wav files found in {audio_dir}")
@@ -187,8 +186,8 @@ def run_single_test(
     ver_conf = VERSION_CONFIG[version]
 
     char_name = get_character_name(version, lang, mode)
-    persona_dir = str(REPO_ROOT / "CharacterData" / "character" / lang_conf["persona_dir"])
-    model_dir = str(REPO_ROOT / "CharacterData" / "model" / ver_conf["model_path"])
+    persona_dir = str(REPO_ROOT / "lunavoxData" / "CharacterData" / "character" / lang_conf["persona_dir"])
+    model_dir = str(REPO_ROOT / "lunavoxData" / "CharacterData" / "model" / ver_conf["model_path"])
 
     logger.info(f"\n{'='*60}")
     logger.info(f"[TEST] Env:{env.upper()} | Mode:{mode} | Version:{version} | Lang:{lang.upper()}")
@@ -356,7 +355,7 @@ def run_benchmark_for_env_internal(env: str, args, result_file: str) -> bool:
     from lunavox_tts.Utils.PerformanceMonitor import monitor
 
     # Set HuBERT path
-    os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
+    os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'lunavoxData' / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
     # Get device info
     device_info = utils.get_device_info(pynvml if (pynvml and env == "gpu") else None, env)

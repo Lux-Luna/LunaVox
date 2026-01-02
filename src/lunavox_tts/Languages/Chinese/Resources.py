@@ -11,7 +11,7 @@ def get_chinese_g2p_dir() -> str:
     
     from ...Utils.EnvManager import env_manager
     from ...Utils.ResourceManager import resource_manager
-    resource_manager.ensure_tts_data()
+    resource_manager.ensure_base()
     repo_root = env_manager.repo_root
     data_root = env_manager.data_root
     

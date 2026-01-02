@@ -26,7 +26,7 @@ def _resolve_bert_paths() -> tuple[Path, Path]:
     base_dir = env_manager.data_root / "RoBERTa"
     
     from ...Utils.ResourceManager import resource_manager
-    resource_manager.ensure_roberta()
+    resource_manager.ensure_chinese()
 
     if not base_dir.exists():
         base_dir.mkdir(parents=True, exist_ok=True)
