@@ -29,6 +29,8 @@
 - **`TTSData`**: Shared resources (G2P, Chinese-HuBERT, Speaker-Vector). *Auto-downloaded on first run.*
 - **`RoBERTa`**: Chinese RoBERTa resources. *Auto-downloaded on first run.*
 
+> 📖 [View Code Architecture Guide (EN)](docs/en/project_structure.md)
+
 ---
 
 ## 🎙 Voice Cloning Guide
@@ -91,6 +93,16 @@ Deploy as a high-performance FastAPI backend.
 import lunavox_tts as lunavox
 lunavox.start_server(host="0.0.0.0", port=8000)
 ```
+
+---
+
+## 📦 Minimal Deployment
+
+LunaVox allows for extreme modularity. For disk-space sensitive environments:
+
+*   **Example (V2 English TTS)**: Only **~307 MB** required (Base Engine + V2 Model + English Resources).
+
+> 📖 [See Detailed Dependency Size Analysis](docs/en/dependency_size.md)
 
 ---
 

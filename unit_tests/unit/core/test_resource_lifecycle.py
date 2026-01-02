@@ -22,17 +22,17 @@ class TestRuntimeManager:
     def test_unload_hubert_sets_none(self):
         """unload_hubert sets ModelManager.cn_hubert to None."""
         from lunavox_tts.Utils.RuntimeManager import runtime_manager
-        from lunavox_tts.ModelManager import model_manager
+        from lunavox_tts.ResourceManager import resource_manager
         
         # Set up a mock session
-        model_manager.cn_hubert = MagicMock()
-        assert model_manager.cn_hubert is not None
+        resource_manager.cn_hubert = MagicMock()
+        assert resource_manager.cn_hubert is not None
         
         # Unload
         runtime_manager.unload_hubert()
         
         # Verify
-        assert model_manager.cn_hubert is None
+        assert resource_manager.cn_hubert is None
     
     def test_unload_zh_bert_sets_none(self):
         """unload_zh_bert sets ZhBert globals to None."""
@@ -69,12 +69,12 @@ class TestRuntimeManager:
     def test_cleanup_all_clears_everything(self):
         """cleanup_all clears all resources."""
         from lunavox_tts.Utils.RuntimeManager import runtime_manager
-        from lunavox_tts.ModelManager import model_manager
+        from lunavox_tts.ResourceManager import resource_manager
         from lunavox_tts.Languages.Chinese import ZhBert
         from lunavox_tts.Resources.Audio import SpeakerVector
         
         # Set up mock values
-        model_manager.cn_hubert = MagicMock()
+        resource_manager.cn_hubert = MagicMock()
         ZhBert._ort_session = MagicMock()
         SpeakerVector._sv_model = MagicMock()
         
@@ -82,7 +82,7 @@ class TestRuntimeManager:
         runtime_manager.cleanup_all()
         
         # Verify all are None
-        assert model_manager.cn_hubert is None
+        assert resource_manager.cn_hubert is None
         assert ZhBert._ort_session is None
         assert SpeakerVector._sv_model is None
     
@@ -100,18 +100,18 @@ class TestRuntimeManager:
     def test_is_hubert_loaded_reflects_state(self):
         """is_hubert_loaded correctly reflects model state."""
         from lunavox_tts.Utils.RuntimeManager import runtime_manager
-        from lunavox_tts.ModelManager import model_manager
+        from lunavox_tts.ResourceManager import resource_manager
         
         # Initially should be None/False
-        model_manager.cn_hubert = None
+        resource_manager.cn_hubert = None
         assert runtime_manager.is_hubert_loaded() is False
         
         # After setting, should be True
-        model_manager.cn_hubert = MagicMock()
+        resource_manager.cn_hubert = MagicMock()
         assert runtime_manager.is_hubert_loaded() is True
         
         # Cleanup for next test
-        model_manager.cn_hubert = None
+        resource_manager.cn_hubert = None
 
 
 class TestZhBertUnload:

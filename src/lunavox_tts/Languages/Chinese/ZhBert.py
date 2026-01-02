@@ -81,6 +81,14 @@ def unload_model() -> None:
         _ort_session = None
         _model_dir = None
 
+unload = unload_model
+
+
+def is_loaded() -> bool:
+    """Check if the model is currently loaded."""
+    return _ort_session is not None
+
+
 
 def compute_bert_phone_features(norm_text: str, word2ph: List[int], return_tensor: bool = False) -> np.ndarray:
     """

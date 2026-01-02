@@ -13,6 +13,13 @@ import gc
 import logging
 from typing import Optional
 
+from ..ModelManager import model_manager
+from ..Languages.Chinese import ZhBert
+from ..Resources.Audio import SpeakerVector
+from ..API.state import clear_all_reference_audio
+from ..Resources.Audio.ReferenceAudio import ReferenceAudio
+from ..Core.Frontend.registry import language_registry
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,21 +45,14 @@ class RuntimeManager:
     
     def load_hubert(self) -> bool:
         """Load HuBERT model via ModelManager."""
-        from ..ModelManager import model_manager
         return model_manager.load_cn_hubert()
     
     def unload_hubert(self) -> None:
         """Unload HuBERT model and release memory."""
-        from ..ModelManager import model_manager
-        if model_manager.cn_hubert is not None:
-            logger.info("Unloading HuBERT model...")
-            model_manager.cn_hubert = None
-            gc.collect()
-            logger.info("✓ HuBERT model unloaded.")
+        model_manager.unload_cn_hubert()
     
     def is_hubert_loaded(self) -> bool:
         """Check if HuBERT is currently loaded."""
-        from ..ModelManager import model_manager
         return model_manager.cn_hubert is not None
     
     # =========================================================================
@@ -62,8 +62,8 @@ class RuntimeManager:
     def load_zh_bert(self) -> bool:
         """Load Chinese RoBERTa BERT model."""
         try:
-            from ..Languages.Chinese.ZhBert import _load_model
-            _load_model()
+            # Still use protected import for internal function
+            ZhBert._load_model()
             return True
         except Exception as e:
             logger.error(f"Failed to load ZhBERT: {e}")
@@ -71,19 +71,13 @@ class RuntimeManager:
     
     def unload_zh_bert(self) -> None:
         """Unload Chinese RoBERTa BERT model and release memory."""
-        from ..Languages.Chinese import ZhBert
-        if ZhBert._ort_session is not None or ZhBert._tokenizer is not None:
-            logger.info("Unloading Chinese BERT model...")
-            ZhBert._ort_session = None
-            ZhBert._tokenizer = None
-            ZhBert._model_dir = None
-            gc.collect()
-            logger.info("✓ Chinese BERT model unloaded.")
+        ZhBert.unload()
+        gc.collect()
+        logger.info("✓ Chinese BERT model unloaded.")
     
     def is_zh_bert_loaded(self) -> bool:
         """Check if Chinese BERT is currently loaded."""
-        from ..Languages.Chinese import ZhBert
-        return ZhBert._ort_session is not None
+        return ZhBert.is_loaded()
     
     def unload_all_bert(self) -> None:
         """Unload all language BERT models."""
@@ -96,23 +90,17 @@ class RuntimeManager:
     
     def load_sv(self) -> bool:
         """Load Speaker Vector model."""
-        from ..Resources.Audio.SpeakerVector import load_sv_model
-        return load_sv_model()
+        return SpeakerVector.load_sv_model()
     
     def unload_sv(self) -> None:
         """Unload Speaker Vector model and release memory."""
-        from ..Resources.Audio import SpeakerVector
-        if SpeakerVector._sv_model is not None:
-            logger.info("Unloading Speaker Vector model...")
-            SpeakerVector._sv_model = None
-            SpeakerVector._sv_model_path = None
-            gc.collect()
-            logger.info("✓ Speaker Vector model unloaded.")
+        SpeakerVector.unload()
+        gc.collect()
+        logger.info("✓ Speaker Vector model unloaded.")
     
     def is_sv_loaded(self) -> bool:
         """Check if Speaker Vector model is currently loaded."""
-        from ..Resources.Audio import SpeakerVector
-        return SpeakerVector._sv_model is not None
+        return SpeakerVector.is_loaded()
     
     # =========================================================================
     # Character Model Management (delegated)
@@ -120,7 +108,6 @@ class RuntimeManager:
     
     def unload_all_characters(self) -> None:
         """Unload all cached character models."""
-        from ..ModelManager import model_manager
         logger.info("Unloading all character models...")
         model_manager.clean_cache()
         gc.collect()
@@ -166,14 +153,12 @@ class RuntimeManager:
         switching characters or running benchmarks.
         """
         try:
-            from ..API.state import clear_all_reference_audio
             clear_all_reference_audio()
             logger.debug("✓ API reference audio state cleared.")
         except ImportError:
             pass
         
         try:
-            from ..Resources.Audio.ReferenceAudio import ReferenceAudio
             ReferenceAudio.clear_cache()
             logger.debug("✓ ReferenceAudio prompt cache cleared.")
         except (ImportError, AttributeError):
@@ -187,7 +172,6 @@ class RuntimeManager:
         pyopenjtalk (Japanese) that get cached after first use.
         """
         try:
-            from ..Core.Frontend.registry import language_registry
             language_registry.clear_instances()
             logger.debug("✓ Frontend instances cleared.")
         except ImportError:

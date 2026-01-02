@@ -101,13 +101,20 @@ class FeatureExtractor:
         from ...Utils.AssetManager import asset_manager
         asset_manager.ensure_extractor()
         
+        # Access via property which delegates to ResourceManager
         if not model_manager.cn_hubert:
             model_manager.load_cn_hubert()
             
-        audio_16k_batch = np.expand_dims(ref_audio.audio_16k, axis=0)
-        ref_audio.ssl_content = model_manager.cn_hubert.run(
-            None, {"input_values": audio_16k_batch}
-        )[0]
+        # The property returns the session from ResourceManager
+        hubert_session = model_manager.cn_hubert
+        
+        if hubert_session:
+            audio_16k_batch = np.expand_dims(ref_audio.audio_16k, axis=0)
+            ref_audio.ssl_content = hubert_session.run(
+                None, {"input_values": audio_16k_batch}
+            )[0]
+        else:
+             logger.error("Failed to load HuBERT model for SSL extraction")
 
     @staticmethod
     def extract_sv_embedding(ref_audio: "ReferenceAudio"):

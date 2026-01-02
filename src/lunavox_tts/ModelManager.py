@@ -50,48 +50,17 @@ class ModelManager:
             capacity=int(capacity_str)
         )
         self.providers = resolve_providers()
-        self.cn_hubert: Optional[InferenceSession] = None
+        self.providers = resolve_providers()
 
     def load_cn_hubert(self) -> bool:
-        """Load the Chinese HuBERT model (used for SSL feature extraction)."""
-        from .Utils.AssetManager import asset_manager
-        asset_manager.ensure_base()
-        asset_manager.ensure_extractor()
-        
-        model_path = os.getenv("HUBERT_MODEL_PATH")
-        if not (model_path and os.path.isfile(model_path)):
-            potential_path = asset_manager.tts_data_dir / "chinese-hubert-base" / "chinese-hubert-base.onnx"
-            if potential_path.is_file():
-                model_path = str(potential_path)
-            else:
-                logger.error("Chinese HuBERT model not found in TTSData.")
-                return False
-
-        try:
-            hubert_dir = os.path.dirname(model_path)
-            hubert_fp16 = os.path.join(hubert_dir, "chinese-hubert-base_weights_fp16.bin")
-            
-            if os.path.exists(hubert_fp16):
-                 self.cn_hubert = load_session_with_fp16_conversion(
-                    model_path, hubert_fp16, self.providers, get_default_sess_options()
-                )
-            else:
-                self.cn_hubert = onnxruntime.InferenceSession(
-                    model_path, providers=self.providers, sess_options=get_default_sess_options()
-                )
-            logger.debug("Successfully loaded CN_HuBERT model.")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to load ONNX model '{model_path}': {e}")
-            return False
+        """Load the Chinese HuBERT model (delegated to ResourceManager)."""
+        from .ResourceManager import resource_manager
+        return resource_manager.load_cn_hubert(self.providers)
 
     def unload_cn_hubert(self) -> None:
-        """Unload HuBERT model and release memory."""
-        if self.cn_hubert is not None:
-            logger.info("Unloading HuBERT model...")
-            self.cn_hubert = None
-            gc.collect()
-            logger.info("✓ HuBERT model unloaded.")
+        """Unload HuBERT model (delegated to ResourceManager)."""
+        from .ResourceManager import resource_manager
+        resource_manager.unload_cn_hubert()
 
     def cleanup_global_resources(self) -> None:
         """
@@ -221,6 +190,11 @@ class ModelManager:
         gc.collect()
         gc.collect()
 
+
+    @property
+    def cn_hubert(self) -> Optional[InferenceSession]:
+        from .ResourceManager import resource_manager
+        return resource_manager.cn_hubert
 
 model_manager: ModelManager = ModelManager()
 atexit.register(model_manager.unload_cn_hubert)

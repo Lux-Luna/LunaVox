@@ -12,6 +12,7 @@ from typing import Set, Optional, List
 
 from huggingface_hub import snapshot_download
 from .EnvManager import env_manager
+from .DependencyManager import dependency_manager
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,6 @@ class AssetManager:
             # Still check dependencies even if files exist
             deps = _PACK_DEPENDENCIES.get(pack, [])
             if deps:
-                from .DependencyManager import dependency_manager
                 dependency_manager.check_dependencies(deps, pack.value.capitalize(), auto_install=True)
             return True
             
@@ -171,7 +171,6 @@ class AssetManager:
             # --- CHECK PYTHON DEPENDENCIES ---
             deps = _PACK_DEPENDENCIES.get(pack, [])
             if deps:
-                from .DependencyManager import dependency_manager
                 dependency_manager.check_dependencies(deps, pack.value.capitalize(), auto_install=True)
                 
             return True

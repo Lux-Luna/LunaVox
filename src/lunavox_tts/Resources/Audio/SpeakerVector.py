@@ -158,6 +158,14 @@ def unload_sv_model() -> None:
         _sv_model = None
         _sv_model_path = None
 
+unload = unload_sv_model
+
+
+def is_loaded() -> bool:
+    """Check if SPEAKER VECTOR model is currently loaded."""
+    return _sv_model is not None
+
+
 
 def extract_sv_embedding(waveform_16k: np.ndarray) -> Optional[np.ndarray]:
     """
