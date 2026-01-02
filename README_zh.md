@@ -42,6 +42,9 @@
 > [!IMPORTANT]
 > **重要提示**：为了达到最好的推理效果，强烈建议您使用与**目标语言一致**的参考音频，并设置**正确的参考音频内容文本**。
 
+> [!TIP]
+> **音色固化 (Persona)**：本项目提供了 **Persona 工具**，允许您将特定音频的音色进行固化。在后续推理中无需再反复提供参考音频，并能有效减小磁盘空间占用和内存开销。
+
 ---
 
 ## 🏁 快速开始
@@ -148,12 +151,11 @@ env_manager.ensure_environment() # 确定环境就绪（如缺失依赖会自动
   - [x] GPU 加速支持与深度优化 (CUDA/DirectML)
   - [x] IO Binding 内存零拷贝技术 (Device-to-Device)
   - [x] KV Cache 缓存优化 (减少重复计算)
+- **高级功能**
+  - [x] Persona 音色固化 (Speaker Embedding 恒定)
 
 ### 🚀 计划中 (Planned)
-- **模型扩展**
-  - [ ] V2 Pro 模型兼容
 - **用户体验**
   - [ ] Windows 一键整合包 (即开即用)
 - **高级功能**
-  - [ ] 音色固化 (Speaker Embedding 恒定)
   - [ ] 情感控制增强

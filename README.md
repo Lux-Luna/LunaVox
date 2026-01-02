@@ -42,6 +42,9 @@ However, if you don't mind a less-than-perfect restoration, LunaVox provides pre
 > [!IMPORTANT]
 > **Important Tip**: To achieve the best inference results, it is strongly recommended to use a reference audio that matches the **target language** and set the **correct reference audio text**.
 
+> [!TIP]
+> **Voice Persona**: This project provides a **Persona tool** that allows you to "solidify" the timbre of a specific audio. You won't need to provide reference audio repeatedly in subsequent inferences, reducing both disk space and memory overhead.
+
 ---
 
 ## 🏁 Quick Start
@@ -130,12 +133,11 @@ env_manager.ensure_environment() # Trigger auto-install if missing
   - [x] GPU Acceleration & Optimization (CUDA/DirectML)
   - [x] IO Binding Zero-copy Optimization
   - [x] KV Cache Acceleration (On-device Persistence)
+- **Advanced Features**
+  - [x] Persona Support (Speaker Embedding Fixing)
 
 ### 🚀 Planned
-- **Model Expansion**
-  - [ ] V2 Pro Model Compatibility
 - **User Experience**
   - [ ] Windows All-in-one Portable Package
 - **Advanced Features**
-  - [ ] Speaker Embedding Fixing
   - [ ] Enhanced Emotion Control
