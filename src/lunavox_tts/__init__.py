@@ -28,8 +28,7 @@ from .API import (
     stop, 
     convert_to_onnx,
     clear_reference_audio_cache, 
-    launch_command_line_client, 
-    load_predefined_character,
+    launch_command_line_client,
     create_persona, 
     load_persona
 )
@@ -52,7 +51,6 @@ __all__ = [
     "clear_reference_audio_cache",
     "launch_command_line_client",
     "start_server",
-    "load_predefined_character",
     "create_persona",
     "load_persona",
 ]
