@@ -12,7 +12,7 @@ from typing import Optional, List, Callable
 from .Inference import LunaVoxEngine
 from .Session import SynthesisSession
 from .Frontend.processor import text_processor
-from .Pipeline.WaveSaver import save_wav, preprocess_for_playback
+from ..Utils.AudioIO import save_wav, preprocess_for_playback
 from ..ModelManager import model_manager
 from ..Utils.Utils import clear_queue
 from ..Resources.Audio.ReferenceAudio import ReferenceAudio

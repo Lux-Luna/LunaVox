@@ -1,7 +1,7 @@
 """
-WaveSaver - Utility for saving audio chunks to WAV files.
+AudioIO - Utilities for audio input/output operations.
 
-Extracted from TTSPlayer to improve modularity.
+Functionality extracted from previous WaveSaver module for better organization.
 """
 import os
 import wave
