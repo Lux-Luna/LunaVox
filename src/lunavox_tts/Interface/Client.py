@@ -2,10 +2,11 @@ import argparse
 import shlex
 import logging
 from typing import Optional, Callable
-from .Resources.Audio.ReferenceAudio import ReferenceAudio
-from .Utils.UserData import userdata_manager
-from .ModelManager import model_manager
-from .Core.TTSPlayer import tts_player
+from ..Resources.Audio.ReferenceAudio import ReferenceAudio
+from ..Utils.UserData import userdata_manager
+from ..ModelManager import model_manager
+from ..Core.TTSPlayer import tts_player
+
 
 # Use print for CLI output, or logger if preferred.
 # For a CLI shell, print is standard.

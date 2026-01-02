@@ -28,20 +28,16 @@ from .API import (
     stop, 
     convert_to_onnx,
     clear_reference_audio_cache, 
-    launch_command_line_client, 
-    load_predefined_character,
+    launch_command_line_client,
     create_persona, 
-    load_persona
+    load_persona,
+    initialize_tts
 )
 
-# For multi-reference, we should check if it's in API or still in separate file
-try:
-    from .API.synthesis import set_multi_reference_audio, create_multi_reference_audio
-except ImportError:
-    # Fallback to experimental if not yet integrated into API
-    from .Experimental._internal_multi_ref import set_multi_reference_audio, create_multi_reference_audio
+# For multi-reference support
+from .API.synthesis import set_multi_reference_audio, create_multi_reference_audio
 
-from .Server import start_server
+from .Interface.Server import start_server
 
 __all__ = [
     "load_character",
@@ -56,7 +52,7 @@ __all__ = [
     "clear_reference_audio_cache",
     "launch_command_line_client",
     "start_server",
-    "load_predefined_character",
     "create_persona",
     "load_persona",
+    "initialize_tts",
 ]

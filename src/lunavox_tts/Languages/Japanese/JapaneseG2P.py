@@ -190,7 +190,7 @@ class JapaneseFrontend:
         Returns zero-filled array matching the expected dimensions.
         """
         import numpy as np
-        from ...Utils.Constants import BERT_FEATURE_DIM
+        from ...Utils.Utils import BERT_FEATURE_DIM
         return np.zeros((phone_len, BERT_FEATURE_DIM), dtype=np.float32)
     
     def process(self, text: str) -> tuple:

@@ -12,7 +12,7 @@ logging.basicConfig(
     handlers=[RichHandler(rich_tracebacks=True)]
 )
 
-from .Client import Client
+from .Interface.Client import Client
 
 if __name__ == "__main__":
     cmd_client: Client = Client()

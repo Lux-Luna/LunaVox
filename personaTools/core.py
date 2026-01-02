@@ -56,7 +56,7 @@ class UniversalPersonaCreator:
         from lunavox_tts.Core.Model.session import load_session_with_fp16_conversion, get_default_sess_options
         
         # Ensure v2pp pretrained models are available
-        resource_manager.ensure_character_data(v2pp=True)
+        resource_manager.ensure_v2pp()
         
         model_dir = resource_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
         prompt_encoder_onnx = model_dir / "prompt_encoder_fp32.onnx"

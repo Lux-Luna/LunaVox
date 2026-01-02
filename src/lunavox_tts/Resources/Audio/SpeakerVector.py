@@ -114,8 +114,8 @@ def load_sv_model(model_path: Optional[str] = None) -> bool:
         # Default location: LunaVox/TTSData/sv/eres2netv2.onnx
         from pathlib import Path
         from ...Utils.EnvManager import env_manager
-        from ...Utils.ResourceManager import resource_manager
-        resource_manager.ensure_tts_data(v2pp=True)
+        from ...Utils.AssetManager import asset_manager
+        asset_manager.ensure_extractor()
         model_path = str(env_manager.data_root / "TTSData" / "sv" / "eres2netv2.onnx")
     
     if not os.path.exists(model_path):
@@ -145,6 +145,26 @@ def load_sv_model(model_path: Optional[str] = None) -> bool:
     except Exception as e:
         logger.error(f"Failed to load speaker embedding model: {e}")
         return False
+
+
+def unload_sv_model() -> None:
+    """
+    Unload Speaker Vector model to release memory.
+    Called by RuntimeManager.unload_sv().
+    """
+    global _sv_model, _sv_model_path
+    if _sv_model is not None:
+        logger.debug("Unloading Speaker Vector model...")
+        _sv_model = None
+        _sv_model_path = None
+
+unload = unload_sv_model
+
+
+def is_loaded() -> bool:
+    """Check if SPEAKER VECTOR model is currently loaded."""
+    return _sv_model is not None
+
 
 
 def extract_sv_embedding(waveform_16k: np.ndarray) -> Optional[np.ndarray]:

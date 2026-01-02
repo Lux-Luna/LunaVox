@@ -12,6 +12,7 @@ from typing import Optional, List, Callable
 from .Inference import LunaVoxEngine
 from .Session import SynthesisSession
 from .Frontend.processor import text_processor
+from ..Utils.AudioIO import save_wav, preprocess_for_playback
 from ..ModelManager import model_manager
 from ..Utils.Utils import clear_queue
 from ..Resources.Audio.ReferenceAudio import ReferenceAudio
@@ -57,15 +58,6 @@ class TTSPlayer:
         self._chunk_callback: Optional[Callable[[Optional[bytes]], None]] = None
         self._current_session: Optional[SynthesisSession] = None
 
-    @staticmethod
-    def _preprocess_for_playback(audio_float: np.ndarray) -> bytes:
-        if np.isnan(audio_float).any() or np.isinf(audio_float).any():
-            audio_float = np.nan_to_num(audio_float, nan=0.0, posinf=0.0, neginf=0.0)
-            
-        audio_float = np.clip(audio_float, -1.0, 1.0)
-        audio_int16 = (audio_float.squeeze() * 32767).astype(np.int16)
-        return audio_int16.tobytes()
-
     def _tts_worker_loop(self):
         """TTS processing worker: pulls text, runs inference, dispatches audio."""
         while not self._stop_event.is_set():
@@ -79,7 +71,15 @@ class TTSPlayer:
             try:
                 if sentence is STREAM_END:
                     if self._current_save_path and self._session_audio_chunks:
-                        self._save_session_audio()
+                        save_wav(
+                            self._session_audio_chunks,
+                            self._current_save_path,
+                            self.sample_rate,
+                            self.channels,
+                            self.bytes_per_sample
+                        )
+                        self._session_audio_chunks = []
+                        self._current_save_path = None
 
                     if self._chunk_callback:
                         self._chunk_callback(None)
@@ -116,7 +116,7 @@ class TTSPlayer:
                         self._session_audio_chunks.append(audio_chunk)
 
                     if self._chunk_callback:
-                        audio_data = self._preprocess_for_playback(audio_chunk)
+                        audio_data = preprocess_for_playback(audio_chunk)
                         self._chunk_callback(audio_data)
 
             except Exception as e:
@@ -144,23 +144,6 @@ class TTSPlayer:
                     logger.error(f"Error in audio playback: {e}", exc_info=True)
         finally:
             self.audio_engine.stop()
-
-    def _save_session_audio(self):
-        try:
-            flattened_chunks = [chunk.flatten() if chunk.ndim > 1 else chunk 
-                              for chunk in self._session_audio_chunks]
-            full_audio = np.concatenate(flattened_chunks, axis=0)
-            with wave.open(self._current_save_path, 'wb') as wf:
-                wf.setnchannels(self.channels)
-                wf.setsampwidth(self.bytes_per_sample)
-                wf.setframerate(self.sample_rate)
-                wf.writeframes(self._preprocess_for_playback(full_audio))
-            logger.info(f"Audio saved to {os.path.abspath(self._current_save_path)}")
-        except Exception as e:
-            logger.error(f"Failed to save audio: {e}")
-        finally:
-            self._session_audio_chunks = []
-            self._current_save_path = None
 
     def start_session(self,
                       play: bool = False,

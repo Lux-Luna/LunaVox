@@ -59,6 +59,9 @@ class PerformanceMonitor:
         self._buffer = []
         self._buffering_enabled = False
         self._initialized = True
+        
+        # Early baseline calibration to capture pre-model-load state
+        self._ensure_baselines()
 
     def _ensure_baselines(self):
         """Capture background noise once to filter it from future measurements."""
@@ -79,6 +82,13 @@ class PerformanceMonitor:
             except: pass
         
         self._baselines_set = True
+    
+    def reset_baselines(self):
+        """Reset baselines for fresh measurement (used between benchmark tests)."""
+        self._baselines_set = False
+        self.base_rss = 0
+        self.base_vram = 0
+        self._ensure_baselines()
 
     @property
     def is_enabled(self) -> bool:
@@ -114,46 +124,32 @@ class PerformanceMonitor:
             duration_ms = (end_time - start_time) * 1000
             
             # Post-task analysis: All heavy syscalls happen here, after the task is finished.
-            # This ensures they don't affect the duration_ms or the TTS latency.
+            # This ensures they don't affect the duration_ms OR the latency of the task itself.
             rss_mb = 0
-            if self.process:
+            vram_mb = 0
+            
+            # CRITICAL: Only perform heavy syscalls for the outermost USER_PERCEIVED task
+            # to avoid polluting its timing with the overhead of inner LINK_DETAIL monitor calls.
+            if self.process and category == "USER_PERCEIVED":
                 try:
                     # Measure delta from baseline to exclude background process memory
                     current_rss = self.process.memory_info().rss
                     delta_rss = current_rss - self.base_rss
-                    # Report positive delta only (memory increase from baseline)
                     rss_mb = max(0, delta_rss) / (1024 * 1024)
                 except Exception: 
                     pass
             
-            vram_mb = 0
-            if _gpu_handle:
+            if _gpu_handle and category == "USER_PERCEIVED":
                 try:
-                    # Attempt precise PID-based VRAM tracking
-                    pid = os.getpid()
-                    used_vram = 0
-                    pid_found = False
-                    try:
-                        procs = (_pynvml.nvmlDeviceGetComputeRunningProcesses(_gpu_handle) or []) + \
-                                (_pynvml.nvmlDeviceGetGraphicsRunningProcesses(_gpu_handle) or [])
-                        for p in procs:
-                            if p.pid == pid:
-                                used_vram = p.usedGpuMemory
-                                pid_found = True
-                                break
-                    except Exception: 
-                        pass
-                    
-                    if pid_found:
-                        # Delta from baseline for per-process tracking
-                        delta_vram = used_vram - self.base_vram
-                        vram_mb = max(0, delta_vram) / (1024 * 1024)
-                    else:
-                        # Fallback to absolute system VRAM usage delta
-                        current_vram = _pynvml.nvmlDeviceGetMemoryInfo(_gpu_handle).used
-                        delta_vram = current_vram - self.base_vram
-                        vram_mb = max(0, delta_vram) / (1024 * 1024)
-                except Exception: 
+                    # 1. Robust System-wide Delta tracking.
+                    # On Windows/WSL, PID tracking can be unreliable or report only partial usage.
+                    # System delta captures the full "VRAM take" including ORT arenas.
+                    mem_info = _pynvml.nvmlDeviceGetMemoryInfo(_gpu_handle)
+                    if mem_info:
+                        current_vram = getattr(mem_info, 'used', 0) or 0
+                        base_v_val = self.base_vram or 0
+                        vram_mb = max(0, current_vram - base_v_val) / (1024 * 1024)
+                except Exception:
                     pass
             
             if self._buffering_enabled:
@@ -167,7 +163,11 @@ class PerformanceMonitor:
                     "timestamp": time.time()
                 })
             else:
-                logger.info(f"[Perf][{category}] {task_name} took: {duration_ms:.2f}ms | RAM+: {rss_mb:.2f}MB | VRAM+: {vram_mb:.2f}MB")
+                if category == "USER_PERCEIVED":
+                    mode_tag = env_manager.get_mode().upper()
+                    logger.info(f"[Perf][{category}][Mode: {mode_tag}] {task_name} took: {duration_ms:.2f}ms | RAM+: {rss_mb:.2f}MB | VRAM+: {vram_mb:.2f}MB")
+                else:
+                    logger.info(f"[Perf][{category}] {task_name} took: {duration_ms:.2f}ms")
 
     def set_buffering(self, enabled: bool):
         """Enable or disable buffering of metrics."""

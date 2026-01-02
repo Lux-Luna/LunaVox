@@ -33,11 +33,12 @@ class ModelRegistry:
         self._entries: Dict[str, ModelEntry] = {}
     
     def register(self, name: str, path: str, force_version: Optional[str] = None) -> ModelEntry:
+        """Register a model, detecting version if not specified."""
         name = name.lower()
         
         if name in self._entries:
             entry = self._entries[name]
-            if entry.path == path:
+            if entry.path == path and entry.path != "":
                 return entry
             logger.debug(f"Re-registering model '{name}' with new path")
         
@@ -67,6 +68,7 @@ class ModelRegistry:
         return list(self._entries.keys())
     
     def mark_loaded(self, name: str, components: Optional[Set[str]] = None) -> None:
+        """Mark a model as loaded with optional component list."""
         name = name.lower()
         if name in self._entries:
             self._entries[name].is_loaded = True

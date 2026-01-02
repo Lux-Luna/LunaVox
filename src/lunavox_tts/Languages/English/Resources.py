@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 def get_english_g2p_dir() -> str:
     """Resolve path to LunaVox/TTSData/G2P/English"""
     from ...Utils.EnvManager import env_manager
-    from ...Utils.ResourceManager import resource_manager
-    resource_manager.ensure_tts_data()
+    from ...Utils.AssetManager import asset_manager
+    asset_manager.ensure_base()
     repo_root = env_manager.repo_root
     data_root = env_manager.data_root
     

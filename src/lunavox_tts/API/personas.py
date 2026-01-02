@@ -11,7 +11,7 @@ from typing import Union
 
 from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
-from ..Utils.ResourceManager import resource_manager
+from ..Utils.AssetManager import asset_manager
 from ..Resources.Persona.PersonaManager import export_persona, load_persona as persona_loader
 from .state import (
     SUPPORTED_AUDIO_EXTS,
@@ -67,7 +67,7 @@ def create_persona(
     from ..Utils.EnvManager import env_manager
     with env_manager.temporary_mode("cpu"):
         # Ensure all extractor resources (HuBERT + SV + PromptEncoder)
-        resource_manager.ensure_extractor()
+        asset_manager.ensure_extractor()
         
         # Create ReferenceAudio with v2ProPlus to extract all features
         ref = ReferenceAudio(
@@ -78,8 +78,8 @@ def create_persona(
         )
         
         # Compute global embeddings for v2ProPlus compatibility
-        resource_manager.ensure_character_data(v2pp=True)
-        model_dir = resource_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
+        asset_manager.ensure_v2pp()
+        model_dir = asset_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
         prompt_encoder_path = model_dir / "prompt_encoder_fp32.onnx"
         prompt_encoder_bin = model_dir / "prompt_encoder_fp16.bin"
         
@@ -125,6 +125,7 @@ def create_persona(
 def load_persona(
         character_name: str,
         persona_dir: Union[str, PathLike],
+        force_model_version: str = None,
 ) -> None:
     """
     Load a previously saved Persona for reference-free TTS.
@@ -135,6 +136,8 @@ def load_persona(
     Args:
         character_name (str): The name of the character.
         persona_dir (str | PathLike): Path to the persona directory.
+        force_model_version (str, optional): Force loading a specific model version 
+                                             ('v2' or 'v2_pro_plus') regardless of persona metadata.
         
     Raises:
         FileNotFoundError: If the persona directory doesn't exist.
@@ -149,11 +152,11 @@ def load_persona(
     # --- AUTO-DOWNLOAD BUILT-IN PERSONAS ---
     if not os.path.isdir(persona_dir_str):
         if "luna_en" in persona_dir_str:
-            resource_manager.ensure_base()
+            asset_manager.ensure_base()
         elif "luna_zh" in persona_dir_str:
-            resource_manager.ensure_chinese()
+            asset_manager.ensure_chinese()
         elif "luna_ja" in persona_dir_str:
-            resource_manager.ensure_japanese()
+            asset_manager.ensure_japanese()
 
     if not os.path.isdir(persona_dir_str):
         raise FileNotFoundError(f"Persona directory not found: {persona_dir_str}")
@@ -161,11 +164,18 @@ def load_persona(
     # Load persona using PersonaManager
     ref = persona_loader(persona_dir_str)
     
+    # Check if persona has cached global embeddings (determines loading mode)
+    has_cached_ge = ref.global_emb is not None
+    
     # Prioritize loaded model's version over persona metadata
     if model_manager.has_character(character_name):
         model_version = model_manager.get_character_version(character_name)
     else:
-        model_version = getattr(ref, 'model_version', 'v2')
+        # If force_model_version is provided, use it. Otherwise fallback to persona's version, then 'v2'
+        if force_model_version:
+            model_version = force_model_version
+        else:
+            model_version = getattr(ref, 'model_version', 'v2')
     
     # Register in reference audios dict
     set_reference_audio_config(character_name, {
@@ -175,39 +185,33 @@ def load_persona(
         'prompt_audio': ref  # Store the actual ReferenceAudio object
     })
     
-    # --- AUTO-LOAD BASE MODEL ---
-    # Check if persona has cached global embeddings (enables skipping prompt_encoder)
-    has_cached_ge = ref.global_emb is not None
+    # --- STRICT ORDER LOADING: Set skip_prompt_encoder BEFORE load_character ---
+    # If persona has cached global embeddings, we can skip prompt_encoder entirely
+    # This avoids the "load then unload" pattern that wastes memory
     
     if not model_manager.has_character(character_name):
         model_version_lower = model_version.lower()
         if "v2_pro_plus" in model_version_lower or "v2pp" in model_version_lower or "v2proplus" in model_version_lower:
-            base_model_dir = resource_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
+            base_model_dir = asset_manager.char_data_dir / "model" / "v2_pro_plus" / "pretrained"
+            inferred_version = "v2ProPlus"
         else:
-            base_model_dir = resource_manager.char_data_dir / "model" / "v2" / "pretrained"
+            base_model_dir = asset_manager.char_data_dir / "model" / "v2" / "pretrained"
+            inferred_version = "v2"
             
-        logger.info(f"Auto-loading base {model_version} models for persona '{character_name}'...")
-        # Skip prompt_encoder if persona has cached global embeddings
-        # load_character will handle downloading if the directory doesn't exist
-        load_character(character_name, base_model_dir, skip_prompt_encoder=has_cached_ge)
-    
-    # --- OPTIMIZATION: Warmup & Cleanup ---
-    from ..Core.Frontend import get_language_frontend
-    try:
-        native_lang = model_version.split('_')[-1] if '_' in model_version else 'en'
-        # Warmup: access the frontend to pre-load resources
-        _ = get_language_frontend(native_lang)
+        logger.info(f"Auto-loading base {inferred_version} models for persona '{character_name}'...")
+        # Pass skip_prompt_encoder upfront - no post-load healing needed
+        # We can only skip prompt encoder if we have cached GE AND we are loading the v2pp model that uses it
+        # If we are forcing v2 model, prompt encoder is irrelevant anyway (not loaded by v2)
+        can_skip = has_cached_ge and (inferred_version == "v2ProPlus")
         
-        if native_lang != 'zh':
-            _ = get_language_frontend('zh')
-    except (ImportError, ValueError) as e:
-        logger.debug(f"Optional language warmup skipped: {e}")
-
-    model_manager.unload_cn_hubert()
-    model_manager.unload_sv_model()
+        load_character(character_name, base_model_dir, skip_prompt_encoder=can_skip)
+    else:
+        logger.info(f"Using already-loaded model for persona '{character_name}'.")
     
-    # Optimization: Unload Prompt Encoder if Persona has cached global embeddings
-    if ref.global_emb is not None:
-        model_manager.unload_prompt_encoder(character_name)
+    # --- CLEANUP: Unload extraction models used during persona creation ---
+    # These are not needed for inference when features are pre-cached
+    from ..Utils.RuntimeManager import runtime_manager
+    runtime_manager.unload_hubert()
+    runtime_manager.unload_sv()
     
     logger.info(f"✓ Persona loaded for '{character_name}' from: {persona_dir_str}")

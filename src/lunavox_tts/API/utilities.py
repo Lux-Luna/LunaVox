@@ -12,7 +12,7 @@ from typing import Union
 
 from ..Resources.Audio.ReferenceAudio import ReferenceAudio
 from ..ModelManager import model_manager
-from ..PredefinedCharacter import download_predefined_character_model
+
 from .state import set_reference_audio_config
 
 logger = logging.getLogger(__name__)
@@ -52,30 +52,4 @@ def launch_command_line_client() -> None:
     cmd_client.run()
 
 
-def load_predefined_character(character_name: str) -> None:
-    """
-    Download and load a predefined character model for TTS inference.
-    """
-    character_name_list: list = ['misono_mika']
-    if character_name not in character_name_list:
-        logger.error(f"No predefined character model found for {character_name}")
 
-    save_path: str = download_predefined_character_model(character_name)
-    model_manager.load_character(
-        character_name=character_name,
-        model_dir=save_path,
-    )
-
-    audio_path = os.path.join(save_path, "prompt.wav")
-    with open(os.path.join(save_path, "prompt_wav.json"), "r", encoding="utf-8") as f:
-        audio_text = json.load(f)["Normal"]["text"]
-    ref = ReferenceAudio(
-        prompt_wav=audio_path,
-        prompt_text=audio_text,
-    )
-
-    set_reference_audio_config(character_name, {
-        'audio_path': audio_path,
-        'audio_text': audio_text,
-        'prompt_audio': ref,
-    })

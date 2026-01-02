@@ -29,6 +29,8 @@
 - **`TTSData`**: Shared resources (G2P, Chinese-HuBERT, Speaker-Vector). *Auto-downloaded on first run.*
 - **`RoBERTa`**: Chinese RoBERTa resources. *Auto-downloaded on first run.*
 
+> 📖 [View Code Architecture Guide (EN)](docs/en/project_structure.md)
+
 ---
 
 ## 🎙 Voice Cloning Guide
@@ -39,6 +41,9 @@ However, if you don't mind a less-than-perfect restoration, LunaVox provides pre
 
 > [!IMPORTANT]
 > **Important Tip**: To achieve the best inference results, it is strongly recommended to use a reference audio that matches the **target language** and set the **correct reference audio text**.
+
+> [!TIP]
+> **Voice Persona**: This project provides a **Persona tool** that allows you to "solidify" the timbre of a specific audio. You won't need to provide reference audio repeatedly in subsequent inferences, reducing both disk space and memory overhead.
 
 ---
 
@@ -94,6 +99,16 @@ lunavox.start_server(host="0.0.0.0", port=8000)
 
 ---
 
+## 📦 Minimal Deployment
+
+LunaVox allows for extreme modularity. For disk-space sensitive environments:
+
+*   **Example (V2 English TTS)**: Only **~307 MB** required (Base Engine + V2 Model + English Resources).
+
+> 📖 [See Detailed Dependency Size Analysis](docs/en/dependency_size.md)
+
+---
+
 ## ⚙ Runtime Configuration
 
 LunaVox managed via `env_manager`. By default, it detects your hardware (CPU/GPU) and installs the optimized ONNX Runtime and portable CUDA libraries automatically. You can switch modes via GUI or script:
@@ -118,12 +133,11 @@ env_manager.ensure_environment() # Trigger auto-install if missing
   - [x] GPU Acceleration & Optimization (CUDA/DirectML)
   - [x] IO Binding Zero-copy Optimization
   - [x] KV Cache Acceleration (On-device Persistence)
+- **Advanced Features**
+  - [x] Persona Support (Speaker Embedding Fixing)
 
 ### 🚀 Planned
-- **Model Expansion**
-  - [ ] V2 Pro Model Compatibility
 - **User Experience**
   - [ ] Windows All-in-one Portable Package
 - **Advanced Features**
-  - [ ] Speaker Embedding Fixing
   - [ ] Enhanced Emotion Control

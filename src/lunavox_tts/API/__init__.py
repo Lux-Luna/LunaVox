@@ -27,10 +27,12 @@ from .utilities import (
     convert_to_onnx,
     clear_reference_audio_cache,
     launch_command_line_client,
-    load_predefined_character,
 )
+from .facade import initialize_tts
 
 __all__ = [
+    # Facade
+    "initialize_tts",
     # Characters
     "load_character",
     "unload_character",
@@ -46,5 +48,4 @@ __all__ = [
     "convert_to_onnx",
     "clear_reference_audio_cache",
     "launch_command_line_client",
-    "load_predefined_character",
 ]

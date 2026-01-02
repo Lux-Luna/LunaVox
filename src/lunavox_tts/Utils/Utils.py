@@ -1,6 +1,12 @@
 from collections import OrderedDict
 import queue
 
+# Constants (formerly in Constants.py)
+BERT_FEATURE_DIM = 1024
+PACKAGE_NAME = "lunavox_tts"
+
+
+
 
 class LRUCacheDict(OrderedDict):
     def __init__(self, capacity):

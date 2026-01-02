@@ -50,14 +50,14 @@ logger = logging.getLogger("Benchmark")
 @dataclass
 class BenchmarkConfig:
     """Configuration for benchmark runs."""
-    environments: List[str] = field(default_factory=lambda: ["cpu", "gpu"])
-    modes: List[str] = field(default_factory=lambda: ["persona", "reference"])
-    # modes: List[str] = field(default_factory=lambda: ["persona"])
-    versions: List[str] = field(default_factory=lambda: ["v2", "v2pp"])
-    languages: List[str] = field(default_factory=lambda: ["zh", "en", "ja"])
+    environments: List[str] = field(default_factory=lambda: ["cpu"]) # "cpu"、"gpu"
+    modes: List[str] = field(default_factory=lambda: ["persona", "reference"]) # "reference"、"persona"
+    versions: List[str] = field(default_factory=lambda: ["v2", "v2pp"]) # "v2"、"v2pp"
+    languages: List[str] = field(default_factory=lambda: ["zh", "en", "ja"]) # "zh"、"en"、"ja"
     warmup_rounds: int = 1
     test_rounds: int = 1
     _internal_env: Optional[str] = None
+    _internal_lang: Optional[str] = None
     _result_file: Optional[str] = None
 
 
@@ -125,9 +125,11 @@ Examples:
     
     # Internal flag for subprocess execution
     parser.add_argument("--_internal_env", type=str, default=None,
-                        help=argparse.SUPPRESS)  # Hidden from help
+                        help=argparse.SUPPRESS)
+    parser.add_argument("--_internal_lang", type=str, default=None,
+                        help=argparse.SUPPRESS)
     parser.add_argument("--_result_file", type=str, default=None,
-                        help=argparse.SUPPRESS)  # Hidden from help
+                        help=argparse.SUPPRESS)
 
     args = parser.parse_args()
 
@@ -149,22 +151,32 @@ Examples:
 
     # Pass internal flags
     config_kwargs['_internal_env'] = args._internal_env
+    config_kwargs['_internal_lang'] = args._internal_lang
     config_kwargs['_result_file'] = args._result_file
 
     return BenchmarkConfig(**config_kwargs)
 
 
+# Fixed character name pool for cache efficiency
+# Using language-based index allows cache reuse within same language
+CHAR_NAME_POOL = ["bench_0", "bench_1", "bench_2"]
+LANG_TO_INDEX = {"zh": 0, "en": 1, "ja": 2}
+
+
 def get_character_name(version: str, lang: str, mode: str) -> str:
-    """Generate unique character name for a test combination."""
-    suffix = VERSION_CONFIG[version]["char_suffix"]
-    mode_suffix = "_ref" if mode == "reference" else ""
-    return f"bench_{lang}{suffix}{mode_suffix}"
+    """Get character name from fixed pool based on language.
+    
+    Using fixed pool enables LRU cache hits and prevents memory bloat
+    from unique character names across test combinations.
+    """
+    lang_idx = LANG_TO_INDEX.get(lang, 0)
+    return CHAR_NAME_POOL[lang_idx]
 
 
 def resolve_reference_audio(lang: str) -> tuple:
     """Find reference audio file for a language."""
     lang_conf = LANGUAGE_CONFIG[lang]
-    audio_dir = REPO_ROOT / "CharacterData" / "audio" / lang_conf["audio_dir"]
+    audio_dir = REPO_ROOT / "lunavoxData" / "CharacterData" / "audio" / lang_conf["audio_dir"]
     wav_files = list(audio_dir.glob("*.wav"))
     if not wav_files:
         raise FileNotFoundError(f"No .wav files found in {audio_dir}")
@@ -187,12 +199,19 @@ def run_single_test(
     ver_conf = VERSION_CONFIG[version]
 
     char_name = get_character_name(version, lang, mode)
-    persona_dir = str(REPO_ROOT / "CharacterData" / "character" / lang_conf["persona_dir"])
-    model_dir = str(REPO_ROOT / "CharacterData" / "model" / ver_conf["model_path"])
+    persona_dir = str(REPO_ROOT / "lunavoxData" / "CharacterData" / "character" / lang_conf["persona_dir"])
+    model_dir = str(REPO_ROOT / "lunavoxData" / "CharacterData" / "model" / ver_conf["model_path"])
 
     logger.info(f"\n{'='*60}")
     logger.info(f"[TEST] Env:{env.upper()} | Mode:{mode} | Version:{version} | Lang:{lang.upper()}")
     logger.info(f"{'='*60}")
+    
+    # --- CLEANUP: Ensure fresh state before each test ---
+    from lunavox_tts.Utils.RuntimeManager import runtime_manager
+    runtime_manager.cleanup_all()
+    
+    # Reset memory baselines for accurate measurement
+    monitor.reset_baselines()
 
     try:
         # Load model based on mode
@@ -288,11 +307,15 @@ def run_single_test(
                 f"RTF: {rtf:.4f} | RAM: {entry_data['ram']:.1f}MB {vram_str}"
             )
 
-    # Unload model
+    # Unload model and cleanup global resources
     try:
         lunavox.unload_character(char_name)
     except Exception:
         pass
+    
+    # Cleanup global resources for next test isolation
+    from lunavox_tts.Utils.RuntimeManager import runtime_manager
+    runtime_manager.cleanup_all()
 
     # Aggregate statistics
     if not round_data:
@@ -332,11 +355,9 @@ def run_single_test(
     return result
 
 
-def run_benchmark_for_env_internal(env: str, args, result_file: str) -> bool:
+def run_benchmark_internal(env: str, lang: str, args: BenchmarkConfig, result_file: str) -> bool:
     """
-    Internal function that runs in a subprocess for a single environment.
-    Results are written to result_file as JSON.
-    Returns True if environment is ready, False if restart needed.
+    Internal function that runs in a subprocess for a single environment and language.
     """
     from lunavox_tts.Utils.EnvManager import env_manager
 
@@ -356,7 +377,7 @@ def run_benchmark_for_env_internal(env: str, args, result_file: str) -> bool:
     from lunavox_tts.Utils.PerformanceMonitor import monitor
 
     # Set HuBERT path
-    os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
+    os.environ['HUBERT_MODEL_PATH'] = str(REPO_ROOT / 'lunavoxData' / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx')
 
     # Get device info
     device_info = utils.get_device_info(pynvml if (pynvml and env == "gpu") else None, env)
@@ -377,10 +398,13 @@ def run_benchmark_for_env_internal(env: str, args, result_file: str) -> bool:
     )
 
     logger.info("\n" + "=" * 70)
-    logger.info(f"LunaVox TTS Benchmark - {env.upper()} Mode")
+    logger.info(f"LunaVox TTS Benchmark - {env.upper()} | {lang.upper()}")
     logger.info(f"Device: {device_info}")
     logger.info(f"Warmup: {config.warmup_rounds} | Rounds: {config.test_rounds}")
     logger.info("=" * 70)
+    
+    # Only run the specified language
+    config.languages = [lang]
 
     env_results = []
 
@@ -406,10 +430,10 @@ def run_benchmark_for_env_internal(env: str, args, result_file: str) -> bool:
     return True
 
 
-def run_env_in_subprocess(env: str, config: BenchmarkConfig, max_retries: int = 3) -> List[Dict[str, Any]]:
+def run_lang_env_in_subprocess(env: str, lang: str, config: BenchmarkConfig, max_retries: int = 3) -> List[Dict[str, Any]]:
     """
-    Run benchmark for an environment in a subprocess.
-    This enables environment switching (CPU<->GPU) with auto-recovery.
+    Run benchmark for an (environment, language) pair in a subprocess.
+    This ensures C-level memory (pyopenjtalk, jieba) is cleared between languages.
     """
     for attempt in range(max_retries):
         # Create temp file for results
@@ -422,16 +446,16 @@ def run_env_in_subprocess(env: str, config: BenchmarkConfig, max_retries: int = 
                 sys.executable,
                 str(BENCHMARK_DIR / "benchmark.py"),
                 "--_internal_env", env,
+                "--_internal_lang", lang,
                 "--_result_file", result_file,
                 "--mode", *config.modes,
                 "--version", *config.versions,
-                "--lang", *config.languages,
                 "--warmup", str(config.warmup_rounds),
                 "--rounds", str(config.test_rounds)
             ]
 
             logger.info(f"\n{'#'*70}")
-            logger.info(f"# Starting {env.upper()} environment (subprocess, attempt {attempt + 1}/{max_retries})")
+            logger.info(f"# Starting {env.upper()} - {lang.upper()} (subprocess, attempt {attempt + 1}/{max_retries})")
             logger.info(f"{'#'*70}")
 
             # Run subprocess
@@ -473,9 +497,9 @@ def run_benchmark():
     """Main benchmark runner with multi-environment support via subprocess isolation."""
     config = parse_args()
 
-    # Check if we're running as subprocess for a specific environment
-    if config._internal_env:
-        run_benchmark_for_env_internal(config._internal_env, config, config._result_file)
+    # Check if we're running as subprocess for a specific job
+    if config._internal_env and config._internal_lang:
+        run_benchmark_internal(config._internal_env, config._internal_lang, config, config._result_file)
         return
 
     # Main orchestrator mode
@@ -503,10 +527,11 @@ def run_benchmark():
     all_results = []
     timestamp = utils.get_timestamp_str()
 
-    # Run each environment in a subprocess for isolation
+    # Run each [env x lang] combination in a separate subprocess for total isolation
     for env in config.environments:
-        env_results = run_env_in_subprocess(env, config)
-        all_results.extend(env_results)
+        for lang in config.languages:
+            job_results = run_lang_env_in_subprocess(env, lang, config)
+            all_results.extend(job_results)
 
     # Generate final reports
     if all_results:

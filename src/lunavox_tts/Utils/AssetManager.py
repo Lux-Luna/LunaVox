@@ -12,6 +12,7 @@ from typing import Set, Optional, List
 
 from huggingface_hub import snapshot_download
 from .EnvManager import env_manager
+from .DependencyManager import dependency_manager
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ _PACK_DEPENDENCIES = {
 }
 
 
-class ResourceManager:
+class AssetManager:
     """
     Manages on-demand resource fetching from HuggingFace Hub.
     
@@ -136,7 +137,6 @@ class ResourceManager:
             # Still check dependencies even if files exist
             deps = _PACK_DEPENDENCIES.get(pack, [])
             if deps:
-                from .DependencyManager import dependency_manager
                 dependency_manager.check_dependencies(deps, pack.value.capitalize(), auto_install=True)
             return True
             
@@ -171,7 +171,6 @@ class ResourceManager:
             # --- CHECK PYTHON DEPENDENCIES ---
             deps = _PACK_DEPENDENCIES.get(pack, [])
             if deps:
-                from .DependencyManager import dependency_manager
                 dependency_manager.check_dependencies(deps, pack.value.capitalize(), auto_install=True)
                 
             return True
@@ -202,24 +201,4 @@ class ResourceManager:
         ignore = ["*prompt_encoder*"] if skip_prompt_encoder else None
         return self.ensure_pack(ResourcePack.V2PP, ignore_patterns=ignore)
 
-    # ===== Legacy API (Deprecated, for backward compatibility) =====
-    
-    def ensure_tts_data(self, v2pp: bool = False, skip_prompt_encoder: bool = False) -> None:
-        """[Deprecated] Use ensure_base() / ensure_extractor() instead."""
-        self.ensure_base()
-        if v2pp:
-            self.ensure_extractor()
-            self.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
-
-    def ensure_character_data(self, v2pp: bool = False, skip_prompt_encoder: bool = False) -> None:
-        """[Deprecated] Use ensure_base() / ensure_v2pp() instead."""
-        self.ensure_base()
-        if v2pp:
-            self.ensure_v2pp(skip_prompt_encoder=skip_prompt_encoder)
-
-    def ensure_roberta(self) -> None:
-        """[Deprecated] Use ensure_chinese() instead."""
-        self.ensure_chinese()
-
-
-resource_manager = ResourceManager()
+asset_manager = AssetManager()
