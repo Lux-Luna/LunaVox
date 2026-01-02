@@ -48,6 +48,18 @@ class EnvManager:
         if sys.platform == "win32" and self.get_mode() == "gpu":
             setup_portable_cuda_paths()
 
+        self._setup_default_paths()
+
+    def _setup_default_paths(self):
+        """Automatically configure environment variables for standard model paths if they exist."""
+        # 1. Hubert Model
+        if 'HUBERT_MODEL_PATH' not in os.environ:
+            hubert_path = self.data_root / 'TTSData' / 'chinese-hubert-base' / 'chinese-hubert-base.onnx'
+            if hubert_path.exists():
+                os.environ['HUBERT_MODEL_PATH'] = str(hubert_path)
+                logger.debug(f"Auto-configured HUBERT_MODEL_PATH: {hubert_path}")
+
+
     def _load_config(self):
         if self.config_file.exists():
             try:

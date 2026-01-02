@@ -28,8 +28,11 @@ from .utilities import (
     clear_reference_audio_cache,
     launch_command_line_client,
 )
+from .facade import initialize_tts
 
 __all__ = [
+    # Facade
+    "initialize_tts",
     # Characters
     "load_character",
     "unload_character",

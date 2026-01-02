@@ -30,7 +30,8 @@ from .API import (
     clear_reference_audio_cache, 
     launch_command_line_client,
     create_persona, 
-    load_persona
+    load_persona,
+    initialize_tts
 )
 
 # For multi-reference support
@@ -53,4 +54,5 @@ __all__ = [
     "start_server",
     "create_persona",
     "load_persona",
+    "initialize_tts",
 ]

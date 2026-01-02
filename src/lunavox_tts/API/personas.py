@@ -125,6 +125,7 @@ def create_persona(
 def load_persona(
         character_name: str,
         persona_dir: Union[str, PathLike],
+        force_model_version: str = None,
 ) -> None:
     """
     Load a previously saved Persona for reference-free TTS.
@@ -135,6 +136,8 @@ def load_persona(
     Args:
         character_name (str): The name of the character.
         persona_dir (str | PathLike): Path to the persona directory.
+        force_model_version (str, optional): Force loading a specific model version 
+                                             ('v2' or 'v2_pro_plus') regardless of persona metadata.
         
     Raises:
         FileNotFoundError: If the persona directory doesn't exist.
@@ -168,7 +171,11 @@ def load_persona(
     if model_manager.has_character(character_name):
         model_version = model_manager.get_character_version(character_name)
     else:
-        model_version = getattr(ref, 'model_version', 'v2')
+        # If force_model_version is provided, use it. Otherwise fallback to persona's version, then 'v2'
+        if force_model_version:
+            model_version = force_model_version
+        else:
+            model_version = getattr(ref, 'model_version', 'v2')
     
     # Register in reference audios dict
     set_reference_audio_config(character_name, {
@@ -193,7 +200,11 @@ def load_persona(
             
         logger.info(f"Auto-loading base {inferred_version} models for persona '{character_name}'...")
         # Pass skip_prompt_encoder upfront - no post-load healing needed
-        load_character(character_name, base_model_dir, skip_prompt_encoder=has_cached_ge)
+        # We can only skip prompt encoder if we have cached GE AND we are loading the v2pp model that uses it
+        # If we are forcing v2 model, prompt encoder is irrelevant anyway (not loaded by v2)
+        can_skip = has_cached_ge and (inferred_version == "v2ProPlus")
+        
+        load_character(character_name, base_model_dir, skip_prompt_encoder=can_skip)
     else:
         logger.info(f"Using already-loaded model for persona '{character_name}'.")
     
