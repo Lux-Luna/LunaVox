@@ -1,8 +1,5 @@
 # Data folders - contain large model files and audio resources
-CharacterData/
-TTSData/
-RoBERTa/
-Data/
+lunavoxData
 
 # Python cache files
 __pycache__/
@@ -129,8 +126,8 @@ Output/
 *.flac
 
 # Benchmark output
-benchmark/audio_output/
-benchmark/result/
+benchmark/audio_output
+benchmark/result
 
 # Temporary files
 temp/
@@ -141,15 +138,3 @@ tmp/
 # Documentation folders
 description/
 docs/
-# Accelerator plugin
-accelerator/deps/ort_sdk/
-accelerator/REPORT_CPP_ACCELERATOR.md
-accelerator/build/
-accelerator/*.pyd
-accelerator/*.exp
-accelerator/*.lib
-accelerator/onnxruntime.dll
-accelerator/build_log.txt
-accelerator/benchmark_log.txt
-accelerator/benchmark_accelerator_result.json
-accelerator/output/

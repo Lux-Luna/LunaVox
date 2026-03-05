@@ -18,10 +18,26 @@ if sys.platform == 'win32':
                 if comp_path not in os.environ['PATH']:
                     os.environ['PATH'] = comp_path + os.pathsep + os.environ['PATH']
 
-from ._internal import (load_character, unload_character, set_reference_audio, tts_async, tts, stop, convert_to_onnx,
-                        clear_reference_audio_cache, launch_command_line_client, load_predefined_character)
-from ._internal_multi_ref import set_multi_reference_audio, create_multi_reference_audio
-from .Server import start_server
+# Modern modular API
+from .API import (
+    load_character, 
+    unload_character, 
+    set_reference_audio, 
+    tts_async, 
+    tts, 
+    stop, 
+    convert_to_onnx,
+    clear_reference_audio_cache, 
+    launch_command_line_client,
+    create_persona, 
+    load_persona,
+    initialize_tts
+)
+
+# For multi-reference support
+from .API.synthesis import set_multi_reference_audio, create_multi_reference_audio
+
+from .Interface.Server import start_server
 
 __all__ = [
     "load_character",
@@ -36,5 +52,7 @@ __all__ = [
     "clear_reference_audio_cache",
     "launch_command_line_client",
     "start_server",
-    "load_predefined_character",
+    "create_persona",
+    "load_persona",
+    "initialize_tts",
 ]

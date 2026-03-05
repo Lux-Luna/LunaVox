@@ -1,117 +1,135 @@
-from os import PathLike
-from typing import AsyncIterator
+"""
+🔮 LunaVox API Tutorial & Documentation
+--------------------------------------
 
+This file provides a comprehensive guide on how to use the LunaVox TTS engine via its Python API.
+LunaVox is a lightweight, high-performance inference engine for GPT-SoVITS models.
 
-def load_character(character_name: str, onnx_model_dir: str | PathLike) -> None:
+Supported Model Versions:
+- GPT-SoVITS V2 (Standard)
+- GPT-SoVITS V2 Pro
+- GPT-SoVITS V2 Pro Plus
+"""
+
+import lunavox_tts as lunavox
+import asyncio
+
+def basic_usage():
     """
-    Loads a character model from an ONNX model directory.
-
-    Args:
-        character_name (str): The name to assign to the loaded character.
-        onnx_model_dir (str | PathLike): The directory path containing the ONNX model files.
+    Demonstrates the simplest way to use LunaVox:
+    1. Load a character model.
+    2. Set a reference audio (for voice cloning).
+    3. Perform TTS synthesis.
     """
-    pass
+    print("--- Basic Usage ---")
+    
+    # 1. Load a character model bundle
+    # A bundle is a directory containing the converted ONNX/BIN models.
+    # Supported versions (v2, v2Pro, v2ProPlus) are detected automatically.
+    character_dir = "./CharacterData/character_model/v2/pretrained"
+    lunavox.load_character("miku", character_dir)
+    
+    # 2. Set reference audio for cloning
+    # You must provide the audio path and its transcription.
+    # The language of the reference audio can be specified (default is "auto").
+    lunavox.set_reference_audio(
+        character_name="miku",
+        audio_path="./ref.wav",
+        audio_text="这是一段参考音频的内容文本。",
+        audio_language="zh"  # Language: zh, en, ja
+    )
+    
+    # 3. Synchronous TTS
+    # This call blocks until the entire sentence is synthesized.
+    # 'play=True' will play the result through your speakers.
+    # 'save_path' will save the result to a .wav file.
+    lunavox.tts(
+        character_name="miku",
+        text="你好，欢迎使用 LunaVox 语音合成引擎！",
+        play=True,
+        save_path="./output.wav",
+        language="zh"
+    )
 
-
-def unload_character(character_name: str) -> None:
+async def streaming_usage():
     """
-    Unloads a previously loaded character model to free up resources.
-
-    Args:
-        character_name (str): The name of the character to unload.
+    Demonstrates asynchronous streaming TTS.
+    Ideal for real-time applications where low latency is critical.
     """
-    pass
+    print("\n--- Streaming Usage ---")
+    
+    # lunavox.tts_async returns an AsyncIterator[bytes]
+    # It yields audio chunks (PCM data) as they are generated.
+    text = "Hello, this is a demonstration of streaming inference. It is very fast!"
+    
+    async for chunk in lunavox.tts_async(
+        character_name="miku",
+        text=text,
+        play=True,        # Play chunks immediately as they arrive
+        language="en"
+    ):
+        # Process the raw bytes here (e.g., send over network, write to buffer)
+        # Each chunk is a segment of the generated waveform.
+        pass
 
-
-def set_reference_audio(character_name: str, audio_path: str | PathLike, audio_text: str) -> None:
+def multi_reference_usage():
     """
-    Sets the reference audio for a character to be used for voice cloning.
-
-    This must be called for a character before using 'tts' or 'tts_async'.
-
-    Args:
-        character_name (str): The name of the character.
-        audio_path (str | PathLike): The file path to the reference audio (e.g., a WAV file).
-        audio_text (str): The transcript of the reference audio.
+    V2 Pro and V2 Pro Plus models support averaging multiple reference audios
+    to achieve a more stable and accurate character timbre.
     """
-    pass
+    print("\n--- Multi-Reference Usage ---")
+    
+    # For Pro/ProPlus models, use 'set_multi_reference_audio'
+    paths = ["./ref1.wav", "./ref2.wav", "./ref3.wav"]
+    texts = ["Text of ref 1", "Text of ref 2", "Text of ref 3"]
+    
+    # This will average the Speaker Vectors from all provided samples.
+    lunavox.set_multi_reference_audio(
+        character_name="miku",
+        audio_paths=paths,
+        audio_texts=texts,
+        audio_languages=["en", "en", "en"]
+    )
+    
+    lunavox.tts("miku", "This uses averaged speaker embeddings for better stability.")
 
-
-async def tts_async(character_name: str, text: str, play: bool = False, split_sentence: bool = False,
-                    save_path: str | PathLike | None = None, language: str = "ja") -> AsyncIterator[bytes]:
+def advanced_features():
     """
-    Asynchronously generates speech from text and yields audio chunks.
-
-    This function returns an async iterator that provides the audio data in
-    real-time as it's being generated.
-
-    Args:
-        character_name (str): The name of the character to use for synthesis.
-        text (str): The text to be synthesized into speech.
-        play (bool, optional): If True, plays the audio as it's generated. Defaults to False.
-        split_sentence (bool, optional): If True, splits the text into sentences for synthesis. Defaults to False.
-        save_path (str | PathLike | None, optional): If provided, saves the generated audio to this file path. Defaults to None.
-
-    Yields:
-        bytes: A chunk of the generated audio data.
-
-    Raises:
-        ValueError: If 'set_reference_audio' has not been called for the character.
+    Other useful API functions for resource management and services.
     """
-    pass
+    print("\n--- Advanced Features ---")
+    
+    # Unload a character to free GPU/RAM memory
+    lunavox.unload_character("miku")
+    
+    # Clear internal cache for reference audio features
+    lunavox.clear_reference_audio_cache()
+    
+    # Start a FastAPI server for external access (Blocks the thread)
+    # Default: host="127.0.0.1", port=8000, workers=1
+    # lunavox.start_server(host="0.0.0.0", port=8000)
+    
+    # Convert original PyTorch models (.ckpt/.pth) to LunaVox format
+    # lunavox.convert_to_onnx(
+    #     torch_ckpt_path="path/to/t2s.ckpt",
+    #     torch_pth_path="path/to/vits.pth",
+    #     output_dir="./ConvertedModel"
+    # )
 
-
-def tts(character_name: str, text: str, play: bool = False, split_sentence: bool = True,
-        save_path: str | PathLike | None = None, language: str = "ja") -> None:
-    """
-    Synchronously generates speech from text.
-
-    Args:
-        character_name (str): The name of the character to use for synthesis.
-        text (str): The text to be synthesized into speech.
-        play (bool, optional): If True, plays the audio.
-        split_sentence (bool, optional): If True, splits the text into sentences for synthesis.
-        save_path (str | PathLike | None, optional): If provided, saves the generated audio to this file path. Defaults to None.
-    """
-    pass
-
-
-def stop() -> None:
-    """
-    Stops the currently playing text-to-speech audio.
-    """
-    pass
-
-
-def convert_to_onnx(torch_ckpt_path: str | PathLike, torch_pth_path: str | PathLike,
-                    output_dir: str | PathLike) -> None:
-    """
-    Converts PyTorch model checkpoints to the ONNX format.
-
-    Args:
-        torch_ckpt_path (str | PathLike): The path to the T2S model (.ckpt) file.
-        torch_pth_path (str | PathLike): The path to the VITS model (.pth) file.
-        output_dir (str | PathLike): The directory where the ONNX models will be saved.
-    """
-    pass
-
-
-def clear_reference_audio_cache() -> None:
-    """
-    Clears the cache of reference audio data.
-    """
-    pass
-
-
-def launch_command_line_client() -> None:
-    """
-    Launch the command-line client.
-    """
-    pass
-
-
-def load_predefined_character(character_name: str) -> None:
-    """
-    Download and load a predefined character model for TTS inference.
-    """
-    pass
+if __name__ == "__main__":
+    # Note: Ensure you have the necessary models and reference audio files
+    # at the specified paths before running these examples.
+    
+    # 1. Basic Synchronous Example
+    # basic_usage()
+    
+    # 2. Async Streaming Example
+    # asyncio.run(streaming_usage())
+    
+    # 3. Multi-ref Example (Pro/ProPlus only)
+    # multi_reference_usage()
+    
+    # 4. Utilities
+    # advanced_features()
+    
+    print("Check the code in Tutorial/API.py to learn more about the LunaVox API!")

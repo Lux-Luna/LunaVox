@@ -4,7 +4,7 @@ from typing import Dict, Any
 import logging
 import importlib.resources
 
-from .Constants import PACKAGE_NAME
+from .Utils import PACKAGE_NAME
 
 logger = logging.getLogger(__name__)
 
