@@ -141,3 +141,15 @@ tmp/
 # Documentation folders
 description/
 docs/
+# Accelerator plugin
+accelerator/deps/ort_sdk/
+accelerator/REPORT_CPP_ACCELERATOR.md
+accelerator/build/
+accelerator/*.pyd
+accelerator/*.exp
+accelerator/*.lib
+accelerator/onnxruntime.dll
+accelerator/build_log.txt
+accelerator/benchmark_log.txt
+accelerator/benchmark_accelerator_result.json
+accelerator/output/
