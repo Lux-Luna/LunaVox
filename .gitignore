@@ -1,0 +1,67 @@
+# Build
+build/
+build_cuda/
+*.o
+*.a
+*.so
+*.dylib
+
+# Models (too large for git)
+models/*.gguf
+models/Qwen3-TTS-*/
+models/coreml/
+
+# Reference outputs (generated)
+reference/*.bin
+reference/*.wav
+reference/debug/
+
+# Test outputs
+test_output/
+test_results.txt
+*.wav
+!examples/readme_clone_input.wav
+!examples/readme_example_clone.wav
+tmp*.mlpackage/
+third_party/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug files
+debug_*.bin
+reference/decoder_debug/
+reference/debug/
+docs/
+
+# Models
+models/
+
+# output
+output/
+
+# Temporary
+*.md
+reference/
+# Models
+models/
+
+# output
+output/
+
+# Temporary
+*.md
+reference/
