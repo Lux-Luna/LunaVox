@@ -271,6 +271,26 @@ target_link_libraries(test_decoder PRIVATE
     OpenMP::OpenMP_CXX
 )
 
+# Test executable for Chinese tokenization
+add_executable(test_chinese
+    tests/test_chinese.cpp
+)
+target_link_libraries(test_chinese PRIVATE
+    text_tokenizer
+    Threads::Threads
+    OpenMP::OpenMP_CXX
+)
+
+# Test executable for Chinese TTS template token sequence
+add_executable(test_tts_template_chinese
+    tests/test_tts_template_chinese.cpp
+)
+target_link_libraries(test_tts_template_chinese PRIVATE
+    text_tokenizer
+    Threads::Threads
+    OpenMP::OpenMP_CXX
+)
+
 # Install targets
 install(TARGETS text_tokenizer tts_transformer audio_tokenizer_encoder audio_tokenizer_decoder qwen3_tts qwen3tts_shared qwen3-tts-cli
     ARCHIVE DESTINATION lib
@@ -305,5 +325,9 @@ add_test(NAME transformer_test
 )
 add_test(NAME decoder_test
     COMMAND test_decoder
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+add_test(NAME tts_template_chinese_test
+    COMMAND test_tts_template_chinese models/f16/qwen3-tts-0.6b-f16.gguf
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )

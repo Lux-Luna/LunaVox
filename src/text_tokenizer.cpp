@@ -1,6 +1,8 @@
 #include "text_tokenizer.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <sstream>
@@ -77,6 +79,68 @@ std::string TextTokenizer::unicode_to_bytes(const std::string & text) {
     return result;
 }
 
+bool TextTokenizer::is_cjk(uint32_t cp) {
+    return (cp >= 0x4E00 && cp <= 0x9FFF) ||   // CJK Unified Ideographs
+           (cp >= 0x3400 && cp <= 0x4DBF) ||   // CJK Unified Ideographs Extension A
+           (cp >= 0x20000 && cp <= 0x2A6DF) || // CJK Unified Ideographs Extension B
+           (cp >= 0xF900 && cp <= 0xFAFF) ||   // CJK Compatibility Ideographs
+           (cp >= 0x2F800 && cp <= 0x2FA1F);   // CJK Compatibility Ideographs Supplement
+}
+
+std::vector<std::string> TextTokenizer::split_regex_equivalent(const std::string & text) const {
+    std::vector<std::string> words;
+    std::string current;
+    
+    auto flush = [&]() {
+        if (!current.empty()) {
+            words.push_back(current);
+            current.clear();
+        }
+    };
+
+    size_t i = 0;
+    while (i < text.size()) {
+        uint32_t cp = 0;
+        size_t len = 0;
+        unsigned char c = (unsigned char)text[i];
+        
+        if (c < 0x80) { cp = c; len = 1; }
+        else if ((c & 0xE0) == 0xC0 && i + 1 < text.size()) { 
+            cp = ((c & 0x1F) << 6) | (text[i+1] & 0x3F); len = 2; 
+        }
+        else if ((c & 0xF0) == 0xE0 && i + 2 < text.size()) { 
+            cp = ((c & 0x0F) << 12) | ((text[i+1] & 0x3F) << 6) | (text[i+2] & 0x3F); len = 3; 
+        }
+        else if ((c & 0xF8) == 0xF0 && i + 3 < text.size()) { 
+            cp = ((c & 0x07) << 18) | ((text[i+1] & 0x3F) << 12) | ((text[i+2] & 0x3F) << 6) | (text[i+3] & 0x3F); len = 4; 
+        }
+        else { len = 1; cp = c; } // Invalid
+
+        bool is_alnum_cjk = (cp >= 'a' && cp <= 'z') || (cp >= 'A' && cp <= 'Z') || (cp >= '0' && cp <= '9') || is_cjk(cp);
+
+        if (isspace(c)) {
+            flush();
+            std::string spaces;
+            while (i < text.size() && isspace((unsigned char)text[i])) {
+                spaces += text[i];
+                i++;
+            }
+            words.push_back(spaces);
+            continue;
+        } else if (is_alnum_cjk) {
+            current += text.substr(i, len);
+        } else {
+            // Punctuation: isolate unless it's a known cluster
+            flush();
+            words.push_back(text.substr(i, len));
+        }
+        i += len;
+    }
+    flush();
+    
+    return words;
+}
+
 bool TextTokenizer::load_from_gguf(struct gguf_context * ctx) {
     if (!ctx) {
         error_msg_ = "GGUF context is null";
@@ -104,6 +168,9 @@ bool TextTokenizer::load_from_gguf(struct gguf_context * ctx) {
         if (token) {
             id_to_token_[i] = token;
             vocab_[token] = (int32_t)i;
+            if (i < 10 || (i >= 151640 && i <= 151650)) {
+                // printf("    Token %zu: '%s'\n", i, token);
+            }
         }
     }
     
@@ -111,11 +178,11 @@ bool TextTokenizer::load_from_gguf(struct gguf_context * ctx) {
     int64_t merges_key = gguf_find_key(ctx, "tokenizer.ggml.merges");
     if (merges_key >= 0) {
         size_t n_merges = gguf_get_arr_n(ctx, merges_key);
+        printf("  Loading %zu merges...\n", n_merges);
         for (size_t i = 0; i < n_merges; i++) {
             const char * merge = gguf_get_arr_str(ctx, merges_key, i);
             if (merge) {
                 std::string merge_str(merge);
-                // Parse "token1 token2" format
                 size_t space_pos = merge_str.find(' ');
                 if (space_pos != std::string::npos) {
                     std::string first = merge_str.substr(0, space_pos);
@@ -238,37 +305,15 @@ std::vector<int32_t> TextTokenizer::encode(const std::string & text) const {
     
     std::vector<int32_t> tokens;
     
-    // Convert text to GPT-2 unicode representation
-    std::string unicode_text = bytes_to_unicode(text);
+    // 1. Pre-tokenize into "words" (regex-equivalent)
+    std::vector<std::string> raw_words = split_regex_equivalent(text);
     
-    // Simple word splitting (no regex pre-tokenization for now)
-    // Split on spaces but keep the space with the following word (GPT-2 style)
-    std::vector<std::string> words;
-    std::string current_word;
-    
-    size_t i = 0;
-    while (i < unicode_text.size()) {
-        size_t len = utf8_len(unicode_text[i]);
-        std::string ch = unicode_text.substr(i, len);
+    // 2. Process each word
+    for (const auto & raw_word : raw_words) {
+        // Convert word to GPT-2 unicode representation
+        std::string word = bytes_to_unicode(raw_word);
         
-        // Check if this is a space (Ġ in GPT-2 encoding)
-        if (ch == "Ġ") {
-            if (!current_word.empty()) {
-                words.push_back(current_word);
-                current_word.clear();
-            }
-            current_word = ch;  // Start new word with space
-        } else {
-            current_word += ch;
-        }
-        i += len;
-    }
-    if (!current_word.empty()) {
-        words.push_back(current_word);
-    }
-    
-    // BPE encode each word
-    for (const auto & word : words) {
+        // BPE encode the word
         auto bpe_tokens = bpe(word);
         for (const auto & tok : bpe_tokens) {
             auto it = vocab_.find(tok);

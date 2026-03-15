@@ -83,6 +83,12 @@ private:
     // Find the pair with lowest rank in a sequence
     std::pair<std::string, std::string> get_min_pair(
         const std::vector<std::string> & word) const;
+
+    // Helper: split text into "words" using a regex-equivalent logic
+    std::vector<std::string> split_regex_equivalent(const std::string & text) const;
+
+    // Helper: check if a character is a CJK character
+    static bool is_cjk(uint32_t cp);
 };
 
 } // namespace qwen3_tts

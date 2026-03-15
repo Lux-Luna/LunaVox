@@ -38,6 +38,10 @@ struct tts_params {
     // Repetition penalty for CB0 token generation (HuggingFace style)
     float repetition_penalty = 1.05f;
 
+    // Auto-detect language from text when true.
+    // If false, use language_id as-is.
+    bool auto_language = true;
+
     // Language ID for codec (2050=en, 2069=ru, 2055=zh, 2058=ja, 2064=ko, 2053=de, 2061=fr, 2054=es)
     int32_t language_id = 2050;
 
@@ -64,6 +68,10 @@ struct tts_result {
     int64_t t_generate_ms = 0;
     int64_t t_decode_ms = 0;
     int64_t t_total_ms = 0;
+
+    // Language used for generation after auto-detection / override.
+    int32_t effective_language_id = 2050;
+    bool used_auto_language = false;
 
     // Process memory snapshots (bytes)
     uint64_t mem_rss_start_bytes = 0;

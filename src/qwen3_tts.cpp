@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cmath>
 #include <fstream>
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 
@@ -22,6 +23,115 @@
 #endif
 
 namespace qwen3_tts {
+
+static bool utf8_next_codepoint(const std::string & text, size_t & i, uint32_t & cp) {
+    if (i >= text.size()) {
+        return false;
+    }
+
+    const unsigned char c0 = (unsigned char) text[i];
+    if (c0 < 0x80) {
+        cp = c0;
+        ++i;
+        return true;
+    }
+
+    if ((c0 & 0xE0) == 0xC0 && i + 1 < text.size()) {
+        cp = ((uint32_t)(c0 & 0x1F) << 6) | (uint32_t)((unsigned char)text[i + 1] & 0x3F);
+        i += 2;
+        return true;
+    }
+    if ((c0 & 0xF0) == 0xE0 && i + 2 < text.size()) {
+        cp = ((uint32_t)(c0 & 0x0F) << 12) |
+             ((uint32_t)((unsigned char)text[i + 1] & 0x3F) << 6) |
+             (uint32_t)((unsigned char)text[i + 2] & 0x3F);
+        i += 3;
+        return true;
+    }
+    if ((c0 & 0xF8) == 0xF0 && i + 3 < text.size()) {
+        cp = ((uint32_t)(c0 & 0x07) << 18) |
+             ((uint32_t)((unsigned char)text[i + 1] & 0x3F) << 12) |
+             ((uint32_t)((unsigned char)text[i + 2] & 0x3F) << 6) |
+             (uint32_t)((unsigned char)text[i + 3] & 0x3F);
+        i += 4;
+        return true;
+    }
+
+    // Invalid UTF-8 byte, consume one byte to keep scanning robust.
+    cp = c0;
+    ++i;
+    return true;
+}
+
+static bool is_cjk_ideograph(uint32_t cp) {
+    return (cp >= 0x4E00 && cp <= 0x9FFF) ||
+           (cp >= 0x3400 && cp <= 0x4DBF) ||
+           (cp >= 0x20000 && cp <= 0x2A6DF) ||
+           (cp >= 0xF900 && cp <= 0xFAFF) ||
+           (cp >= 0x2F800 && cp <= 0x2FA1F);
+}
+
+static int32_t detect_language_id_from_text(const std::string & text) {
+    int64_t n_han = 0;
+    int64_t n_kana = 0;
+    int64_t n_hangul = 0;
+    int64_t n_cyrillic = 0;
+    int64_t n_latin = 0;
+
+    size_t i = 0;
+    uint32_t cp = 0;
+    while (utf8_next_codepoint(text, i, cp)) {
+        if ((cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z') ||
+            (cp >= 0x00C0 && cp <= 0x024F)) {
+            ++n_latin;
+            continue;
+        }
+        if ((cp >= 0x3040 && cp <= 0x309F) || // Hiragana
+            (cp >= 0x30A0 && cp <= 0x30FF) || // Katakana
+            (cp >= 0x31F0 && cp <= 0x31FF)) { // Katakana Phonetic Extensions
+            ++n_kana;
+            continue;
+        }
+        if ((cp >= 0xAC00 && cp <= 0xD7AF) || // Hangul syllables
+            (cp >= 0x1100 && cp <= 0x11FF) || // Hangul Jamo
+            (cp >= 0x3130 && cp <= 0x318F)) { // Hangul Compatibility Jamo
+            ++n_hangul;
+            continue;
+        }
+        if ((cp >= 0x0400 && cp <= 0x04FF) || // Cyrillic
+            (cp >= 0x0500 && cp <= 0x052F)) {
+            ++n_cyrillic;
+            continue;
+        }
+        if (is_cjk_ideograph(cp)) {
+            ++n_han;
+            continue;
+        }
+    }
+
+    if (n_kana > 0) return 2058;      // ja
+    if (n_hangul > 0) return 2064;    // ko
+    if (n_cyrillic > 0) return 2069;  // ru
+    if (n_han > 0) return 2055;       // zh
+    if (n_latin > 0) return 2050;     // en
+    return 2050;
+}
+
+static const char * language_name_from_id(int32_t language_id) {
+    switch (language_id) {
+        case 2050: return "en";
+        case 2069: return "ru";
+        case 2055: return "zh";
+        case 2058: return "ja";
+        case 2064: return "ko";
+        case 2053: return "de";
+        case 2061: return "fr";
+        case 2054: return "es";
+        case 2070: return "it";
+        case 2071: return "pt";
+        default:   return "unknown";
+    }
+}
 
 static int64_t get_time_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -400,6 +510,20 @@ tts_result Qwen3TTS::synthesize_internal(const std::string & text,
         if (text_tokens.size() > 10) fprintf(stderr, "...");
         fprintf(stderr, "\n");
     }
+
+    int32_t effective_language_id = params.language_id;
+    if (params.auto_language) {
+        effective_language_id = detect_language_id_from_text(text);
+    }
+    result.effective_language_id = effective_language_id;
+    result.used_auto_language = params.auto_language;
+
+    if (params.print_timing || params.print_progress) {
+        fprintf(stderr, "Language selection: %s -> %s (%d)\n",
+                params.auto_language ? "auto" : "manual",
+                language_name_from_id(effective_language_id),
+                effective_language_id);
+    }
     
     // Step 3: Generate speech codes using TTS transformer
     int64_t t_generate_start = get_time_ms();
@@ -421,7 +545,7 @@ tts_result Qwen3TTS::synthesize_internal(const std::string & text,
     std::vector<int32_t> speech_codes;
     if (!transformer_.generate(text_tokens.data(), (int32_t)text_tokens.size(),
                                speaker_embedding, params.max_audio_tokens, speech_codes,
-                               params.language_id, params.repetition_penalty,
+                               effective_language_id, params.repetition_penalty,
                                params.temperature, params.top_k)) {
         result.error_msg = "Failed to generate speech codes: " + transformer_.get_error();
         return result;
