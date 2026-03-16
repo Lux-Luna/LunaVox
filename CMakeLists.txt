@@ -155,64 +155,62 @@ function(qwen3_tts_finalize_binary target_name)
     endif()
 endfunction()
 
-if(NOT GGML_BUILD_DIR)
-    foreach(_ggml_build_hint
-            "${CMAKE_CURRENT_SOURCE_DIR}/ggml/build"
-            "${CMAKE_CURRENT_SOURCE_DIR}/ggml1/build")
-        if(EXISTS "${_ggml_build_hint}/CMakeCache.txt")
-            set(GGML_BUILD_DIR "${_ggml_build_hint}")
-            break()
-        endif()
-    endforeach()
-endif()
+# --- GGML Integration ---
 
 set(_qwen3_tts_ggml_provider "")
-set(_qwen3_tts_ggml_package_hints "")
 
+# Option 1: User provided a pre-configured GGML build tree
 if(GGML_BUILD_DIR)
-    foreach(_ggml_package_hint
-            "${GGML_BUILD_DIR}/lib/cmake/ggml"
-            "${GGML_BUILD_DIR}/share/cmake/ggml")
-        if(EXISTS "${_ggml_package_hint}/ggml-config.cmake")
-            list(APPEND _qwen3_tts_ggml_package_hints "${_ggml_package_hint}")
-        endif()
-    endforeach()
-
-    if(_qwen3_tts_ggml_package_hints)
-        find_package(ggml CONFIG QUIET PATHS ${_qwen3_tts_ggml_package_hints} NO_DEFAULT_PATH)
-        if(ggml_FOUND)
-            set(_qwen3_tts_ggml_provider "package")
-        endif()
-    endif()
-
-    if(NOT ggml_FOUND AND EXISTS "${GGML_BUILD_DIR}/CMakeCache.txt")
+    if(EXISTS "${GGML_BUILD_DIR}/CMakeCache.txt")
         qwen3_tts_import_ggml_build_tree("${GGML_BUILD_DIR}")
         set(ggml_FOUND TRUE)
-        set(_qwen3_tts_ggml_provider "build-tree")
+        set(_qwen3_tts_ggml_provider "external-build-tree")
+    else()
+        message(FATAL_ERROR "Provided GGML_BUILD_DIR does not contain a valid CMakeCache.txt: ${GGML_BUILD_DIR}")
     endif()
 endif()
 
+# Option 2: Integrated build (preferred for one-shot build)
+if(NOT ggml_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ggml/CMakeLists.txt")
+    message(STATUS "Integrating GGML from submodule/subdirectory")
+    
+    # Configure GGML options before adding it
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build shared libraries" FORCE)
+    set(GGML_STATIC ON CACHE BOOL "Build GGML as static library" FORCE)
+    
+    add_subdirectory(ggml)
+    
+    # In integrated mode, targets like 'ggml', 'ggml-base' are available directly
+    if(NOT TARGET ggml::ggml)
+        add_library(ggml::ggml-base ALIAS ggml-base)
+        add_library(ggml::ggml ALIAS ggml)
+    endif()
+    
+    set(ggml_FOUND TRUE)
+    set(_qwen3_tts_ggml_provider "integrated-source")
+    
+    # Standardize include directories for integrated build
+    set(GGML_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ggml/include")
+endif()
+
+# Option 3: Fallback to system/package search
 if(NOT ggml_FOUND)
     find_package(ggml CONFIG QUIET)
     if(ggml_FOUND)
-        set(_qwen3_tts_ggml_provider "package")
+        set(_qwen3_tts_ggml_provider "system-package")
     endif()
 endif()
 
 if(NOT ggml_FOUND)
-    string(REPLACE ";" "\n  " _qwen3_tts_hints_display "${_qwen3_tts_ggml_package_hints}")
     message(FATAL_ERROR
-        "Failed to find GGML.\n"
-        "Provide one of:\n"
-        "  -DGGML_BUILD_DIR=<path-to-configured-ggml-build>\n"
-        "  -Dggml_DIR=<path-to-ggml-config.cmake>\n"
-        "  -DCMAKE_PREFIX_PATH=<ggml-install-prefix>\n"
-        "Package hints searched:\n  ${_qwen3_tts_hints_display}")
+        "Failed to find or integrate GGML.\n"
+        "Please ensure the 'ggml' submodule is initialized (git submodule update --init --recursive)\n"
+        "or provide -DGGML_BUILD_DIR=<path>.")
 endif()
 
 add_library(qwen3_tts_ggml INTERFACE)
 target_link_libraries(qwen3_tts_ggml INTERFACE ggml::ggml)
-if(DEFINED GGML_INCLUDE_DIR AND EXISTS "${GGML_INCLUDE_DIR}")
+if(GGML_INCLUDE_DIR)
     target_include_directories(qwen3_tts_ggml INTERFACE "${GGML_INCLUDE_DIR}")
 endif()
 

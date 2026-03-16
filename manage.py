@@ -14,6 +14,7 @@ COMMANDS = {
     "convert-tok": TOOLS / "conversion" / "convert_tokenizer_to_gguf.py",
     "convert-coreml": TOOLS / "conversion" / "convert_code_predictor_to_coreml.py",
     "inspect": TOOLS / "conversion" / "inspect_models.py",
+    "build": TOOLS / "build_manager.py",
 }
 
 def usage() -> None:

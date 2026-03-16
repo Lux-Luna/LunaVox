@@ -53,8 +53,7 @@ models/
 # output
 output/
 
-# Temporary
-*.md
+
 reference/
 # Models
 models/
@@ -63,14 +62,12 @@ models/
 output/
 
 # Temporary
-*.md
 reference/
 *.txt
 tools/toolchains/
 ggml/
-dev/
-build_cuda/
-build_cpu/
+build-cuda/
+build-cpu/
 ggml/build/
 ggml/build_cuda/
 ggml/build_cpu
