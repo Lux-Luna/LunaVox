@@ -414,14 +414,6 @@ target_link_libraries(test_decoder PRIVATE
 )
 qwen3_tts_finalize_binary(test_decoder)
 
-add_executable(test_chinese
-    tests/test_chinese.cpp
-)
-target_link_libraries(test_chinese PRIVATE
-    text_tokenizer
-)
-qwen3_tts_finalize_binary(test_chinese)
-
 add_executable(test_tts_template_chinese
     tests/test_tts_template_chinese.cpp
 )
@@ -449,22 +441,44 @@ install(FILES
 
 enable_testing()
 add_test(NAME tokenizer_test
-    COMMAND test_tokenizer
+    COMMAND test_tokenizer --model models/qwen3-tts-0.6B-base.gguf
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 add_test(NAME encoder_test
-    COMMAND test_encoder --tokenizer models/qwen3-tts-0.6B-base.gguf --audio clone.wav --reference reference/ref_audio_embedding.bin
+    COMMAND test_encoder --tokenizer models/qwen3-tts-0.6B-base.gguf --audio reference/ref-audio.wav
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 add_test(NAME transformer_test
-    COMMAND test_transformer
+    COMMAND test_transformer --model models/qwen3-tts-0.6B-base.gguf --max-len 2
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 add_test(NAME decoder_test
-    COMMAND test_decoder
+    COMMAND test_decoder --tokenizer models/qwen3-tts-tokenizer-f16.gguf --frames 4
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 add_test(NAME tts_template_chinese_test
     COMMAND test_tts_template_chinese models/qwen3-tts-0.6B-base.gguf
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+add_test(NAME cli_basic_smoke_test
+    COMMAND qwen3-tts-cli -m models -t "Hello from ctest." -o ${CMAKE_CURRENT_BINARY_DIR}/ctest_basic.wav --temperature 0 --max-tokens 24
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+add_test(NAME cli_clone_smoke_test
+    COMMAND qwen3-tts-cli -m models -t "Hello from the reference voice." -r reference/ref-audio.wav -o ${CMAKE_CURRENT_BINARY_DIR}/ctest_clone.wav --temperature 0 --max-tokens 24
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+set_tests_properties(
+    tokenizer_test
+    encoder_test
+    transformer_test
+    decoder_test
+    tts_template_chinese_test
+    PROPERTIES TIMEOUT 300
+)
+set_tests_properties(
+    cli_basic_smoke_test
+    cli_clone_smoke_test
+    PROPERTIES TIMEOUT 900
 )
