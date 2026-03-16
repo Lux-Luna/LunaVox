@@ -1,4 +1,4 @@
-# qwen3-tts.cpp
+# Lunavox
 
 C++ inference for [Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base) using the [GGML](https://github.com/ggml-org/ggml) tensor library.
 
@@ -23,8 +23,8 @@ Runs the full TTS pipeline in pure C++17, including text tokenization, speaker e
 ## Quickstart
 
 ```bash
-git clone https://github.com/predict-woo/qwen3-tts.cpp.git
-cd qwen3-tts.cpp
+git clone https://github.com/Lux-Luna/LunaVox
+cd LunaVox
 git submodule update --init --recursive
 
 # 1. Build the project

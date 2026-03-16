@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-One-shot model setup for qwen3-tts.cpp.
+One-shot model setup for LunaVox.
 
 This script downloads required Hugging Face model assets and generates all model
 artifacts needed by the final C++ pipeline:

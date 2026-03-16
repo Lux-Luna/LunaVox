@@ -53,12 +53,17 @@ class MSVCEnv:
         # Run vcvars and then print the environment
         cmd = f'call "{vcvars}" && set'
         try:
-            output = subprocess.check_output(cmd, shell=True, encoding="utf-8", stderr=subprocess.STDOUT)
+            # vcvarsall.bat often outputs in system locale (e.g., GBK on Chinese Windows)
+            # Use errors="ignore" or "replace" to avoid crashing on decode
+            output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode(errors="ignore")
             new_env = {}
             for line in output.splitlines():
                 if "=" in line:
-                    key, val = line.split("=", 1)
-                    new_env[key] = val
+                    try:
+                        key, val = line.split("=", 1)
+                        new_env[key] = val
+                    except ValueError:
+                        continue
             return new_env
         except Exception as e:
             print(f"[warn] Failed to capture MSVC env: {e}")

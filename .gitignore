@@ -11,11 +11,6 @@ models/*.gguf
 models/Qwen3-TTS-*/
 models/coreml/
 
-# Reference outputs (generated)
-reference/*.bin
-reference/*.wav
-reference/debug/
-
 # Test outputs
 test_output/
 test_results.txt
