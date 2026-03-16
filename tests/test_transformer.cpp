@@ -77,7 +77,7 @@ static float mean_abs_error(const float * a, const float * b, size_t n) {
 static void print_usage(const char * prog) {
     printf("Usage: %s [options]\n", prog);
     printf("Options:\n");
-    printf("  --model <path>       Path to TTS GGUF model (default: models/qwen3-tts-0.6b-f16.gguf)\n");
+    printf("  --model <path>       Path to TTS GGUF model (default: models/qwen3-tts-0.6B-base.gguf)\n");
     printf("  --ref-dir <dir>      Directory for all reference files (default: reference/)\n");
     printf("  --tokens <path>      Path to text tokens binary (overrides ref-dir)\n");
     printf("  --speaker <path>     Path to speaker embedding binary (overrides ref-dir)\n");
@@ -94,7 +94,7 @@ static void print_usage(const char * prog) {
 // ---------------------------------------------------------------------------
 
 int main(int argc, char ** argv) {
-    std::string model_path   = "models/qwen3-tts-0.6b-f16.gguf";
+    std::string model_path   = "models/qwen3-tts-0.6B-base.gguf";
     std::string ref_dir      = "reference/";
 
     // Per-file overrides (empty = use ref_dir + default name)

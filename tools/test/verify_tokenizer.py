@@ -3,7 +3,7 @@
 Verify tokenizer output against Python reference implementation.
 
 Usage:
-    python tools/test/verify_tokenizer.py --model models/qwen3-tts-0.6b-f16.gguf
+    python tools/test/verify_tokenizer.py --model models/qwen3-tts-0.6B-base.gguf
 """
 
 import argparse

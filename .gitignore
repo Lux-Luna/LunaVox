@@ -67,4 +67,10 @@ output/
 reference/
 *.txt
 tools/toolchains/
-ggml1/
+ggml/
+dev/
+build_cuda/
+build_cpu/
+ggml/build/
+ggml/build_cuda/
+ggml/build_cpu

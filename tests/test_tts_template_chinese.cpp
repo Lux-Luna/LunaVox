@@ -17,7 +17,7 @@ static void print_tokens(const char * label, const std::vector<int32_t> & tokens
 }
 
 int main(int argc, char ** argv) {
-    const char * model_path = (argc > 1) ? argv[1] : "models/f16/qwen3-tts-0.6b-f16.gguf";
+    const char * model_path = (argc > 1) ? argv[1] : "models/qwen3-tts-0.6B-base.gguf";
     const std::string text = "\xE4\xBD\xA0\xE5\xA5\xBD\xEF\xBC\x8C\xE4\xB8\xAD\xE6\x96\x87";
 
     qwen3_tts::GGUFLoader loader;
