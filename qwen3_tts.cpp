@@ -115,7 +115,7 @@ bool Qwen3TTS::load_models(const std::string & model_dir) {
     decoder_loaded_ = false;
     
     // Construct model paths
-    std::string tts_model_path = model_dir + "/qwen3-tts-0.6b-f16.gguf";
+    std::string tts_model_path = model_dir + "/qwen3-tts-0.6B-base.gguf";
     std::string tokenizer_model_path = model_dir + "/qwen3-tts-tokenizer-f16.gguf";
     tts_model_path_ = tts_model_path;
     decoder_model_path_ = tokenizer_model_path;

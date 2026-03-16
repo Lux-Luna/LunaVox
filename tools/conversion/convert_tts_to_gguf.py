@@ -3,17 +3,21 @@
 Convert HuggingFace Qwen3-TTS-12Hz-0.6B-Base model to GGUF format.
 
 Usage:
-    python scripts/convert_tts_to_gguf.py \
+    python tools/conversion/convert_tts_to_gguf.py \
         --input models/Qwen3-TTS-12Hz-0.6B-Base \
-        --output models/qwen3-tts-0.6b-f16.gguf \
-        --type f16
+        --output models/qwen3-tts-0.6B-base.gguf \
+        --talker-type q5_k \
+        --predictor-type q8_0 \
+        --speaker-type f16
 """
 
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import logging
+import os
 import re
 import sys
 from pathlib import Path
@@ -40,6 +44,33 @@ logger = logging.getLogger(__name__)
 
 class Qwen3TTSConverter:
     """Converter for Qwen3-TTS-12Hz-0.6B-Base model to GGUF format."""
+
+    SUPPORTED_TYPES = {"f32", "f16", "q8_0", "q4_k", "q5_k"}
+
+    QUANT_TYPE_MAP = {
+        "f32": gguf.GGMLQuantizationType.F32,
+        "f16": gguf.GGMLQuantizationType.F16,
+        "q8_0": gguf.GGMLQuantizationType.Q8_0,
+        "q4_k": gguf.GGMLQuantizationType.Q4_K,
+        "q5_k": gguf.GGMLQuantizationType.Q5_K,
+    }
+
+    FILE_TYPE_MAP = {
+        "f32": gguf.LlamaFileType.ALL_F32,
+        "f16": gguf.LlamaFileType.MOSTLY_F16,
+        "q8_0": gguf.LlamaFileType.MOSTLY_Q8_0,
+        "q4_k": gguf.LlamaFileType.MOSTLY_Q4_K_M,
+        "q5_k": gguf.LlamaFileType.MOSTLY_Q5_K_M,
+    }
+
+    # Keep in sync with enum ggml_type in ggml/include/ggml.h.
+    GGML_TYPE_MAP = {
+        "f32": 0,
+        "f16": 1,
+        "q8_0": 8,
+        "q4_k": 12,
+        "q5_k": 13,
+    }
 
     # Direct tensor name mapping from HuggingFace to GGML conventions
     TENSOR_MAP = {
@@ -130,10 +161,23 @@ class Qwen3TTSConverter:
         input_dir: Path,
         output_path: Path,
         output_type: str = "f16",
+        talker_type: str | None = None,
+        predictor_type: str | None = None,
+        speaker_type: str | None = None,
     ):
         self.input_dir = input_dir
         self.output_path = output_path
-        self.output_type = output_type
+        self.output_type = output_type.lower()
+        self.quant_policy = {
+            "talker": (talker_type or self.output_type).lower(),
+            "code_pred": (predictor_type or self.output_type).lower(),
+            "spk_enc": (speaker_type or self.output_type).lower(),
+        }
+        self._ggml_quant_lib: ctypes.CDLL | None = None
+        self._ggml_quant_lib_path: Path | None = None
+        self._validate_quant_policy()
+        if "q5_k" in self.quant_policy.values():
+            self._init_ggml_quant_lib()
 
         # Load config
         self.config = self._load_config()
@@ -190,6 +234,127 @@ class Qwen3TTSConverter:
         # Model name
         self.model_name = "Qwen3-TTS-12Hz-0.6B"
 
+    def _validate_quant_policy(self) -> None:
+        """Validate quantization policy and type support."""
+        for module_name, quant_type in self.quant_policy.items():
+            if quant_type not in self.SUPPORTED_TYPES:
+                supported = ", ".join(sorted(self.SUPPORTED_TYPES))
+                raise ValueError(
+                    f"Unsupported quantization type '{quant_type}' for module '{module_name}'. "
+                    f"Supported types: {supported}"
+                )
+
+            # Ensure requested quantization type exists in current gguf package.
+            if quant_type not in self.QUANT_TYPE_MAP:
+                raise ValueError(f"Quantization type '{quant_type}' is not available in current gguf package")
+
+    def _init_ggml_quant_lib(self) -> None:
+        """Load ggml-base library for quantization types missing in gguf-py (e.g., Q5_K)."""
+        if self._ggml_quant_lib is not None:
+            return
+
+        repo_root = Path(__file__).resolve().parents[2]
+        env_path = os.environ.get("QWEN3_TTS_GGML_BASE_LIB", "").strip()
+        candidates: list[Path] = []
+
+        if env_path:
+            candidates.append(Path(env_path))
+
+        if sys.platform == "win32":
+            candidates.append(repo_root / "ggml" / "build" / "bin" / "ggml-base.dll")
+        elif sys.platform == "darwin":
+            candidates.append(repo_root / "ggml" / "build" / "src" / "libggml-base.dylib")
+            candidates.append(repo_root / "ggml" / "build" / "bin" / "libggml-base.dylib")
+        else:
+            candidates.append(repo_root / "ggml" / "build" / "src" / "libggml-base.so")
+            candidates.append(repo_root / "ggml" / "build" / "bin" / "libggml-base.so")
+
+        last_err: Exception | None = None
+        for path in candidates:
+            if not path.exists():
+                continue
+            try:
+                lib = ctypes.CDLL(str(path))
+                lib.ggml_quantize_requires_imatrix.argtypes = [ctypes.c_int]
+                lib.ggml_quantize_requires_imatrix.restype = ctypes.c_bool
+                lib.ggml_blck_size.argtypes = [ctypes.c_int]
+                lib.ggml_blck_size.restype = ctypes.c_longlong
+                lib.ggml_row_size.argtypes = [ctypes.c_int, ctypes.c_longlong]
+                lib.ggml_row_size.restype = ctypes.c_size_t
+                lib.ggml_quantize_chunk.argtypes = [
+                    ctypes.c_int,
+                    ctypes.POINTER(ctypes.c_float),
+                    ctypes.c_void_p,
+                    ctypes.c_longlong,
+                    ctypes.c_longlong,
+                    ctypes.c_longlong,
+                    ctypes.POINTER(ctypes.c_float),
+                ]
+                lib.ggml_quantize_chunk.restype = ctypes.c_size_t
+                self._ggml_quant_lib = lib
+                self._ggml_quant_lib_path = path
+                logger.info("Using ggml quantization backend from %s", path)
+                return
+            except Exception as err:
+                last_err = err
+
+        raise RuntimeError(
+            "Q5_K quantization requires ggml-base runtime library, but it could not be loaded. "
+            f"Tried: {[str(p) for p in candidates]}. "
+            "Build ggml first or set QWEN3_TTS_GGML_BASE_LIB to the library path."
+            + (f" Last error: {last_err}" if last_err else "")
+        )
+
+    def _quantize_with_ggml(
+        self,
+        data: np.ndarray,
+        target_type: str,
+        tensor_name: str,
+    ) -> np.ndarray:
+        """Quantize a 2D float matrix using ggml runtime quantize API."""
+        self._init_ggml_quant_lib()
+        assert self._ggml_quant_lib is not None
+
+        if data.ndim != 2:
+            raise RuntimeError(f"ggml quantization expects 2D tensors, got {data.ndim}D for '{tensor_name}'")
+
+        ggml_type = self.GGML_TYPE_MAP[target_type]
+        if self._ggml_quant_lib.ggml_quantize_requires_imatrix(ggml_type):
+            raise RuntimeError(
+                f"Quantization type '{target_type}' requires an importance matrix, unsupported for '{tensor_name}'"
+            )
+
+        nrows = int(data.shape[0])
+        n_per_row = int(data.shape[1])
+        block_size = int(self._ggml_quant_lib.ggml_blck_size(ggml_type))
+        if block_size <= 0 or n_per_row % block_size != 0:
+            raise RuntimeError(
+                f"Tensor '{tensor_name}' shape {data.shape} is incompatible with {target_type} "
+                f"(n_per_row={n_per_row}, block_size={block_size})"
+            )
+
+        row_size = int(self._ggml_quant_lib.ggml_row_size(ggml_type, n_per_row))
+        src = np.ascontiguousarray(data, dtype=np.float32)
+        dst = np.empty((nrows * row_size,), dtype=np.uint8)
+
+        written = int(
+            self._ggml_quant_lib.ggml_quantize_chunk(
+                ggml_type,
+                src.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                dst.ctypes.data_as(ctypes.c_void_p),
+                0,
+                nrows,
+                n_per_row,
+                None,
+            )
+        )
+        if written != dst.nbytes:
+            raise RuntimeError(
+                f"ggml quantization wrote {written} bytes, expected {dst.nbytes} for '{tensor_name}'"
+            )
+
+        return dst.reshape((nrows, row_size))
+
     def _map_tensor_name(self, hf_name: str) -> str | None:
         """Map HuggingFace tensor name to GGML convention."""
         # Check direct mapping first
@@ -241,31 +406,43 @@ class Qwen3TTSConverter:
                 for name in f.keys():
                     yield name, f.get_tensor(name)
 
-    def _should_quantize(self, tensor_name: str) -> bool:
-        """Determine if a tensor should be quantized (Q8_0) or kept in F16.
-        
-        Tensors to keep in F16 for quality:
-        - Embeddings (codec_embd, text_embd, codebook)
-        - Layer norms (attn_norm, ffn_norm, output_norm)
-        - Biases
-        - LM heads
-        """
+    def _module_from_tensor_name(self, tensor_name: str) -> str:
+        """Get module name for a GGML tensor name."""
+        if tensor_name.startswith("talker."):
+            return "talker"
+        if tensor_name.startswith("code_pred."):
+            return "code_pred"
+        if tensor_name.startswith("spk_enc."):
+            return "spk_enc"
+        return "talker"
+
+    def _target_type_for_tensor(self, tensor_name: str) -> str:
+        """Get configured target type for a GGML tensor name."""
+        module_name = self._module_from_tensor_name(tensor_name)
+        return self.quant_policy[module_name]
+
+    def _should_quantize(self, tensor_name: str, n_dims: int) -> bool:
+        """Determine if a tensor should be quantized or kept in floating point."""
+        # Only quantize 2D weight matrices.
+        if n_dims != 2 or ".weight" not in tensor_name:
+            return False
+
         # Keep embeddings in F16
         if any(x in tensor_name for x in ["_embd", "codebook"]):
             return False
-        
+
         # Keep layer norms in F16
         if "_norm" in tensor_name:
             return False
-        
+
         # Keep biases in F16
         if ".bias" in tensor_name:
             return False
-        
+
         # Keep LM heads in F16
         if "lm_head" in tensor_name or "codec_head" in tensor_name:
             return False
-        
+
         # Quantize weight matrices
         return True
 
@@ -286,37 +463,31 @@ class Qwen3TTSConverter:
         if n_dims <= 1:
             return data.astype(np.float32), gguf.GGMLQuantizationType.F32
 
-        # For 2D+ tensors, use the specified output type
-        if self.output_type == "f32":
+        target_type = self._target_type_for_tensor(tensor_name)
+
+        # For 2D+ tensors, use module-specific output type.
+        if target_type == "f32":
             return data.astype(np.float32), gguf.GGMLQuantizationType.F32
-        elif self.output_type == "f16":
+        if target_type == "f16":
             return data.astype(np.float16), gguf.GGMLQuantizationType.F16
-        elif self.output_type == "q8_0":
-            if not self._should_quantize(tensor_name):
-                logger.debug(f"Keeping {tensor_name} in F16 (not quantizing)")
-                return data.astype(np.float16), gguf.GGMLQuantizationType.F16
-            
-            data = data.astype(np.float32)
-            try:
-                quantized = gguf.quants.quantize(data, gguf.GGMLQuantizationType.Q8_0)
-                return quantized, gguf.GGMLQuantizationType.Q8_0
-            except Exception as e:
-                logger.warning(f"Q8_0 quantization failed for {tensor_name}: {e}, falling back to F16")
-                return data.astype(np.float16), gguf.GGMLQuantizationType.F16
-        elif self.output_type == "q4_k":
-            if not self._should_quantize(tensor_name):
-                logger.debug(f"Keeping {tensor_name} in F16 (not quantizing)")
-                return data.astype(np.float16), gguf.GGMLQuantizationType.F16
-            
-            data = data.astype(np.float32)
-            try:
-                quantized = gguf.quants.quantize(data, gguf.GGMLQuantizationType.Q4_K)
-                return quantized, gguf.GGMLQuantizationType.Q4_K
-            except Exception as e:
-                logger.warning(f"Q4_K quantization failed for {tensor_name}: {e}, falling back to F16")
-                return data.astype(np.float16), gguf.GGMLQuantizationType.F16
-        else:
+
+        if not self._should_quantize(tensor_name, n_dims):
+            logger.debug(f"Keeping {tensor_name} in F16 (not quantizing)")
             return data.astype(np.float16), gguf.GGMLQuantizationType.F16
+
+        data = data.astype(np.float32)
+        quant_type = self.QUANT_TYPE_MAP[target_type]
+        if target_type == "q5_k":
+            quantized = self._quantize_with_ggml(data, target_type, tensor_name)
+            return quantized, quant_type
+
+        try:
+            quantized = gguf.quants.quantize(data, quant_type)
+            return quantized, quant_type
+        except Exception as e:
+            raise RuntimeError(
+                f"Quantization failed for tensor '{tensor_name}' with target type '{target_type}': {e}"
+            ) from e
 
     def _load_tokenizer(self) -> tuple[list[str], list[int], list[str]]:
         """Load tokenizer vocabulary and merges."""
@@ -365,7 +536,12 @@ class Qwen3TTSConverter:
         logger.info(f"Converting {self.model_name} to GGUF format")
         logger.info(f"Input: {self.input_dir}")
         logger.info(f"Output: {self.output_path}")
-        logger.info(f"Output type: {self.output_type}")
+        logger.info(
+            "Quant policy: talker=%s, predictor=%s, speaker=%s",
+            self.quant_policy["talker"],
+            self.quant_policy["code_pred"],
+            self.quant_policy["spk_enc"],
+        )
 
         # Create output directory if needed
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -421,17 +597,9 @@ class Qwen3TTSConverter:
         writer.add_name(self.model_name)
         writer.add_type(gguf.GGUFType.MODEL)
 
-        # File type
-        if self.output_type == "f32":
-            ftype = gguf.LlamaFileType.ALL_F32
-        elif self.output_type == "f16":
-            ftype = gguf.LlamaFileType.MOSTLY_F16
-        elif self.output_type == "q8_0":
-            ftype = gguf.LlamaFileType.MOSTLY_Q8_0
-        elif self.output_type == "q4_k":
-            ftype = gguf.LlamaFileType.MOSTLY_Q4_K_M
-        else:
-            ftype = gguf.LlamaFileType.MOSTLY_F16
+        # File type metadata follows the talker quantization type,
+        # because talker is the dominant parameter block in this model.
+        ftype = self.FILE_TYPE_MAP[self.quant_policy["talker"]]
         writer.add_file_type(ftype)
 
         # Quantization version
@@ -469,6 +637,9 @@ class Qwen3TTSConverter:
         writer.add_uint32(f"{arch}.codec.pad_id", self.codec_pad_id)
         writer.add_uint32(f"{arch}.codec.bos_id", self.codec_bos_id)
         writer.add_uint32(f"{arch}.codec.eos_id", self.codec_eos_id)
+        writer.add_string(f"{arch}.quant.talker", self.quant_policy["talker"])
+        writer.add_string(f"{arch}.quant.code_predictor", self.quant_policy["code_pred"])
+        writer.add_string(f"{arch}.quant.speaker_encoder", self.quant_policy["spk_enc"])
 
         logger.info("Added model metadata")
 
@@ -542,9 +713,27 @@ def main():
     )
     parser.add_argument(
         "--type", "-t",
-        choices=["f16", "f32", "q8_0", "q4_k"],
+        choices=["f16", "f32", "q8_0", "q4_k", "q5_k"],
         default="f16",
-        help="Output data type (default: f16). q8_0 provides ~50%% size reduction, q4_k provides ~70%% size reduction."
+        help="Global output data type. Can be overridden per module with --talker-type/--predictor-type/--speaker-type."
+    )
+    parser.add_argument(
+        "--talker-type",
+        choices=["f16", "f32", "q8_0", "q4_k", "q5_k"],
+        default=None,
+        help="Talker quantization type (module override)"
+    )
+    parser.add_argument(
+        "--predictor-type",
+        choices=["f16", "f32", "q8_0", "q4_k", "q5_k"],
+        default=None,
+        help="Code predictor quantization type (module override)"
+    )
+    parser.add_argument(
+        "--speaker-type",
+        choices=["f16", "f32", "q8_0", "q4_k", "q5_k"],
+        default=None,
+        help="Speaker encoder quantization type (module override)"
     )
     parser.add_argument(
         "--verbose", "-v",
@@ -561,6 +750,9 @@ def main():
         input_dir=args.input,
         output_path=args.output,
         output_type=args.type,
+        talker_type=args.talker_type,
+        predictor_type=args.predictor_type,
+        speaker_type=args.speaker_type,
     )
     converter.convert()
 

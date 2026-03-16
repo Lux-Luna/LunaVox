@@ -238,18 +238,25 @@ bool Qwen3TTS::load_models(const std::string & model_dir) {
     transformer_loaded_ = false;
     decoder_loaded_ = false;
     
-    // Construct model paths — prefer quantized (q8_0) over full-precision (f16)
-    std::string tts_model_path;
-    std::string q8_path = model_dir + "/qwen3-tts-0.6b-q8_0.gguf";
-    std::string f16_path = model_dir + "/qwen3-tts-0.6b-f16.gguf";
-    FILE * q8_check = fopen(q8_path.c_str(), "r");
-    if (q8_check) {
-        fclose(q8_check);
-        tts_model_path = q8_path;
-    } else {
-        tts_model_path = f16_path;
-    }
+    // Construct model paths (fixed mixed-quant main model; no fallback lookup).
+    std::string tts_model_path = model_dir + "/qwen3-tts-0.6B-base.gguf";
     std::string tokenizer_model_path = model_dir + "/qwen3-tts-tokenizer-f16.gguf";
+    {
+        FILE * tts_file = fopen(tts_model_path.c_str(), "r");
+        if (!tts_file) {
+            error_msg_ = "Required model file not found: " + tts_model_path;
+            return false;
+        }
+        fclose(tts_file);
+    }
+    {
+        FILE * tok_file = fopen(tokenizer_model_path.c_str(), "r");
+        if (!tok_file) {
+            error_msg_ = "Required model file not found: " + tokenizer_model_path;
+            return false;
+        }
+        fclose(tok_file);
+    }
     tts_model_path_ = tts_model_path;
     decoder_model_path_ = tokenizer_model_path;
     encoder_loaded_ = false;
