@@ -34,7 +34,7 @@ void qwen3_tts_default_params(Qwen3TtsParams* params);
 
 /* Create TTS engine and load models from directory.
  * model_dir must contain qwen3-tts-0.6B-base.gguf and
- * qwen3-tts-tokenizer-f16.gguf.
+ * either qwen3-tts-tokenizer-f16.gguf or qwen3-tts-tokenizer-q8_0.gguf.
  * Returns NULL on failure. */
 Qwen3Tts* qwen3_tts_create(const char* model_dir, int32_t n_threads);
 

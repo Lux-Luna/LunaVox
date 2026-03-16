@@ -34,8 +34,26 @@ static float max_abs_diff(const std::vector<float> & a, const std::vector<float>
     return result;
 }
 
+static const char * default_tokenizer_path() {
+    const char * candidates[] = {
+        "models/qwen3-tts-tokenizer-f16.gguf",
+        "models/qwen3-tts-tokenizer-q8_0.gguf",
+    };
+
+    for (const char * candidate : candidates) {
+        FILE * f = fopen(candidate, "r");
+        if (!f) {
+            continue;
+        }
+        fclose(f);
+        return candidate;
+    }
+
+    return candidates[0];
+}
+
 int main(int argc, char ** argv) {
-    const char * tokenizer_path = "models/qwen3-tts-tokenizer-f16.gguf";
+    const char * tokenizer_path = default_tokenizer_path();
     const char * output_path = nullptr;
     int32_t n_frames = 6;
 

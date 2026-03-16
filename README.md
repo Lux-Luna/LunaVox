@@ -99,12 +99,14 @@ The `manage.py setup` command handles model download and GGUF conversion.
 python manage.py setup
 python manage.py setup --force
 python manage.py setup --skip-download
+python manage.py setup --tokenizer-type q8_0
 ```
 
 Required output files in `models/`:
 
 - `qwen3-tts-0.6B-base.gguf`
-- `qwen3-tts-tokenizer-f16.gguf`
+- `qwen3-tts-tokenizer-f16.gguf` (preferred)
+- `qwen3-tts-tokenizer-q8_0.gguf` (runtime fallback when the F16 file is absent)
 
 For voice-cloning smoke tests, also keep:
 

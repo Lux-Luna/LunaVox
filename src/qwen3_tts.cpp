@@ -225,6 +225,32 @@ static void resample_linear(const float * input, int input_len, int input_rate,
     }
 }
 
+static bool resolve_tokenizer_model_path(const std::string & model_dir,
+                                         std::string & tokenizer_model_path,
+                                         std::string & error_msg) {
+    const char * candidates[] = {
+        "qwen3-tts-tokenizer-f16.gguf",
+        "qwen3-tts-tokenizer-q8_0.gguf",
+    };
+
+    for (const char * candidate : candidates) {
+        std::string path = model_dir + "/" + candidate;
+        FILE * f = fopen(path.c_str(), "r");
+        if (!f) {
+            continue;
+        }
+        fclose(f);
+        tokenizer_model_path = path;
+        return true;
+    }
+
+    error_msg =
+        "Required tokenizer model file not found: tried " +
+        model_dir + "/qwen3-tts-tokenizer-f16.gguf and " +
+        model_dir + "/qwen3-tts-tokenizer-q8_0.gguf";
+    return false;
+}
+
 Qwen3TTS::Qwen3TTS() = default;
 
 Qwen3TTS::~Qwen3TTS() = default;
@@ -238,9 +264,9 @@ bool Qwen3TTS::load_models(const std::string & model_dir) {
     transformer_loaded_ = false;
     decoder_loaded_ = false;
     
-    // Construct model paths (fixed mixed-quant main model; no fallback lookup).
+    // Construct model paths (fixed mixed-quant main model; tokenizer prefers F16 with Q8_0 fallback).
     std::string tts_model_path = model_dir + "/qwen3-tts-0.6B-base.gguf";
-    std::string tokenizer_model_path = model_dir + "/qwen3-tts-tokenizer-f16.gguf";
+    std::string tokenizer_model_path;
     {
         FILE * tts_file = fopen(tts_model_path.c_str(), "r");
         if (!tts_file) {
@@ -249,13 +275,8 @@ bool Qwen3TTS::load_models(const std::string & model_dir) {
         }
         fclose(tts_file);
     }
-    {
-        FILE * tok_file = fopen(tokenizer_model_path.c_str(), "r");
-        if (!tok_file) {
-            error_msg_ = "Required model file not found: " + tokenizer_model_path;
-            return false;
-        }
-        fclose(tok_file);
+    if (!resolve_tokenizer_model_path(model_dir, tokenizer_model_path, error_msg_)) {
+        return false;
     }
     tts_model_path_ = tts_model_path;
     decoder_model_path_ = tokenizer_model_path;

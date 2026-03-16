@@ -7,6 +7,11 @@ Usage:
         --input models/Qwen3-TTS-Tokenizer-12Hz \
         --output models/qwen3-tts-tokenizer-f16.gguf \
         --type f16
+
+    python scripts/convert_tokenizer_to_gguf.py \
+        --input models/Qwen3-TTS-Tokenizer-12Hz \
+        --output models/qwen3-tts-tokenizer-q8_0.gguf \
+        --type q8_0
 """
 
 from __future__ import annotations
@@ -453,9 +458,9 @@ def main():
     )
     parser.add_argument(
         "--type", "-t",
-        choices=["f16", "f32", "q8_0"],
+        choices=["f16", "q8_0"],
         default="f16",
-        help="Output data type (default: f16)"
+        help="Tokenizer output data type (default: f16)"
     )
     parser.add_argument(
         "--verbose", "-v",

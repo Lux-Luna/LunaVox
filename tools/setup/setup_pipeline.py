@@ -6,11 +6,13 @@ This script downloads required Hugging Face model assets and generates all model
 artifacts needed by the final C++ pipeline:
 
 - models/qwen3-tts-0.6B-base.gguf
-- models/qwen3-tts-tokenizer-f16.gguf
+- models/qwen3-tts-tokenizer-f16.gguf (default)
+- models/qwen3-tts-tokenizer-q8_0.gguf (optional)
 - models/coreml/code_predictor.mlpackage (optional, macOS)
 
 Example:
   python scripts/setup_pipeline_models.py
+  python scripts/setup_pipeline_models.py --tokenizer-type q8_0
 
 Minimal usage for CI/offline conversion:
   python scripts/setup_pipeline_models.py --skip-download
@@ -161,6 +163,7 @@ def convert_gguf(
     tokenizer_input_dir: Path,
     out_tts: Path,
     out_tok: Path,
+    tokenizer_type: str,
     force_convert: bool,
 ) -> None:
     require_modules(
@@ -209,7 +212,7 @@ def convert_gguf(
                 "--output",
                 str(out_tok),
                 "--type",
-                "f16",
+                tokenizer_type,
             ],
             cwd=REPO_ROOT,
         )
@@ -263,6 +266,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--skip-download", action="store_true", help="Skip model downloads")
     p.add_argument("--skip-gguf", action="store_true", help="Skip GGUF conversion")
     p.add_argument(
+        "--tokenizer-type",
+        choices=["f16", "q8_0"],
+        default="f16",
+        help="Tokenizer GGUF quantization type: default f16, optional q8_0",
+    )
+    p.add_argument(
         "--coreml",
         choices=["auto", "on", "off"],
         default="auto",
@@ -279,7 +288,7 @@ def main() -> int:
     base_dir = models_dir / "Qwen3-TTS-12Hz-0.6B-Base"
     tokenizer_dir = models_dir / "Qwen3-TTS-Tokenizer-12Hz"
     out_tts = models_dir / "qwen3-tts-0.6B-base.gguf"
-    out_tok = models_dir / "qwen3-tts-tokenizer-f16.gguf"
+    out_tok = models_dir / f"qwen3-tts-tokenizer-{args.tokenizer_type}.gguf"
     out_coreml = models_dir / "coreml" / "code_predictor.mlpackage"
 
     hf_token = args.hf_token.strip() or None
@@ -294,7 +303,15 @@ def main() -> int:
         tokenizer_input_dir = base_dir if (base_dir / "speech_tokenizer" / "model.safetensors").exists() else tokenizer_dir
 
     if not args.skip_gguf:
-        convert_gguf(sys.executable, base_dir, tokenizer_input_dir, out_tts, out_tok, args.force)
+        convert_gguf(
+            sys.executable,
+            base_dir,
+            tokenizer_input_dir,
+            out_tts,
+            out_tok,
+            args.tokenizer_type,
+            args.force,
+        )
 
     wants_coreml = args.coreml == "on" or (args.coreml == "auto" and platform.system() == "Darwin")
     if wants_coreml:

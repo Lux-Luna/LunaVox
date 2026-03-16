@@ -451,7 +451,7 @@ add_test(NAME transformer_test
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 add_test(NAME decoder_test
-    COMMAND test_decoder --tokenizer models/qwen3-tts-tokenizer-f16.gguf --frames 4
+    COMMAND test_decoder --frames 4
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 add_test(NAME tts_template_chinese_test

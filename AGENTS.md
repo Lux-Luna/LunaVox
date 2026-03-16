@@ -22,7 +22,8 @@ If a detail is better explained by the code, tests, or conversion docs, link to 
 - Preferred build command: `python manage.py build --backend auto`.
 - Required runtime model files:
   - `models/qwen3-tts-0.6B-base.gguf`
-  - `models/qwen3-tts-tokenizer-f16.gguf`
+  - `models/qwen3-tts-tokenizer-f16.gguf` (preferred)
+  - or `models/qwen3-tts-tokenizer-q8_0.gguf` (fallback)
 - Voice-cloning smoke tests also require `reference/ref-audio.wav`.
 
 ## Repository Shape
@@ -81,7 +82,7 @@ Current installed public headers include:
 
 - `Qwen3TTS::load_models()` expects exactly:
   - `qwen3-tts-0.6B-base.gguf`
-  - `qwen3-tts-tokenizer-f16.gguf`
+  - `qwen3-tts-tokenizer-f16.gguf` or `qwen3-tts-tokenizer-q8_0.gguf`
 - Current loading split:
   - base model GGUF -> tokenizer + speaker encoder + TTS transformer
   - tokenizer GGUF -> vocoder / decoder
