@@ -1,0 +1,34 @@
+[
+  {
+    "case": "cpu",
+    "backend_env": "cpu",
+    "exe": "D:\\TTS\\lunavox\\build-cpu\\qwen3-tts-cli.exe",
+    "return_code": 0,
+    "log_path": "D:\\TTS\\lunavox\\perf\\phase1_release_default_cpu_gpu\\cpu.log",
+    "wav_path": "D:\\TTS\\lunavox\\perf\\phase1_release_default_cpu_gpu\\cpu.wav",
+    "frames": null,
+    "talker_ms": null,
+    "code_pred_ms": null,
+    "code_generation_ms": 2319,
+    "vocoder_decode_ms": 2006,
+    "total_ms": 4326,
+    "audio_duration_s": 5.1,
+    "rtf": 0.849
+  },
+  {
+    "case": "gpu",
+    "backend_env": "gpu",
+    "exe": "D:\\TTS\\lunavox\\build-cuda\\qwen3-tts-cli.exe",
+    "return_code": 0,
+    "log_path": "D:\\TTS\\lunavox\\perf\\phase1_release_default_cpu_gpu\\gpu.log",
+    "wav_path": "D:\\TTS\\lunavox\\perf\\phase1_release_default_cpu_gpu\\gpu.wav",
+    "frames": null,
+    "talker_ms": null,
+    "code_pred_ms": null,
+    "code_generation_ms": 2144,
+    "vocoder_decode_ms": 2416,
+    "total_ms": 4561,
+    "audio_duration_s": 6.14,
+    "rtf": 0.743
+  }
+]

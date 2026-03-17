@@ -110,6 +110,8 @@ public:
 
     // Set compute threads for backend(s). Applies immediately when loaded.
     void set_n_threads(int32_t n_threads);
+    const char * backend_name() const;
+    bool is_cpu_backend() const;
     
     // Legacy interface for compatibility (not used for speaker encoding)
     bool encode(const float * samples, int32_t n_samples,

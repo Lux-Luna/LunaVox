@@ -176,6 +176,8 @@ public:
 
     // Set compute threads for backend(s). Applies immediately when loaded.
     void set_n_threads(int32_t n_threads);
+    const char * backend_name() const;
+    bool is_cpu_backend() const;
     
     const audio_decoder_config & get_config() const { return model_.config; }
     

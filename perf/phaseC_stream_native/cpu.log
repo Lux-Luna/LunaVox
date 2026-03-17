@@ -1,0 +1,60 @@
+  Loading 151291 merges...
+Loading models from: D:\TTS\lunavox\models
+  [mem] load/start               rss=7.57 MB  phys=7.57 MB
+  Component backend policy:
+    Speaker Encoder: cpu
+    Talker:          cpu
+    Code Predictor:  cpu (shared with Talker)
+    Codec Encoder:   disabled on current inference path
+    Codec Decoder:   cpu
+Loading TTS model from D:\TTS\lunavox\models/qwen3-tts-0.6B-base.gguf...
+  Text tokenizer loaded: vocab_size=151936 (111 ms)
+  [mem] load/after-tokenizer     rss=44.25 MB  phys=44.25 MB
+  Speaker encoder: deferred (lazy load)
+  TTSTransformer backend: CPU
+  TTS transformer loaded: hidden_size=1024, n_layers=28 (466 ms)
+    Runtime backend: CPU
+  [mem] load/after-transformer   rss=1.13 GB  phys=1.13 GB
+Loading vocoder from D:\TTS\lunavox\models/qwen3-tts-tokenizer-f16.gguf...
+  AudioTokenizerDecoder backend: CPU
+  Vocoder loaded: sample_rate=24000, n_codebooks=16 (83 ms)
+    Runtime backend: CPU
+  [mem] load/after-vocoder       rss=1.35 GB  phys=1.35 GB
+All models loaded in 663 ms
+  [mem] load/end                 rss=1.35 GB  phys=1.35 GB
+Synthesizing: "今天我们做一次端到端性能回归，确认代码路径已经优化完成。"
+Thread config: 16 (auto)
+  [mem] synth/start              rss=1.35 GB  phys=1.35 GB
+  [mem] synth/after-tokenize     rss=1.35 GB  phys=1.35 GB
+Language selection: auto -> zh (2055)
+Streaming decode: enabled (chunk=32 frames, max-queue=4)
+  [mem] synth/after-generate     rss=1.56 GB  phys=1.56 GB
+  [mem] synth/after-decode       rss=1.56 GB  phys=1.56 GB
+  [mem] synth/end                rss=1.56 GB  phys=1.56 GB
+
+Timing:
+  Tokenization:    0 ms
+  Speaker encode:  0 ms
+  Code generation: 14866 ms
+  Vocoder decode:  9709 ms
+    (streaming mode: generation/decode overlap enabled)
+  Total:           15944 ms
+  Audio duration:  20.30 s
+  Throughput:      1.27x realtime (RTF=0.786)
+
+Memory:
+  RSS start/end:   1.35 GB -> 1.56 GB
+  RSS peak:        1.56 GB
+  Phys start/end:  1.35 GB -> 1.56 GB
+  Phys peak:       1.56 GB
+
+Output saved to: D:\TTS\lunavox\perf\phaseC_stream_native\cpu.wav
+Audio duration: 20.30 seconds
+
+Timing:
+  Load:           0 ms
+  Tokenize:       0 ms
+  Encode:         0 ms
+  Generate:   14866 ms
+  Decode:      9709 ms
+  Total:      15944 ms

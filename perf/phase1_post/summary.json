@@ -1,0 +1,18 @@
+[
+  {
+    "case": "gpu",
+    "backend_env": "gpu",
+    "exe": "D:\\TTS\\lunavox\\build-cuda\\qwen3-tts-cli.exe",
+    "return_code": 0,
+    "log_path": "D:\\TTS\\lunavox\\perf\\phase1_post\\gpu.log",
+    "wav_path": "D:\\TTS\\lunavox\\perf\\phase1_post\\gpu.wav",
+    "frames": null,
+    "talker_ms": null,
+    "code_pred_ms": null,
+    "code_generation_ms": 1811,
+    "vocoder_decode_ms": 2067,
+    "total_ms": 3879,
+    "audio_duration_s": 5.02,
+    "rtf": 0.773
+  }
+]

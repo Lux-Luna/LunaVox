@@ -1,0 +1,95 @@
+  Loading 151291 merges...
+Loading models from: D:\TTS\lunavox\models
+  [mem] load/start               rss=157.57 MB  phys=157.57 MB
+  Component backend policy:
+    Speaker Encoder: gpu
+    Talker:          gpu
+    Code Predictor:  gpu (shared with Talker)
+    Codec Encoder:   disabled on current inference path
+    Codec Decoder:   gpu
+Loading TTS model from D:\TTS\lunavox\models/qwen3-tts-0.6B-base.gguf...
+  Text tokenizer loaded: vocab_size=151936 (107 ms)
+  [mem] load/after-tokenizer     rss=194.25 MB  phys=194.25 MB
+  Speaker encoder: deferred (lazy load)
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24575 MiB):
+  Device 0: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24575 MiB
+  TTSTransformer backend: CUDA0
+  TTS transformer loaded: hidden_size=1024, n_layers=28 (517 ms)
+    Runtime backend: CUDA0
+  [mem] load/after-transformer   rss=306.89 MB  phys=306.89 MB
+Loading vocoder from D:\TTS\lunavox\models/qwen3-tts-tokenizer-f16.gguf...
+  AudioTokenizerDecoder backend: CUDA0
+  Vocoder loaded: sample_rate=24000, n_codebooks=16 (82 ms)
+    Runtime backend: CUDA0
+  [mem] load/after-vocoder       rss=536.72 MB  phys=536.72 MB
+All models loaded in 708 ms
+  [mem] load/end                 rss=536.72 MB  phys=536.72 MB
+Synthesizing: "今天我们做一次端到端性能回归，确认代码路径已经优化完成。"
+Thread config: 16 (auto)
+  [mem] synth/start              rss=536.72 MB  phys=536.72 MB
+  [mem] synth/after-tokenize     rss=536.72 MB  phys=536.72 MB
+Language selection: auto -> zh (2055)
+
+=== Detailed Generation Timing (68 frames) ===
+
+  Prefill:
+    Build graph:          24.1 ms
+    Forward total:        59.2 ms
+      Graph build:         0.2 ms
+      Graph alloc:         1.0 ms
+      Compute:            57.9 ms
+      Data I/O:            0.1 ms
+
+  Talker forward_step (total / per-frame):
+    Total:               466.4 ms   (6.9 ms/frame)
+      Graph build:        10.4 ms   (0.2 ms/frame)
+      Graph alloc:        17.6 ms   (0.3 ms/frame)
+      Compute:           434.7 ms   (6.4 ms/frame)
+      Data I/O:            3.1 ms   (0.0 ms/frame)
+
+  Code predictor (total / per-frame):
+    Backend:          GGML
+    Total:              1358.8 ms   (20.0 ms/frame)
+      Init/KV/embed:       1.3 ms   (0.0 ms/frame)
+      Prefill (2tok):    101.0 ms   (1.5 ms/frame)
+      Steps (14):       1256.5 ms   (18.5 ms/frame)
+      Graph build:        32.4 ms   (0.5 ms/frame)
+      Graph alloc:        52.9 ms   (0.8 ms/frame)
+      Compute:          1216.2 ms   (17.9 ms/frame)
+      Data I/O:           54.6 ms   (0.8 ms/frame)
+      CoreML total:        0.0 ms   (0.0 ms/frame)
+
+  Embed lookups:          14.3 ms   (0.2 ms/frame)
+  Other/overhead:          3.6 ms
+  ─────────────────────────────────────────
+  Total generate:       1926.5 ms
+  Throughput:             28.3 ms/frame (35.3 frames/s)
+  [mem] synth/after-generate     rss=687.82 MB  phys=687.82 MB
+  [mem] synth/after-decode       rss=1020.27 MB  phys=1020.27 MB
+  [mem] synth/end                rss=1020.27 MB  phys=1020.27 MB
+
+Timing:
+  Tokenization:    1 ms
+  Speaker encode:  0 ms
+  Code generation: 1926 ms
+  Vocoder decode:  2231 ms
+  Total:           4158 ms
+  Audio duration:  5.42 s
+  Throughput:      1.30x realtime (RTF=0.768)
+
+Memory:
+  RSS start/end:   536.72 MB -> 1020.27 MB
+  RSS peak:        1020.27 MB
+  Phys start/end:  536.72 MB -> 1020.27 MB
+  Phys peak:       1020.27 MB
+
+Output saved to: D:\TTS\lunavox\perf\phase1_diag\gpu.wav
+Audio duration: 5.42 seconds
+
+Timing:
+  Load:           0 ms
+  Tokenize:       1 ms
+  Encode:         0 ms
+  Generate:    1926 ms
+  Decode:      2231 ms
+  Total:       4158 ms

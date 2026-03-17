@@ -165,11 +165,33 @@ Main CLI options:
 - `--top-p`: top-p sampling
 - `--max-tokens`: maximum audio tokens
 - `--repetition-penalty`: repetition penalty
+- `--backend`: global backend policy (`auto`, `gpu`, `igpu`, `accel`, `cpu`)
+- `--backend-speaker`: override Speaker Encoder backend
+- `--backend-transformer`: override Talker/Code Predictor backend
+- `--backend-talker`: Talker backend hint (currently shares transformer backend)
+- `--backend-code-predictor`: Code Predictor backend hint (currently shares transformer backend)
+- `--backend-decoder`: override Codec Decoder backend
+- `--streaming-decode`: enable experimental generate/decode overlap
+- `--decode-chunk-frames`: decoder chunk size (frames) for streaming mode
 
 Threading notes:
 
 - `--threads 0` (or omitted) now uses an automatic thread policy tuned for throughput.
 - Set `QWEN3_TTS_THREADS=<n>` to override the auto policy for deployment or reproducible benchmarks.
+
+Component backend notes:
+
+- Current runtime grouping is:
+  - `Speaker Encoder` -> `AudioTokenizerEncoder`
+  - `Talker + Code Predictor` -> shared `TTSTransformer` backend
+  - `Codec Decoder` -> `AudioTokenizerDecoder`
+  - `Codec Encoder` is not used in the current inference path
+- Component-level environment overrides:
+  - `QWEN3_TTS_BACKEND_SPEAKER_ENCODER`
+  - `QWEN3_TTS_BACKEND_TRANSFORMER`
+  - `QWEN3_TTS_BACKEND_TALKER`
+  - `QWEN3_TTS_BACKEND_CODE_PREDICTOR`
+  - `QWEN3_TTS_BACKEND_CODEC_DECODER`
 
 ## Outputs
 
@@ -218,6 +240,12 @@ Use the built-in benchmark helper to run reproducible CPU/GPU end-to-end checks:
 python tools/perf_benchmark.py --max-tokens 256
 ```
 
+Component override example:
+
+```bash
+python tools/perf_benchmark.py --max-tokens 256 --backend-transformer gpu --backend-decoder cpu
+```
+
 Windows tip:
 
 - If GPU benchmark runs fail under `conda run -n <env> ...` with a non-zero process exit, run the same command from a regular shell Python to avoid runtime DLL path conflicts.
@@ -228,9 +256,20 @@ Outputs:
 - `perf/summary.md`
 - `perf/cpu.log`, `perf/gpu.log` (when GPU case is enabled)
 
+Decoder stage timing (debug/profiling):
+
+- Set `QWEN3_TTS_DECODER_TIMING=1` to print decoder sub-stage timings (`graph-build`, `graph-alloc`, `compute`, etc.).
+
+Streaming decode controls (experimental):
+
+- CLI: `--streaming-decode --decode-chunk-frames 32`
+- Env: `QWEN3_TTS_STREAMING_DECODE=1`
+- Optional queue tuning: `QWEN3_TTS_STREAMING_MAX_QUEUED_CHUNKS=<n>`
+
 Current optimization roadmap and bottleneck analysis are tracked in:
 
 - `docs/performance_blueprint.md`
+- `docs/phaseC_streaming_decode_report_2026-03-17.md`
 
 ## Acknowledgments
 

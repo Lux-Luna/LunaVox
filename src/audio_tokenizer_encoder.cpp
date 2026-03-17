@@ -155,6 +155,26 @@ void AudioTokenizerEncoder::set_n_threads(int32_t n_threads) {
     }
 }
 
+const char * AudioTokenizerEncoder::backend_name() const {
+    if (!state_.backend) {
+        return "uninitialized";
+    }
+    ggml_backend_dev_t device = ggml_backend_get_device(state_.backend);
+    if (!device) {
+        return "unknown";
+    }
+    const char * name = ggml_backend_dev_name(device);
+    return name ? name : "unknown";
+}
+
+bool AudioTokenizerEncoder::is_cpu_backend() const {
+    if (!state_.backend) {
+        return false;
+    }
+    ggml_backend_dev_t device = ggml_backend_get_device(state_.backend);
+    return device && ggml_backend_dev_type(device) == GGML_BACKEND_DEVICE_TYPE_CPU;
+}
+
 bool AudioTokenizerEncoder::load_model(const std::string & model_path) {
     GGUFLoader loader;
     if (!loader.open(model_path)) {
@@ -262,7 +282,7 @@ bool AudioTokenizerEncoder::load_model(const std::string & model_path) {
     
     if (!load_tensor_data_from_file(model_path, gguf_ctx, model_.ctx,
                                      model_.tensors, model_.buffer, error_msg_,
-                                     detect_preferred_backend_type())) {
+                                     detect_preferred_backend_type("AudioTokenizerEncoder"))) {
         return false;
     }
     

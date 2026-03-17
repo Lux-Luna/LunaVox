@@ -32,20 +32,14 @@ static std::string to_lower_ascii(std::string s) {
     return s;
 }
 
-static std::vector<enum ggml_backend_dev_type> get_backend_try_order_from_env() {
-    const char * env = std::getenv("QWEN3_TTS_BACKEND");
-    if (!env || env[0] == '\0') {
-        // Default to dGPU first, then iGPU/other accelerators, then CPU fallback.
-        return {
-            GGML_BACKEND_DEVICE_TYPE_GPU,
-            GGML_BACKEND_DEVICE_TYPE_IGPU,
-            GGML_BACKEND_DEVICE_TYPE_ACCEL,
-            GGML_BACKEND_DEVICE_TYPE_CPU,
-        };
-    }
+static const char * get_non_empty_env(const char * name) {
+    const char * v = std::getenv(name);
+    return (v && v[0] != '\0') ? v : nullptr;
+}
 
-    const std::string pref = to_lower_ascii(env);
-    if (pref == "auto") {
+static std::vector<enum ggml_backend_dev_type> backend_order_from_pref(const std::string & pref_raw) {
+    const std::string pref = to_lower_ascii(pref_raw);
+    if (pref.empty() || pref == "auto") {
         return {
             GGML_BACKEND_DEVICE_TYPE_GPU,
             GGML_BACKEND_DEVICE_TYPE_IGPU,
@@ -92,8 +86,57 @@ static std::vector<enum ggml_backend_dev_type> get_backend_try_order_from_env() 
     };
 }
 
-static ggml_backend_t init_backend_from_order(enum ggml_backend_dev_type * selected_type = nullptr) {
-    const auto order = get_backend_try_order_from_env();
+static std::string resolve_component_backend_pref(const char * component_name) {
+    const char * global = get_non_empty_env("QWEN3_TTS_BACKEND");
+    if (!component_name || component_name[0] == '\0') {
+        return global ? global : "";
+    }
+
+    const std::string comp = component_name;
+    if (comp == "AudioTokenizerEncoder") {
+        if (const char * v = get_non_empty_env("QWEN3_TTS_BACKEND_SPEAKER_ENCODER")) return v;
+        if (const char * v = get_non_empty_env("QWEN3_TTS_BACKEND_ENCODER")) return v;
+        return global ? global : "";
+    }
+    if (comp == "AudioTokenizerDecoder") {
+        if (const char * v = get_non_empty_env("QWEN3_TTS_BACKEND_CODEC_DECODER")) return v;
+        if (const char * v = get_non_empty_env("QWEN3_TTS_BACKEND_DECODER")) return v;
+        return global ? global : "";
+    }
+    if (comp == "TTSTransformer") {
+        const char * transformer = get_non_empty_env("QWEN3_TTS_BACKEND_TRANSFORMER");
+        const char * talker = get_non_empty_env("QWEN3_TTS_BACKEND_TALKER");
+        const char * code_pred = get_non_empty_env("QWEN3_TTS_BACKEND_CODE_PREDICTOR");
+        if (!transformer && talker && code_pred &&
+            to_lower_ascii(talker) != to_lower_ascii(code_pred)) {
+            fprintf(stderr,
+                    "  [backend] TTSTransformer receives conflicting TALKER(%s) and "
+                    "CODE_PREDICTOR(%s); using TALKER\n",
+                    talker, code_pred);
+        }
+        if (transformer) return transformer;
+        if (talker) return talker;
+        if (code_pred) return code_pred;
+        return global ? global : "";
+    }
+
+    return global ? global : "";
+}
+
+static std::vector<enum ggml_backend_dev_type> get_backend_try_order(
+    const char * component_name,
+    const char * backend_override) {
+    std::string pref;
+    if (backend_override && backend_override[0] != '\0') {
+        pref = backend_override;
+    } else {
+        pref = resolve_component_backend_pref(component_name);
+    }
+    return backend_order_from_pref(pref);
+}
+
+static ggml_backend_t init_backend_from_order(const std::vector<enum ggml_backend_dev_type> & order,
+                                              enum ggml_backend_dev_type * selected_type = nullptr) {
     for (auto type : order) {
         ggml_backend_t backend = ggml_backend_init_by_type(type, nullptr);
         if (backend) {
@@ -118,9 +161,16 @@ GGUFLoader::~GGUFLoader() {
 }
 
 ggml_backend_t init_preferred_backend(const char * component_name, std::string * error_msg) {
+    return init_preferred_backend(component_name, nullptr, error_msg);
+}
+
+ggml_backend_t init_preferred_backend(const char * component_name,
+                                      const char * backend_override,
+                                      std::string * error_msg) {
     if (error_msg) error_msg->clear();
 
-    ggml_backend_t backend = init_backend_from_order();
+    const auto order = get_backend_try_order(component_name, backend_override);
+    ggml_backend_t backend = init_backend_from_order(order);
 
     if (!backend && error_msg) {
         const char * name = component_name ? component_name : "component";
@@ -136,13 +186,23 @@ void release_preferred_backend(ggml_backend_t backend) {
     }
 }
 
-enum ggml_backend_dev_type detect_preferred_backend_type() {
+enum ggml_backend_dev_type detect_preferred_backend_type(const char * component_name) {
+    return detect_preferred_backend_type(component_name, nullptr);
+}
+
+enum ggml_backend_dev_type detect_preferred_backend_type(const char * component_name,
+                                                         const char * backend_override) {
     enum ggml_backend_dev_type selected = GGML_BACKEND_DEVICE_TYPE_CPU;
-    ggml_backend_t backend = init_backend_from_order(&selected);
+    const auto order = get_backend_try_order(component_name, backend_override);
+    ggml_backend_t backend = init_backend_from_order(order, &selected);
     if (backend) {
         ggml_backend_free(backend);
     }
     return selected;
+}
+
+std::string resolve_backend_preference_for_component(const char * component_name) {
+    return resolve_component_backend_pref(component_name);
 }
 
 void apply_backend_n_threads(ggml_backend_t backend, int32_t n_threads) {

@@ -1,0 +1,58 @@
+  Loading 151291 merges...
+Loading models from: D:\TTS\lunavox\models
+  [mem] load/start               rss=7.52 MB  phys=7.52 MB
+  Component backend policy:
+    Speaker Encoder: cpu
+    Talker:          cpu
+    Code Predictor:  cpu (shared with Talker)
+    Codec Encoder:   disabled on current inference path
+    Codec Decoder:   cpu
+Loading TTS model from D:\TTS\lunavox\models/qwen3-tts-0.6B-base.gguf...
+  Text tokenizer loaded: vocab_size=151936 (110 ms)
+  [mem] load/after-tokenizer     rss=44.20 MB  phys=44.20 MB
+  Speaker encoder: deferred (lazy load)
+  TTSTransformer backend: CPU
+  TTS transformer loaded: hidden_size=1024, n_layers=28 (463 ms)
+    Runtime backend: CPU
+  [mem] load/after-transformer   rss=1.12 GB  phys=1.12 GB
+Loading vocoder from D:\TTS\lunavox\models/qwen3-tts-tokenizer-f16.gguf...
+  AudioTokenizerDecoder backend: CPU
+  Vocoder loaded: sample_rate=24000, n_codebooks=16 (94 ms)
+    Runtime backend: CPU
+  [mem] load/after-vocoder       rss=1.35 GB  phys=1.35 GB
+All models loaded in 669 ms
+  [mem] load/end                 rss=1.35 GB  phys=1.35 GB
+Synthesizing: "今天我们做一次端到端性能回归，确认代码路径已经优化完成。"
+Thread config: 16 (auto)
+  [mem] synth/start              rss=1.35 GB  phys=1.35 GB
+  [mem] synth/after-tokenize     rss=1.35 GB  phys=1.35 GB
+Language selection: auto -> zh (2055)
+  [mem] synth/after-generate     rss=1.36 GB  phys=1.36 GB
+  [mem] synth/after-decode       rss=1.74 GB  phys=1.74 GB
+  [mem] synth/end                rss=1.74 GB  phys=1.74 GB
+
+Timing:
+  Tokenization:    1 ms
+  Speaker encode:  0 ms
+  Code generation: 2873 ms
+  Vocoder decode:  2465 ms
+  Total:           5339 ms
+  Audio duration:  6.46 s
+  Throughput:      1.21x realtime (RTF=0.827)
+
+Memory:
+  RSS start/end:   1.35 GB -> 1.74 GB
+  RSS peak:        1.74 GB
+  Phys start/end:  1.35 GB -> 1.74 GB
+  Phys peak:       1.74 GB
+
+Output saved to: D:\TTS\lunavox\perf\baseline_gpu_dec_cpu\cpu.wav
+Audio duration: 6.46 seconds
+
+Timing:
+  Load:           0 ms
+  Tokenize:       1 ms
+  Encode:         0 ms
+  Generate:    2873 ms
+  Decode:      2465 ms
+  Total:       5339 ms

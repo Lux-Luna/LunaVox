@@ -1,0 +1,62 @@
+  Loading 151291 merges...
+Loading models from: D:\TTS\lunavox\models
+  [mem] load/start               rss=158.50 MB  phys=158.50 MB
+  Component backend policy:
+    Speaker Encoder: gpu
+    Talker:          gpu
+    Code Predictor:  gpu (shared with Talker)
+    Codec Encoder:   disabled on current inference path
+    Codec Decoder:   gpu
+Loading TTS model from D:\TTS\lunavox\models/qwen3-tts-0.6B-base.gguf...
+  Text tokenizer loaded: vocab_size=151936 (107 ms)
+  [mem] load/after-tokenizer     rss=194.26 MB  phys=194.26 MB
+  Speaker encoder: deferred (lazy load)
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24575 MiB):
+  Device 0: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24575 MiB
+  TTSTransformer backend: CUDA0
+  TTS transformer loaded: hidden_size=1024, n_layers=28 (516 ms)
+    Runtime backend: CUDA0
+  [mem] load/after-transformer   rss=312.88 MB  phys=312.88 MB
+Loading vocoder from D:\TTS\lunavox\models/qwen3-tts-tokenizer-f16.gguf...
+  AudioTokenizerDecoder backend: CUDA0
+  Vocoder loaded: sample_rate=24000, n_codebooks=16 (81 ms)
+    Runtime backend: CUDA0
+  [mem] load/after-vocoder       rss=542.67 MB  phys=542.67 MB
+All models loaded in 706 ms
+  [mem] load/end                 rss=542.67 MB  phys=542.67 MB
+Synthesizing: "今天我们做一次端到端性能回归，确认代码路径已经优化完成。"
+Thread config: 16 (auto)
+  [mem] synth/start              rss=542.68 MB  phys=542.68 MB
+  [mem] synth/after-tokenize     rss=542.68 MB  phys=542.68 MB
+Language selection: auto -> zh (2055)
+Streaming decode: enabled (chunk=16 frames, max-queue=4)
+  [mem] synth/after-generate     rss=804.58 MB  phys=804.58 MB
+  [mem] synth/after-decode       rss=804.58 MB  phys=804.58 MB
+  [mem] synth/end                rss=804.58 MB  phys=804.58 MB
+
+Timing:
+  Tokenization:    1 ms
+  Speaker encode:  0 ms
+  Code generation: 11759 ms
+  Vocoder decode:  11022 ms
+    (streaming mode: generation/decode overlap enabled)
+  Total:           12344 ms
+  Audio duration:  20.11 s
+  Throughput:      1.63x realtime (RTF=0.614)
+
+Memory:
+  RSS start/end:   542.68 MB -> 804.58 MB
+  RSS peak:        804.58 MB
+  Phys start/end:  542.68 MB -> 804.58 MB
+  Phys peak:       804.58 MB
+
+Output saved to: D:\TTS\lunavox\perf\phaseC_stream_chunk16\gpu.wav
+Audio duration: 20.11 seconds
+
+Timing:
+  Load:           0 ms
+  Tokenize:       1 ms
+  Encode:         0 ms
+  Generate:   11759 ms
+  Decode:     11022 ms
+  Total:      12344 ms

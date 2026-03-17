@@ -88,10 +88,18 @@ def run_case(
     case: str,
     exe: Path,
     backend_env: str,
+    backend_speaker: str,
+    backend_transformer: str,
+    backend_decoder: str,
     model_dir: Path,
     text: str,
     max_tokens: int,
     threads: int,
+    temperature: float,
+    top_k: int,
+    repetition_penalty: float,
+    streaming_decode: bool,
+    decode_chunk_frames: int,
     out_dir: Path,
 ) -> CaseResult:
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -106,14 +114,28 @@ def run_case(
         text,
         "--max-tokens",
         str(max_tokens),
+        "--temperature",
+        str(temperature),
+        "--top-k",
+        str(top_k),
+        "--repetition-penalty",
+        str(repetition_penalty),
         "-o",
         str(wav_path),
     ]
     if threads > 0:
         cmd += ["--threads", str(threads)]
+    if streaming_decode:
+        cmd += ["--streaming-decode", "--decode-chunk-frames", str(decode_chunk_frames)]
 
     env = os.environ.copy()
     env["QWEN3_TTS_BACKEND"] = backend_env
+    if backend_speaker:
+        env["QWEN3_TTS_BACKEND_SPEAKER_ENCODER"] = backend_speaker
+    if backend_transformer:
+        env["QWEN3_TTS_BACKEND_TRANSFORMER"] = backend_transformer
+    if backend_decoder:
+        env["QWEN3_TTS_BACKEND_CODEC_DECODER"] = backend_decoder
 
     proc = subprocess.run(
         cmd,
@@ -180,6 +202,14 @@ def main() -> int:
     parser.add_argument("--text", default="今天我们做一次端到端性能回归，确认代码路径已经优化完成。")
     parser.add_argument("--max-tokens", type=int, default=256)
     parser.add_argument("--threads", type=int, default=0, help="0 means backend default")
+    parser.add_argument("--temperature", type=float, default=0.9)
+    parser.add_argument("--top-k", type=int, default=50)
+    parser.add_argument("--repetition-penalty", type=float, default=1.05)
+    parser.add_argument("--backend-speaker", default="", help="override Speaker Encoder backend")
+    parser.add_argument("--backend-transformer", default="", help="override Talker/Code Predictor backend")
+    parser.add_argument("--backend-decoder", default="", help="override Codec Decoder backend")
+    parser.add_argument("--streaming-decode", action="store_true", help="enable streaming decode overlap")
+    parser.add_argument("--decode-chunk-frames", type=int, default=32, help="frames per decoder chunk")
     parser.add_argument("--out-dir", default="perf")
     parser.add_argument("--skip-gpu", action="store_true")
     args = parser.parse_args()
@@ -197,10 +227,18 @@ def main() -> int:
                 case="cpu",
                 exe=cpu_exe,
                 backend_env="cpu",
+                backend_speaker=args.backend_speaker,
+                backend_transformer=args.backend_transformer,
+                backend_decoder=args.backend_decoder,
                 model_dir=model_dir,
                 text=args.text,
                 max_tokens=args.max_tokens,
                 threads=args.threads,
+                temperature=args.temperature,
+                top_k=args.top_k,
+                repetition_penalty=args.repetition_penalty,
+                streaming_decode=args.streaming_decode,
+                decode_chunk_frames=args.decode_chunk_frames,
                 out_dir=out_dir,
             )
         )
@@ -215,10 +253,18 @@ def main() -> int:
                     case="gpu",
                     exe=gpu_exe,
                     backend_env="gpu",
+                    backend_speaker=args.backend_speaker,
+                    backend_transformer=args.backend_transformer,
+                    backend_decoder=args.backend_decoder,
                     model_dir=model_dir,
                     text=args.text,
                     max_tokens=args.max_tokens,
                     threads=args.threads,
+                    temperature=args.temperature,
+                    top_k=args.top_k,
+                    repetition_penalty=args.repetition_penalty,
+                    streaming_decode=args.streaming_decode,
+                    decode_chunk_frames=args.decode_chunk_frames,
                     out_dir=out_dir,
                 )
             )

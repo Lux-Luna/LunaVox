@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <numeric>
 #include <cstdio>
+#include <chrono>
+#include <cstdlib>
 
 #define QWEN3_TTS_DEC_MAX_NODES 32768
 
@@ -30,6 +32,26 @@ void AudioTokenizerDecoder::set_n_threads(int32_t n_threads) {
     if (state_.backend_cpu) {
         apply_backend_n_threads(state_.backend_cpu, n_threads_);
     }
+}
+
+const char * AudioTokenizerDecoder::backend_name() const {
+    if (!state_.backend) {
+        return "uninitialized";
+    }
+    ggml_backend_dev_t device = ggml_backend_get_device(state_.backend);
+    if (!device) {
+        return "unknown";
+    }
+    const char * name = ggml_backend_dev_name(device);
+    return name ? name : "unknown";
+}
+
+bool AudioTokenizerDecoder::is_cpu_backend() const {
+    if (!state_.backend) {
+        return false;
+    }
+    ggml_backend_dev_t device = ggml_backend_get_device(state_.backend);
+    return device && ggml_backend_dev_type(device) == GGML_BACKEND_DEVICE_TYPE_CPU;
 }
 
 void AudioTokenizerDecoder::unload_model() {
@@ -829,7 +851,15 @@ bool AudioTokenizerDecoder::decode(const int32_t * codes, int32_t n_frames,
         error_msg_ = "Model not loaded";
         return false;
     }
-    
+
+    const char * timing_env = std::getenv("QWEN3_TTS_DECODER_TIMING");
+    const bool print_decoder_timing = timing_env && timing_env[0] != '\0' && timing_env[0] != '0';
+    using clock = std::chrono::steady_clock;
+    auto to_ms = [](clock::time_point a, clock::time_point b) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count();
+    };
+
+    const auto t_start = clock::now();
     const auto & cfg = model_.config;
     
     codes_buf_.resize(n_frames * cfg.n_codebooks);
@@ -838,14 +868,17 @@ bool AudioTokenizerDecoder::decode(const int32_t * codes, int32_t n_frames,
             codes_buf_[cb + f * cfg.n_codebooks] = codes[f * cfg.n_codebooks + cb];
         }
     }
-    
+    const auto t_after_pack = clock::now();
+
     struct ggml_cgraph * gf = build_graph(n_frames);
-    
+    const auto t_after_graph = clock::now();
+
     if (!ggml_backend_sched_alloc_graph(state_.sched, gf)) {
         error_msg_ = "Failed to allocate graph";
         return false;
     }
-    
+    const auto t_after_alloc = clock::now();
+
     std::vector<int32_t> cb_codes(n_frames);
     for (int cb = 0; cb < 16; ++cb) {
         char name[32];
@@ -863,7 +896,7 @@ bool AudioTokenizerDecoder::decode(const int32_t * codes, int32_t n_frames,
         
         ggml_backend_tensor_set(cb_tensor, cb_codes.data(), 0, n_frames * sizeof(int32_t));
     }
-    
+    const auto t_after_inputs = clock::now();
 
     
     struct ggml_tensor * positions_tensor = ggml_graph_get_tensor(gf, "positions");
@@ -875,7 +908,7 @@ bool AudioTokenizerDecoder::decode(const int32_t * codes, int32_t n_frames,
         ggml_backend_tensor_set(positions_tensor, positions.data(), 0, 
                                 n_frames * sizeof(int32_t));
     }
-    
+    const auto t_after_pos = clock::now();
 
     
     if (ggml_backend_sched_graph_compute(state_.sched, gf) != GGML_STATUS_SUCCESS) {
@@ -883,7 +916,8 @@ bool AudioTokenizerDecoder::decode(const int32_t * codes, int32_t n_frames,
         ggml_backend_sched_reset(state_.sched);
         return false;
     }
-    
+    const auto t_after_compute = clock::now();
+
     struct ggml_tensor * audio_tensor = ggml_graph_get_tensor(gf, "audio");
     if (!audio_tensor) {
         error_msg_ = "Failed to find audio tensor";
@@ -894,9 +928,22 @@ bool AudioTokenizerDecoder::decode(const int32_t * codes, int32_t n_frames,
     int64_t n_samples = audio_tensor->ne[0];
     samples.resize(n_samples);
     ggml_backend_tensor_get(audio_tensor, samples.data(), 0, n_samples * sizeof(float));
-    
+    const auto t_after_output = clock::now();
+
     ggml_backend_sched_reset(state_.sched);
-    
+
+    if (print_decoder_timing) {
+        fprintf(stderr, "\n[Decoder timing] backend=%s, frames=%d\n", backend_name(), n_frames);
+        fprintf(stderr, "  code-pack:      %lld ms\n", (long long)to_ms(t_start, t_after_pack));
+        fprintf(stderr, "  graph-build:    %lld ms\n", (long long)to_ms(t_after_pack, t_after_graph));
+        fprintf(stderr, "  graph-alloc:    %lld ms\n", (long long)to_ms(t_after_graph, t_after_alloc));
+        fprintf(stderr, "  input-codes:    %lld ms\n", (long long)to_ms(t_after_alloc, t_after_inputs));
+        fprintf(stderr, "  input-pos:      %lld ms\n", (long long)to_ms(t_after_inputs, t_after_pos));
+        fprintf(stderr, "  compute:        %lld ms\n", (long long)to_ms(t_after_pos, t_after_compute));
+        fprintf(stderr, "  output-copy:    %lld ms\n", (long long)to_ms(t_after_compute, t_after_output));
+        fprintf(stderr, "  total:          %lld ms\n", (long long)to_ms(t_start, t_after_output));
+    }
+
     return true;
 }
 

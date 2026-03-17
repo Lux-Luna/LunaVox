@@ -13,6 +13,10 @@
 #include <cerrno>
 #include <limits>
 #include <thread>
+#include <mutex>
+#include <deque>
+#include <atomic>
+#include <condition_variable>
 
 #ifdef __APPLE__
 #include <mach/mach.h>
@@ -27,6 +31,13 @@
 #endif
 
 namespace qwen3_tts {
+
+static std::string to_lower_ascii(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
+        return (char) std::tolower(c);
+    });
+    return s;
+}
 
 static bool utf8_next_codepoint(const std::string & text, size_t & i, uint32_t & cp) {
     if (i >= text.size()) {
@@ -214,6 +225,15 @@ static int32_t parse_positive_int_env(const char * name) {
     return (int32_t) v;
 }
 
+static bool parse_bool_env(const char * name) {
+    const char * env = std::getenv(name);
+    if (!env || env[0] == '\0') {
+        return false;
+    }
+    std::string v = to_lower_ascii(env);
+    return v == "1" || v == "true" || v == "yes" || v == "on";
+}
+
 static int32_t detect_auto_n_threads() {
     // Optional override for benchmarking/deployment:
     // QWEN3_TTS_THREADS=<n>
@@ -299,6 +319,10 @@ static bool resolve_tokenizer_model_path(const std::string & model_dir,
     return false;
 }
 
+static const char * display_backend_pref(const std::string & pref) {
+    return pref.empty() ? "auto" : pref.c_str();
+}
+
 Qwen3TTS::Qwen3TTS() = default;
 
 Qwen3TTS::~Qwen3TTS() = default;
@@ -337,6 +361,16 @@ bool Qwen3TTS::load_models(const std::string & model_dir) {
     if (low_mem_mode_) {
         fprintf(stderr, "  Low-memory mode enabled (lazy decoder + component unloads)\n");
     }
+
+    const std::string pref_spk = resolve_backend_preference_for_component("AudioTokenizerEncoder");
+    const std::string pref_tfm = resolve_backend_preference_for_component("TTSTransformer");
+    const std::string pref_dec = resolve_backend_preference_for_component("AudioTokenizerDecoder");
+    fprintf(stderr, "  Component backend policy:\n");
+    fprintf(stderr, "    Speaker Encoder: %s\n", display_backend_pref(pref_spk));
+    fprintf(stderr, "    Talker:          %s\n", display_backend_pref(pref_tfm));
+    fprintf(stderr, "    Code Predictor:  %s (shared with Talker)\n", display_backend_pref(pref_tfm));
+    fprintf(stderr, "    Codec Encoder:   disabled on current inference path\n");
+    fprintf(stderr, "    Codec Decoder:   %s\n", display_backend_pref(pref_dec));
     
     // Load TTS model (contains text tokenizer + transformer for generation)
     fprintf(stderr, "Loading TTS model from %s...\n", tts_model_path.c_str());
@@ -373,6 +407,7 @@ bool Qwen3TTS::load_models(const std::string & model_dir) {
     fprintf(stderr, "  TTS transformer loaded: hidden_size=%d, n_layers=%d (%lld ms)\n",
             transformer_.get_config().hidden_size, transformer_.get_config().n_layers,
             (long long)(get_time_ms() - t_transformer_start));
+    fprintf(stderr, "    Runtime backend: %s\n", transformer_.backend_name());
     log_memory_usage("load/after-transformer");
     
     if (!low_mem_mode_) {
@@ -387,6 +422,7 @@ bool Qwen3TTS::load_models(const std::string & model_dir) {
         fprintf(stderr, "  Vocoder loaded: sample_rate=%d, n_codebooks=%d (%lld ms)\n",
                 audio_decoder_.get_config().sample_rate, audio_decoder_.get_config().n_codebooks,
                 (long long)(get_time_ms() - t_decoder_start));
+        fprintf(stderr, "    Runtime backend: %s\n", audio_decoder_.backend_name());
         log_memory_usage("load/after-vocoder");
     } else {
         fprintf(stderr, "  Vocoder: deferred (lazy load)\n");
@@ -464,6 +500,7 @@ tts_result Qwen3TTS::synthesize_with_voice(const std::string & text,
         if (params.print_timing) {
             fprintf(stderr, "  Speaker encoder lazy-loaded in %lld ms\n",
                     (long long)(get_time_ms() - t_encoder_load_start));
+            fprintf(stderr, "    Runtime backend: %s\n", audio_encoder_.backend_name());
             log_memory_usage("voice/after-encoder-load");
         }
     }
@@ -508,6 +545,7 @@ bool Qwen3TTS::extract_speaker_embedding(const float * ref_samples, int32_t n_re
         if (params.print_timing) {
             fprintf(stderr, "  Speaker encoder lazy-loaded in %lld ms\n",
                     (long long)(get_time_ms() - t_encoder_load_start));
+            fprintf(stderr, "    Runtime backend: %s\n", audio_encoder_.backend_name());
         }
     }
 
@@ -612,6 +650,55 @@ tts_result Qwen3TTS::synthesize_internal(const std::string & text,
                 effective_language_id);
     }
     
+    bool streaming_decode = params.streaming_decode || parse_bool_env("QWEN3_TTS_STREAMING_DECODE");
+    if (streaming_decode && low_mem_mode_) {
+        if (params.print_timing || params.print_progress) {
+            fprintf(stderr, "  Streaming decode disabled in low-memory mode\n");
+        }
+        streaming_decode = false;
+    }
+    int32_t decode_chunk_frames = params.decode_chunk_frames > 0
+        ? params.decode_chunk_frames
+        : parse_positive_int_env("QWEN3_TTS_DECODE_CHUNK_FRAMES");
+    if (decode_chunk_frames <= 0) {
+        decode_chunk_frames = 32;
+    }
+    int32_t max_queued_chunks = parse_positive_int_env("QWEN3_TTS_STREAMING_MAX_QUEUED_CHUNKS");
+    if (max_queued_chunks <= 0) {
+        max_queued_chunks = 4;
+    }
+    if (streaming_decode && (params.print_timing || params.print_progress)) {
+        fprintf(stderr, "Streaming decode: enabled (chunk=%d frames, max-queue=%d)\n",
+                decode_chunk_frames, max_queued_chunks);
+    }
+
+    auto ensure_decoder_loaded = [&]() -> bool {
+        if (!decoder_loaded_) {
+            int64_t t_decoder_load_start = get_time_ms();
+            if (decoder_model_path_.empty()) {
+                result.error_msg = "Internal error: missing vocoder model path";
+                return false;
+            }
+            if (!audio_decoder_.load_model(decoder_model_path_)) {
+                result.error_msg = "Failed to load vocoder: " + audio_decoder_.get_error();
+                return false;
+            }
+            decoder_loaded_ = true;
+            if (params.print_timing) {
+                fprintf(stderr, "  Vocoder lazy-loaded in %lld ms\n",
+                        (long long)(get_time_ms() - t_decoder_load_start));
+                fprintf(stderr, "    Runtime backend: %s\n", audio_decoder_.backend_name());
+                sample_memory("synth/after-vocoder-load");
+            }
+        }
+        audio_decoder_.set_n_threads(effective_n_threads);
+        return true;
+    };
+
+    if (streaming_decode && !ensure_decoder_loaded()) {
+        return result;
+    }
+
     // Step 3: Generate speech codes using TTS transformer
     int64_t t_generate_start = get_time_ms();
     if (!transformer_loaded_) {
@@ -631,17 +718,166 @@ tts_result Qwen3TTS::synthesize_internal(const std::string & text,
     transformer_.clear_kv_cache();
     
     std::vector<int32_t> speech_codes;
-    if (!transformer_.generate(text_tokens.data(), (int32_t)text_tokens.size(),
-                               speaker_embedding, params.max_audio_tokens, speech_codes,
-                               effective_language_id, params.repetition_penalty,
-                               params.temperature, params.top_k)) {
-        result.error_msg = "Failed to generate speech codes: " + transformer_.get_error();
-        return result;
+    std::vector<float> streamed_audio;
+    std::atomic<int64_t> streamed_decode_ms(0);
+    std::string stream_error;
+    std::mutex stream_error_mutex;
+    std::atomic<bool> stream_worker_failed(false);
+    const int n_codebooks = transformer_.get_config().n_codebooks;
+
+    if (streaming_decode) {
+        auto set_stream_error = [&](const std::string & msg) {
+            std::lock_guard<std::mutex> lock(stream_error_mutex);
+            if (stream_error.empty()) {
+                stream_error = msg;
+            }
+        };
+
+        struct stream_queue_state {
+            std::mutex mutex;
+            std::condition_variable cv;
+            std::deque<std::vector<int32_t>> chunks;
+            bool producer_done = false;
+        };
+        stream_queue_state queue_state;
+
+        auto decode_chunk = [&](const std::vector<int32_t> & chunk_codes) -> bool {
+            if (chunk_codes.empty()) {
+                return true;
+            }
+            const int chunk_frames = (int)chunk_codes.size() / n_codebooks;
+            std::vector<float> chunk_audio;
+            const int64_t t_decode_chunk_start = get_time_ms();
+            if (!audio_decoder_.decode(chunk_codes.data(), chunk_frames, chunk_audio)) {
+                set_stream_error("Failed to decode speech codes: " + audio_decoder_.get_error());
+                return false;
+            }
+            streamed_decode_ms.fetch_add(get_time_ms() - t_decode_chunk_start, std::memory_order_relaxed);
+            streamed_audio.insert(streamed_audio.end(), chunk_audio.begin(), chunk_audio.end());
+            return true;
+        };
+
+        std::thread decode_worker([&]() {
+            while (true) {
+                std::vector<int32_t> chunk_codes;
+                {
+                    std::unique_lock<std::mutex> lock(queue_state.mutex);
+                    queue_state.cv.wait(lock, [&]() {
+                        return stream_worker_failed.load(std::memory_order_relaxed) ||
+                               !queue_state.chunks.empty() ||
+                               queue_state.producer_done;
+                    });
+                    if (stream_worker_failed.load(std::memory_order_relaxed)) {
+                        return;
+                    }
+                    if (queue_state.chunks.empty()) {
+                        if (queue_state.producer_done) {
+                            return;
+                        }
+                        continue;
+                    }
+                    chunk_codes = std::move(queue_state.chunks.front());
+                    queue_state.chunks.pop_front();
+                    queue_state.cv.notify_all();
+                }
+                if (!decode_chunk(chunk_codes)) {
+                    stream_worker_failed.store(true, std::memory_order_relaxed);
+                    std::lock_guard<std::mutex> lock(queue_state.mutex);
+                    queue_state.producer_done = true;
+                    queue_state.cv.notify_all();
+                    return;
+                }
+            }
+        });
+
+        std::vector<int32_t> pending_chunk_codes;
+        pending_chunk_codes.reserve((size_t)decode_chunk_frames * (size_t)n_codebooks);
+
+        auto enqueue_pending_chunk = [&]() -> bool {
+            if (pending_chunk_codes.empty()) {
+                return true;
+            }
+            std::unique_lock<std::mutex> lock(queue_state.mutex);
+            queue_state.cv.wait(lock, [&]() {
+                return stream_worker_failed.load(std::memory_order_relaxed) ||
+                       (int)queue_state.chunks.size() < max_queued_chunks;
+            });
+            if (stream_worker_failed.load(std::memory_order_relaxed)) {
+                return false;
+            }
+            queue_state.chunks.emplace_back(std::move(pending_chunk_codes));
+            pending_chunk_codes.clear();
+            pending_chunk_codes.reserve((size_t)decode_chunk_frames * (size_t)n_codebooks);
+            queue_state.cv.notify_all();
+            return true;
+        };
+
+        auto on_frame = [&](const int32_t * frame_codes, int32_t cb_count, int32_t) -> bool {
+            if (stream_worker_failed.load(std::memory_order_relaxed)) {
+                return false;
+            }
+            if (cb_count != n_codebooks) {
+                set_stream_error("Internal error: unexpected codebook count");
+                stream_worker_failed.store(true, std::memory_order_relaxed);
+                return false;
+            }
+            pending_chunk_codes.insert(pending_chunk_codes.end(),
+                                       frame_codes, frame_codes + cb_count);
+            const int pending_frames = (int)pending_chunk_codes.size() / n_codebooks;
+            if (pending_frames >= decode_chunk_frames) {
+                if (!enqueue_pending_chunk()) {
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        const bool generate_ok = transformer_.generate(
+            text_tokens.data(), (int32_t)text_tokens.size(),
+            speaker_embedding, params.max_audio_tokens, speech_codes,
+            effective_language_id, params.repetition_penalty,
+            params.temperature, params.top_k, on_frame);
+        result.t_generate_ms = get_time_ms() - t_generate_start;
+
+        bool enqueue_ok = true;
+        if (generate_ok) {
+            enqueue_ok = enqueue_pending_chunk();
+        }
+        {
+            std::lock_guard<std::mutex> lock(queue_state.mutex);
+            queue_state.producer_done = true;
+        }
+        queue_state.cv.notify_all();
+        decode_worker.join();
+
+        if (!generate_ok) {
+            result.error_msg = "Failed to generate speech codes: " + transformer_.get_error();
+            std::lock_guard<std::mutex> lock(stream_error_mutex);
+            if (!stream_error.empty()) {
+                result.error_msg = stream_error;
+            }
+            return result;
+        }
+        if (!enqueue_ok || stream_worker_failed.load(std::memory_order_relaxed)) {
+            std::lock_guard<std::mutex> lock(stream_error_mutex);
+            if (stream_error.empty()) {
+                stream_error = "Streaming decoder worker aborted";
+            }
+            result.error_msg = stream_error;
+            return result;
+        }
+    } else {
+        if (!transformer_.generate(text_tokens.data(), (int32_t)text_tokens.size(),
+                                   speaker_embedding, params.max_audio_tokens, speech_codes,
+                                   effective_language_id, params.repetition_penalty,
+                                   params.temperature, params.top_k)) {
+            result.error_msg = "Failed to generate speech codes: " + transformer_.get_error();
+            return result;
+        }
+        result.t_generate_ms = get_time_ms() - t_generate_start;
     }
-    result.t_generate_ms = get_time_ms() - t_generate_start;
     sample_memory("synth/after-generate");
     
-    int n_codebooks = transformer_.get_config().n_codebooks;
     int n_frames = (int)speech_codes.size() / n_codebooks;
     
     if (params.print_progress) {
@@ -660,31 +896,20 @@ tts_result Qwen3TTS::synthesize_internal(const std::string & text,
     }
     
     // Step 4: Decode speech codes to waveform using vocoder
-    int64_t t_decode_start = get_time_ms();
-    if (!decoder_loaded_) {
-        int64_t t_decoder_load_start = get_time_ms();
-        if (decoder_model_path_.empty()) {
-            result.error_msg = "Internal error: missing vocoder model path";
+    if (streaming_decode) {
+        result.audio = std::move(streamed_audio);
+        result.t_decode_ms = streamed_decode_ms.load(std::memory_order_relaxed);
+    } else {
+        int64_t t_decode_start = get_time_ms();
+        if (!ensure_decoder_loaded()) {
             return result;
         }
-        if (!audio_decoder_.load_model(decoder_model_path_)) {
-            result.error_msg = "Failed to load vocoder: " + audio_decoder_.get_error();
+        if (!audio_decoder_.decode(speech_codes.data(), n_frames, result.audio)) {
+            result.error_msg = "Failed to decode speech codes: " + audio_decoder_.get_error();
             return result;
         }
-        decoder_loaded_ = true;
-        if (params.print_timing) {
-            fprintf(stderr, "  Vocoder lazy-loaded in %lld ms\n",
-                    (long long)(get_time_ms() - t_decoder_load_start));
-            sample_memory("synth/after-vocoder-load");
-        }
+        result.t_decode_ms = get_time_ms() - t_decode_start;
     }
-    audio_decoder_.set_n_threads(effective_n_threads);
-    
-    if (!audio_decoder_.decode(speech_codes.data(), n_frames, result.audio)) {
-        result.error_msg = "Failed to decode speech codes: " + audio_decoder_.get_error();
-        return result;
-    }
-    result.t_decode_ms = get_time_ms() - t_decode_start;
     sample_memory("synth/after-decode");
 
     if (low_mem_mode_) {
@@ -709,6 +934,9 @@ tts_result Qwen3TTS::synthesize_internal(const std::string & text,
         fprintf(stderr, "  Speaker encode:  %lld ms\n", (long long)result.t_encode_ms);
         fprintf(stderr, "  Code generation: %lld ms\n", (long long)result.t_generate_ms);
         fprintf(stderr, "  Vocoder decode:  %lld ms\n", (long long)result.t_decode_ms);
+        if (streaming_decode) {
+            fprintf(stderr, "    (streaming mode: generation/decode overlap enabled)\n");
+        }
         fprintf(stderr, "  Total:           %lld ms\n", (long long)result.t_total_ms);
         fprintf(stderr, "  Audio duration:  %.2f s\n", audio_sec);
         fprintf(stderr, "  Throughput:      %.2fx realtime (RTF=%.3f)\n", x_realtime, realtime_factor);

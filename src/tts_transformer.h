@@ -10,6 +10,8 @@
 #include <vector>
 #include <memory>
 #include <random>
+#include <functional>
+#include <utility>
 #ifdef QWEN3_TTS_TIMING
 #include <chrono>
 #endif
@@ -179,8 +181,10 @@ struct tts_transformer_state {
     ggml_backend_t backend = nullptr;
     ggml_backend_t backend_cpu = nullptr;
     ggml_backend_sched_t sched = nullptr;
+    ggml_backend_sched_t sched_code_pred = nullptr;
     
     std::vector<uint8_t> compute_meta;
+    std::vector<uint8_t> compute_meta_code_pred;
     
     tts_kv_cache cache;           // Talker KV cache (28 layers)
     tts_kv_cache code_pred_cache; // Code predictor KV cache (5 layers)
@@ -189,6 +193,10 @@ struct tts_transformer_state {
 // TTS Transformer class
 class TTSTransformer {
 public:
+    using frame_callback_t = std::function<bool(const int32_t * frame_codes,
+                                                int32_t n_codebooks,
+                                                int32_t frame_index)>;
+
     TTSTransformer();
     ~TTSTransformer();
     
@@ -266,8 +274,19 @@ public:
                   float temperature = 0.9f,
                   int32_t top_k = 50);
 
+    bool generate(const int32_t * text_tokens, int32_t n_tokens,
+                  const float * speaker_embd, int32_t max_len,
+                  std::vector<int32_t> & output,
+                  int32_t language_id,
+                  float repetition_penalty,
+                  float temperature,
+                  int32_t top_k,
+                  const frame_callback_t & on_frame);
+
     // Set compute threads for backend(s). Applies immediately when loaded.
     void set_n_threads(int32_t n_threads);
+    const char * backend_name() const;
+    bool is_cpu_backend() const;
     
     const tts_transformer_config & get_config() const { return model_.config; }
     
@@ -336,6 +355,10 @@ private:
     // Cached hidden states from last forward pass
     std::vector<float> last_hidden_;
     std::vector<ggml_fp16_t> embd_row_fp16_scratch_;
+    std::vector<float> code_pred_logits_scratch_;
+    std::vector<float> code_pred_probs_scratch_;
+    std::vector<std::pair<float, int32_t>> code_pred_scored_scratch_;
+    std::vector<float> code_pred_cb0_embd_scratch_;
     std::mt19937 rng_{std::random_device{}()};
     int32_t n_threads_ = 0;
     CoreMLCodePredictor coreml_code_predictor_;

@@ -6,6 +6,7 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -36,6 +37,17 @@ static bool parse_language_id(const std::string & language, int32_t & language_i
     else if (lang == "pt" || lang == "portuguese") language_id_out = 2071;
     else return false;
     return true;
+}
+
+static bool set_process_env(const char * key, const std::string & value) {
+    if (!key || key[0] == '\0') {
+        return false;
+    }
+#ifdef _WIN32
+    return _putenv_s(key, value.c_str()) == 0;
+#else
+    return setenv(key, value.c_str(), 1) == 0;
+#endif
 }
 
 #ifdef _WIN32
@@ -90,6 +102,14 @@ void print_usage(const char * program) {
     fprintf(stderr, "  --repetition-penalty <val> Repetition penalty (default: 1.05)\n");
     fprintf(stderr, "  -l, --language <lang>  Force language: en,ru,zh,ja,ko,de,fr,es,it,pt\n");
     fprintf(stderr, "  --no-auto-language     Disable language auto-detection (uses --language or en)\n");
+    fprintf(stderr, "  --backend <name>       Global backend policy: auto|gpu|igpu|accel|cpu\n");
+    fprintf(stderr, "  --backend-speaker <n>  Speaker encoder backend override\n");
+    fprintf(stderr, "  --backend-transformer <n> Talker/Code predictor backend override\n");
+    fprintf(stderr, "  --backend-talker <n>   Talker backend hint (shared transformer backend)\n");
+    fprintf(stderr, "  --backend-code-predictor <n> Code predictor backend hint (shared transformer backend)\n");
+    fprintf(stderr, "  --backend-decoder <n>  Codec decoder backend override\n");
+    fprintf(stderr, "  --streaming-decode     Enable experimental decode pipeline overlap\n");
+    fprintf(stderr, "  --decode-chunk-frames <n> Frames per decoder chunk in streaming mode (default: 32)\n");
     fprintf(stderr, "  -j, --threads <n>      Number of threads (default: auto)\n");
     fprintf(stderr, "  -h, --help             Show this help\n");
     fprintf(stderr, "\n");
@@ -114,6 +134,12 @@ int main(int argc, char ** argv) {
     std::string text;
     std::string output_file = "output.wav";
     std::string reference_audio;
+    std::string backend_global;
+    std::string backend_speaker;
+    std::string backend_transformer;
+    std::string backend_talker;
+    std::string backend_code_predictor;
+    std::string backend_decoder;
     
     qwen3_tts::tts_params params;
     params.auto_language = true;
@@ -194,6 +220,50 @@ int main(int argc, char ** argv) {
             params.auto_language = false;
         } else if (arg == "--no-auto-language") {
             params.auto_language = false;
+        } else if (arg == "--backend") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing backend value\n");
+                return 1;
+            }
+            backend_global = args[i];
+        } else if (arg == "--backend-speaker") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing backend-speaker value\n");
+                return 1;
+            }
+            backend_speaker = args[i];
+        } else if (arg == "--backend-transformer") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing backend-transformer value\n");
+                return 1;
+            }
+            backend_transformer = args[i];
+        } else if (arg == "--backend-talker") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing backend-talker value\n");
+                return 1;
+            }
+            backend_talker = args[i];
+        } else if (arg == "--backend-code-predictor") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing backend-code-predictor value\n");
+                return 1;
+            }
+            backend_code_predictor = args[i];
+        } else if (arg == "--backend-decoder" || arg == "--backend-codec-decoder") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing backend-decoder value\n");
+                return 1;
+            }
+            backend_decoder = args[i];
+        } else if (arg == "--streaming-decode") {
+            params.streaming_decode = true;
+        } else if (arg == "--decode-chunk-frames") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing decode-chunk-frames value\n");
+                return 1;
+            }
+            params.decode_chunk_frames = std::stoi(args[i]);
         } else if (arg == "-j" || arg == "--threads") {
             if (++i >= (int)args.size()) {
                 fprintf(stderr, "Error: missing threads value\n");
@@ -220,6 +290,35 @@ int main(int argc, char ** argv) {
         return 1;
     }
     
+    if (!backend_global.empty() && !set_process_env("QWEN3_TTS_BACKEND", backend_global)) {
+        fprintf(stderr, "Error: failed to set QWEN3_TTS_BACKEND\n");
+        return 1;
+    }
+    if (!backend_speaker.empty() &&
+        !set_process_env("QWEN3_TTS_BACKEND_SPEAKER_ENCODER", backend_speaker)) {
+        fprintf(stderr, "Error: failed to set QWEN3_TTS_BACKEND_SPEAKER_ENCODER\n");
+        return 1;
+    }
+    if (!backend_transformer.empty() &&
+        !set_process_env("QWEN3_TTS_BACKEND_TRANSFORMER", backend_transformer)) {
+        fprintf(stderr, "Error: failed to set QWEN3_TTS_BACKEND_TRANSFORMER\n");
+        return 1;
+    }
+    if (!backend_talker.empty() && !set_process_env("QWEN3_TTS_BACKEND_TALKER", backend_talker)) {
+        fprintf(stderr, "Error: failed to set QWEN3_TTS_BACKEND_TALKER\n");
+        return 1;
+    }
+    if (!backend_code_predictor.empty() &&
+        !set_process_env("QWEN3_TTS_BACKEND_CODE_PREDICTOR", backend_code_predictor)) {
+        fprintf(stderr, "Error: failed to set QWEN3_TTS_BACKEND_CODE_PREDICTOR\n");
+        return 1;
+    }
+    if (!backend_decoder.empty() &&
+        !set_process_env("QWEN3_TTS_BACKEND_CODEC_DECODER", backend_decoder)) {
+        fprintf(stderr, "Error: failed to set QWEN3_TTS_BACKEND_CODEC_DECODER\n");
+        return 1;
+    }
+
     // Initialize TTS
     qwen3_tts::Qwen3TTS tts;
     
