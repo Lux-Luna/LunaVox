@@ -51,9 +51,20 @@ Only remember the parts agents commonly touch:
   1. `GGML_BUILD_DIR=<configured-build-tree>`
   2. integrated build from vendored `ggml/`
   3. `find_package(ggml CONFIG)` fallback
-- On Windows, `tools/build_manager.py` prefers Ninja when available and tries to import an MSVC environment.
+- On Windows, `tools/build_manager.py` imports an MSVC environment and probes generator health (`NMake` + `Ninja`).
+- Default stable order on Windows is:
+  - use cached/explicit generator only if health checks pass
+  - otherwise fallback to `NMake Makefiles`
+  - then fallback to `Ninja`
+  - finally let CMake auto-select as a last resort
+- If `NMake Makefiles` is selected but `nmake` is unavailable, the build manager no longer proceeds blindly.
+- If the existing build tree generator mismatches the selected generator, `tools/build_manager.py` regenerates the build directory automatically.
 - `tools/build_manager.py` now sets `Release` for single-config generators by default (`--build-type` to override).
 - `tools/build_manager.py` supports `--ggml-build-dir <path>` to reuse an existing configured GGML build tree.
+- If `--ggml-build-dir` is omitted, `tools/build_manager.py` auto-detects `ggml/build_<backend>` or `ggml/build-<backend>` when present.
+- Minimal Windows build environment for `manage.py build`:
+  - Conda env: `python=3.10`, `cmake`, `ninja`, `pip`
+  - MSVC Build Tools 2022 with C++ x64 toolset and Windows SDK
 - Backend selection in `manage.py build`:
   - `auto` -> `metal` on macOS
   - `auto` -> `cpu` on non-macOS platforms

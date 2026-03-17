@@ -20,6 +20,19 @@ Runs the full TTS pipeline in pure C++17, including text tokenization, speaker e
 - Python 3.10+ for setup and conversion tooling
 - Optional: initialized `ggml/` submodule, or an external GGML build/package
 
+### Minimal Stable Windows Combo
+
+- OS: Windows 10/11 x64
+- Compiler toolchain: Visual Studio Build Tools 2022 (MSVC x64 + Windows SDK)
+- Conda env packages: `python=3.10`, `cmake`, `ninja`, `pip`
+- Recommended clean env setup:
+
+```powershell
+conda env remove -n lunavox -y
+conda create -n lunavox python=3.10 pip cmake ninja -y
+conda activate lunavox
+```
+
 ## Quickstart
 
 ```bash
@@ -55,6 +68,18 @@ Preferred build entry point:
 ```bash
 python manage.py build --backend auto
 ```
+
+Recommended stable CPU build on Windows:
+
+```powershell
+python manage.py build --backend cpu
+```
+
+Notes:
+
+- `tools/build_manager.py` auto-detects and reuses `ggml/build_cpu` when available.
+- The build manager performs generator health checks on Windows and falls back safely if a cached generator is unusable.
+- With a healthy environment and reused GGML build tree, CPU build should normally finish within 3 minutes.
 
 Useful variants:
 
