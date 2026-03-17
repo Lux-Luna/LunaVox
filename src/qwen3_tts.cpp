@@ -6,10 +6,13 @@
 #include <chrono>
 #include <cmath>
 #include <fstream>
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
+#include <cerrno>
 #include <limits>
+#include <thread>
 
 #ifdef __APPLE__
 #include <mach/mach.h>
@@ -193,6 +196,50 @@ static std::string format_bytes(uint64_t bytes) {
     char buf[64];
     snprintf(buf, sizeof(buf), "%.2f %s", val, units[unit]);
     return std::string(buf);
+}
+
+static int32_t parse_positive_int_env(const char * name) {
+    const char * env = std::getenv(name);
+    if (!env || env[0] == '\0') {
+        return 0;
+    }
+
+    char * end = nullptr;
+    errno = 0;
+    long v = std::strtol(env, &end, 10);
+    if (errno != 0 || !end || *end != '\0' || v <= 0 ||
+        v > (long)(std::numeric_limits<int32_t>::max)()) {
+        return 0;
+    }
+    return (int32_t) v;
+}
+
+static int32_t detect_auto_n_threads() {
+    // Optional override for benchmarking/deployment:
+    // QWEN3_TTS_THREADS=<n>
+    const int32_t env_threads = parse_positive_int_env("QWEN3_TTS_THREADS");
+    if (env_threads > 0) {
+        return env_threads;
+    }
+
+    // Prefer higher throughput by default, capped to a sane upper bound.
+    const unsigned int hc = std::thread::hardware_concurrency();
+    if (hc == 0) {
+        return 8;
+    }
+
+    int32_t threads = (int32_t) hc;
+    if (threads < 1) {
+        threads = 1;
+    }
+    if (threads > 16) {
+        threads = 16;
+    }
+    return threads;
+}
+
+static int32_t resolve_effective_n_threads(const tts_params & params) {
+    return params.n_threads > 0 ? params.n_threads : detect_auto_n_threads();
 }
 
 static void log_memory_usage(const char * label) {
@@ -423,6 +470,8 @@ tts_result Qwen3TTS::synthesize_with_voice(const std::string & text,
     
     int64_t t_encode_start = get_time_ms();
     std::vector<float> speaker_embedding;
+    const int32_t effective_n_threads = resolve_effective_n_threads(params);
+    audio_encoder_.set_n_threads(effective_n_threads);
     
     if (!audio_encoder_.encode(ref_samples, n_ref_samples, speaker_embedding)) {
         result.error_msg = "Failed to extract speaker embedding: " + audio_encoder_.get_error();
@@ -462,6 +511,9 @@ bool Qwen3TTS::extract_speaker_embedding(const float * ref_samples, int32_t n_re
         }
     }
 
+    const int32_t effective_n_threads = resolve_effective_n_threads(params);
+    audio_encoder_.set_n_threads(effective_n_threads);
+
     if (!audio_encoder_.encode(ref_samples, n_ref_samples, embedding)) {
         error_msg_ = "Failed to extract speaker embedding: " + audio_encoder_.get_error();
         return false;
@@ -493,6 +545,12 @@ tts_result Qwen3TTS::synthesize_internal(const std::string & text,
                                           const tts_params & params,
                                           tts_result & result) {
     int64_t t_total_start = get_time_ms();
+    const int32_t effective_n_threads = resolve_effective_n_threads(params);
+    if (params.print_timing || params.print_progress) {
+        fprintf(stderr, "Thread config: %d (%s)\n",
+                effective_n_threads,
+                params.n_threads > 0 ? "manual" : "auto");
+    }
     auto sample_memory = [&](const char * stage) {
         process_memory_snapshot mem;
         if (!get_process_memory_snapshot(mem)) {
@@ -569,6 +627,7 @@ tts_result Qwen3TTS::synthesize_internal(const std::string & text,
             sample_memory("synth/after-transformer-reload");
         }
     }
+    transformer_.set_n_threads(effective_n_threads);
     transformer_.clear_kv_cache();
     
     std::vector<int32_t> speech_codes;
@@ -619,6 +678,7 @@ tts_result Qwen3TTS::synthesize_internal(const std::string & text,
             sample_memory("synth/after-vocoder-load");
         }
     }
+    audio_decoder_.set_n_threads(effective_n_threads);
     
     if (!audio_decoder_.decode(speech_codes.data(), n_frames, result.audio)) {
         result.error_msg = "Failed to decode speech codes: " + audio_decoder_.get_error();

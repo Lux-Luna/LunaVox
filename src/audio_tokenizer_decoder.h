@@ -173,6 +173,9 @@ public:
     // Returns: audio samples normalized to [-1, 1] at 24kHz
     bool decode(const int32_t * codes, int32_t n_frames,
                 std::vector<float> & samples);
+
+    // Set compute threads for backend(s). Applies immediately when loaded.
+    void set_n_threads(int32_t n_threads);
     
     const audio_decoder_config & get_config() const { return model_.config; }
     
@@ -227,6 +230,7 @@ private:
     
     // Temporary storage for codes input
     std::vector<int32_t> codes_buf_;
+    int32_t n_threads_ = 0;
 };
 
 // Free model resources

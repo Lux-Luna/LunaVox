@@ -166,6 +166,11 @@ Main CLI options:
 - `--max-tokens`: maximum audio tokens
 - `--repetition-penalty`: repetition penalty
 
+Threading notes:
+
+- `--threads 0` (or omitted) now uses an automatic thread policy tuned for throughput.
+- Set `QWEN3_TTS_THREADS=<n>` to override the auto policy for deployment or reproducible benchmarks.
+
 ## Outputs
 
 Primary build outputs:
@@ -204,6 +209,28 @@ Notes:
 - tests do not require the upstream Python project at runtime
 - tests do require local model files
 - voice-cloning related tests require `reference/ref-audio.wav`
+
+## Performance Benchmark
+
+Use the built-in benchmark helper to run reproducible CPU/GPU end-to-end checks:
+
+```bash
+python tools/perf_benchmark.py --max-tokens 256
+```
+
+Windows tip:
+
+- If GPU benchmark runs fail under `conda run -n <env> ...` with a non-zero process exit, run the same command from a regular shell Python to avoid runtime DLL path conflicts.
+
+Outputs:
+
+- `perf/summary.json`
+- `perf/summary.md`
+- `perf/cpu.log`, `perf/gpu.log` (when GPU case is enabled)
+
+Current optimization roadmap and bottleneck analysis are tracked in:
+
+- `docs/performance_blueprint.md`
 
 ## Acknowledgments
 

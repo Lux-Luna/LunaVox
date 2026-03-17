@@ -26,8 +26,8 @@ struct tts_params {
     // Top-k sampling (0 = disabled)
     int32_t top_k = 50;
     
-    // Number of threads
-    int32_t n_threads = 4;
+    // Number of threads (<=0 means auto)
+    int32_t n_threads = 0;
     
     // Print progress during generation
     bool print_progress = false;

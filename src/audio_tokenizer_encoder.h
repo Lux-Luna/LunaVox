@@ -107,6 +107,9 @@ public:
     // embedding: output speaker embedding [1024]
     bool encode(const float * samples, int32_t n_samples,
                 std::vector<float> & embedding);
+
+    // Set compute threads for backend(s). Applies immediately when loaded.
+    void set_n_threads(int32_t n_threads);
     
     // Legacy interface for compatibility (not used for speaker encoding)
     bool encode(const float * samples, int32_t n_samples,
@@ -139,6 +142,7 @@ private:
     speaker_encoder_model model_;
     speaker_encoder_state state_;
     std::string error_msg_;
+    int32_t n_threads_ = 0;
 };
 
 // Free model resources

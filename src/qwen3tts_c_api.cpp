@@ -95,7 +95,7 @@ void qwen3_tts_default_params(Qwen3TtsParams * params) {
     params->temperature       = 0.9f;
     params->top_p             = 1.0f;
     params->top_k             = 50;
-    params->n_threads         = 4;
+    params->n_threads         = 0;
     params->repetition_penalty = 1.05f;
     params->language_id       = 2050; // en
 }

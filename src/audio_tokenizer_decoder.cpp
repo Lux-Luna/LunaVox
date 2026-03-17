@@ -6,6 +6,7 @@
 #include <cstring>
 #include <algorithm>
 #include <numeric>
+#include <cstdio>
 
 #define QWEN3_TTS_DEC_MAX_NODES 32768
 
@@ -17,13 +18,28 @@ AudioTokenizerDecoder::~AudioTokenizerDecoder() {
     unload_model();
 }
 
+void AudioTokenizerDecoder::set_n_threads(int32_t n_threads) {
+    if (n_threads <= 0) {
+        return;
+    }
+    n_threads_ = n_threads;
+
+    if (state_.backend) {
+        apply_backend_n_threads(state_.backend, n_threads_);
+    }
+    if (state_.backend_cpu) {
+        apply_backend_n_threads(state_.backend_cpu, n_threads_);
+    }
+}
+
 void AudioTokenizerDecoder::unload_model() {
-    free_audio_decoder_model(model_);
-    
     if (state_.sched) {
         ggml_backend_sched_free(state_.sched);
         state_.sched = nullptr;
     }
+
+    free_audio_decoder_model(model_);
+
     if (state_.backend) {
         release_preferred_backend(state_.backend);
         state_.backend = nullptr;
@@ -315,9 +331,11 @@ bool AudioTokenizerDecoder::load_model(const std::string & model_path) {
         }
     }
     
+    // Keep decoder weights in CPU buffer: CUDA decoder path still hits unsupported
+    // IM2COL cases on current ggml backend for this graph.
     if (!load_tensor_data_from_file(model_path, gguf_ctx, model_.ctx,
                                      model_.tensors, model_.buffer, error_msg_,
-                                     GGML_BACKEND_DEVICE_TYPE_IGPU)) {
+                                     GGML_BACKEND_DEVICE_TYPE_CPU)) {
         return false;
     }
     
@@ -355,6 +373,8 @@ bool AudioTokenizerDecoder::load_model(const std::string & model_path) {
             return false;
         }
     }
+
+    set_n_threads(n_threads_);
 
     std::vector<ggml_backend_t> backends;
     backends.push_back(state_.backend);

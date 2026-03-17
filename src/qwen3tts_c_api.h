@@ -17,7 +17,7 @@ typedef struct Qwen3TtsParams {
     float   temperature;         /* default: 0.9, 0=greedy */
     float   top_p;               /* default: 1.0 */
     int32_t top_k;               /* default: 50, 0=disabled */
-    int32_t n_threads;           /* default: 4 */
+    int32_t n_threads;           /* default: 0 (auto) */
     float   repetition_penalty;  /* default: 1.05 */
     int32_t language_id;         /* 2050=en, 2058=ja, 2055=zh, etc. */
 } Qwen3TtsParams;

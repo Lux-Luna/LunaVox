@@ -6,6 +6,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <cstdlib>
 
 static bool read_wav_file(const std::string & path, std::vector<float> & samples, int & sample_rate) {
     FILE * f = fopen(path.c_str(), "rb");

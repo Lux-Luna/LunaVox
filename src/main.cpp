@@ -90,7 +90,7 @@ void print_usage(const char * program) {
     fprintf(stderr, "  --repetition-penalty <val> Repetition penalty (default: 1.05)\n");
     fprintf(stderr, "  -l, --language <lang>  Force language: en,ru,zh,ja,ko,de,fr,es,it,pt\n");
     fprintf(stderr, "  --no-auto-language     Disable language auto-detection (uses --language or en)\n");
-    fprintf(stderr, "  -j, --threads <n>      Number of threads (default: 4)\n");
+    fprintf(stderr, "  -j, --threads <n>      Number of threads (default: auto)\n");
     fprintf(stderr, "  -h, --help             Show this help\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Example:\n");

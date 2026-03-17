@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <limits>
 #include <numeric>
+#include <cstdio>
 
 #define QWEN3_TTS_MAX_NODES 16384
 
@@ -123,12 +124,13 @@ static void compute_centered_window(float * window, int n_fft, int win_length) {
 AudioTokenizerEncoder::AudioTokenizerEncoder() = default;
 
 AudioTokenizerEncoder::~AudioTokenizerEncoder() {
-    free_speaker_encoder_model(model_);
-    
     if (state_.sched) {
         ggml_backend_sched_free(state_.sched);
         state_.sched = nullptr;
     }
+
+    free_speaker_encoder_model(model_);
+
     if (state_.backend) {
         release_preferred_backend(state_.backend);
         state_.backend = nullptr;
@@ -136,6 +138,20 @@ AudioTokenizerEncoder::~AudioTokenizerEncoder() {
     if (state_.backend_cpu) {
         ggml_backend_free(state_.backend_cpu);
         state_.backend_cpu = nullptr;
+    }
+}
+
+void AudioTokenizerEncoder::set_n_threads(int32_t n_threads) {
+    if (n_threads <= 0) {
+        return;
+    }
+    n_threads_ = n_threads;
+
+    if (state_.backend) {
+        apply_backend_n_threads(state_.backend, n_threads_);
+    }
+    if (state_.backend_cpu) {
+        apply_backend_n_threads(state_.backend_cpu, n_threads_);
     }
 }
 
@@ -244,8 +260,9 @@ bool AudioTokenizerEncoder::load_model(const std::string & model_path) {
         }
     }
     
-    if (!load_tensor_data_from_file(model_path, gguf_ctx, model_.ctx, 
-                                     model_.tensors, model_.buffer, error_msg_)) {
+    if (!load_tensor_data_from_file(model_path, gguf_ctx, model_.ctx,
+                                     model_.tensors, model_.buffer, error_msg_,
+                                     detect_preferred_backend_type())) {
         return false;
     }
     
@@ -264,6 +281,8 @@ bool AudioTokenizerEncoder::load_model(const std::string & model_path) {
             return false;
         }
     }
+
+    set_n_threads(n_threads_);
 
     std::vector<ggml_backend_t> backends;
     backends.push_back(state_.backend);

@@ -76,6 +76,8 @@ bool load_tensor_data_from_file(
 // Helper to initialize backend with GPU preference and CPU fallback
 ggml_backend_t init_preferred_backend(const char * component_name, std::string * error_msg);
 void release_preferred_backend(ggml_backend_t backend);
+enum ggml_backend_dev_type detect_preferred_backend_type();
+void apply_backend_n_threads(ggml_backend_t backend, int32_t n_threads);
 
 // Helper function to free model resources
 void free_ggml_resources(struct ggml_context * ctx, ggml_backend_buffer_t buffer);

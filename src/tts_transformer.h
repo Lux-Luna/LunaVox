@@ -265,6 +265,9 @@ public:
                   float repetition_penalty = 1.05f,
                   float temperature = 0.9f,
                   int32_t top_k = 50);
+
+    // Set compute threads for backend(s). Applies immediately when loaded.
+    void set_n_threads(int32_t n_threads);
     
     const tts_transformer_config & get_config() const { return model_.config; }
     
@@ -334,6 +337,7 @@ private:
     std::vector<float> last_hidden_;
     std::vector<ggml_fp16_t> embd_row_fp16_scratch_;
     std::mt19937 rng_{std::random_device{}()};
+    int32_t n_threads_ = 0;
     CoreMLCodePredictor coreml_code_predictor_;
     bool use_coreml_code_predictor_ = false;
     std::string coreml_code_predictor_path_;
