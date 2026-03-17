@@ -9,6 +9,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
+#include <limits>
 
 #ifdef __APPLE__
 #include <mach/mach.h>
@@ -827,8 +828,16 @@ bool save_audio_file(const std::string & path, const std::vector<float> & sample
     uint16_t bits_per_sample = 16;
     uint32_t byte_rate = sample_rate * num_channels * bits_per_sample / 8;
     uint16_t block_align = num_channels * bits_per_sample / 8;
-    uint32_t data_size = samples.size() * block_align;
-    uint32_t file_size = 36 + data_size;
+    const uint64_t data_size64 = static_cast<uint64_t>(samples.size()) * block_align;
+    const uint64_t file_size64 = 36ull + data_size64;
+    if (data_size64 > (std::numeric_limits<uint32_t>::max)() ||
+        file_size64 > (std::numeric_limits<uint32_t>::max)()) {
+        fprintf(stderr, "ERROR: WAV output too large for RIFF/WAVE 32-bit header fields\n");
+        fclose(f);
+        return false;
+    }
+    uint32_t data_size = static_cast<uint32_t>(data_size64);
+    uint32_t file_size = static_cast<uint32_t>(file_size64);
     
     // Write RIFF header
     fwrite("RIFF", 1, 4, f);

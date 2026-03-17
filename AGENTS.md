@@ -52,6 +52,8 @@ Only remember the parts agents commonly touch:
   2. integrated build from vendored `ggml/`
   3. `find_package(ggml CONFIG)` fallback
 - On Windows, `tools/build_manager.py` prefers Ninja when available and tries to import an MSVC environment.
+- `tools/build_manager.py` now sets `Release` for single-config generators by default (`--build-type` to override).
+- `tools/build_manager.py` supports `--ggml-build-dir <path>` to reuse an existing configured GGML build tree.
 - Backend selection in `manage.py build`:
   - `auto` -> `metal` on macOS
   - `auto` -> `cpu` on non-macOS platforms
@@ -61,8 +63,10 @@ Only remember the parts agents commonly touch:
   - `python manage.py build --backend cuda`
   - `python manage.py build --backend metal`
   - `python manage.py build --backend coreml`
+  - `python manage.py build --backend cpu --ggml-build-dir ggml/build_cpu`
+  - `python manage.py build --backend cpu --build-type RelWithDebInfo`
   - `cmake -S . -B build-cpu`
-  - `cmake --build build-cpu --config Release -j 4`
+  - `cmake --build build-cpu -j 4`
 
 ## Public Surface To Protect
 

@@ -491,6 +491,7 @@ struct ggml_tensor * AudioTokenizerDecoder::apply_upsample_block(struct ggml_con
                                                                    struct ggml_tensor * x,
                                                                    const upsample_block & block,
                                                                    int block_idx) {
+    (void) block_idx;
     int64_t seq_len = x->ne[0];
     int64_t channels = x->ne[1];
     
@@ -583,6 +584,7 @@ struct ggml_tensor * AudioTokenizerDecoder::apply_decoder_block(struct ggml_cont
                                                                   const decoder_block & block,
                                                                   int upsample_rate,
                                                                   int block_idx) {
+    (void) block_idx;
     if (block.snake_alpha && block.snake_beta) {
         x = apply_snake(ctx, x, block.snake_alpha, block.snake_beta);
     }
@@ -590,7 +592,7 @@ struct ggml_tensor * AudioTokenizerDecoder::apply_decoder_block(struct ggml_cont
      int64_t seq_len = x->ne[0];
      int64_t in_channels = x->ne[1];
      int64_t out_channels = block.conv_t_w->ne[1];
-     int kernel_size = block.conv_t_w->ne[0];
+     int kernel_size = static_cast<int>(block.conv_t_w->ne[0]);
      
      struct ggml_tensor * x_2d = ggml_reshape_2d(ctx, x, seq_len, in_channels);
      x_2d = ggml_conv_transpose_1d(ctx, block.conv_t_w, x_2d, upsample_rate, 0, 1);

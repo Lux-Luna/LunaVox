@@ -5,6 +5,32 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# For single-config generators (Ninja/Makefiles), default to Release unless explicitly set.
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+        "Debug" "Release" "RelWithDebInfo" "MinSizeRel")
+endif()
+
+if(MSVC)
+    # CMake toolchain defaults to /W3 on MSVC; upgrade in-place to avoid noisy D9025 overrides.
+    foreach(_qwen3_tts_flag_var
+            CMAKE_C_FLAGS
+            CMAKE_C_FLAGS_DEBUG
+            CMAKE_C_FLAGS_RELEASE
+            CMAKE_C_FLAGS_RELWITHDEBINFO
+            CMAKE_C_FLAGS_MINSIZEREL
+            CMAKE_CXX_FLAGS
+            CMAKE_CXX_FLAGS_DEBUG
+            CMAKE_CXX_FLAGS_RELEASE
+            CMAKE_CXX_FLAGS_RELWITHDEBINFO
+            CMAKE_CXX_FLAGS_MINSIZEREL)
+        if(DEFINED ${_qwen3_tts_flag_var} AND NOT "${${_qwen3_tts_flag_var}}" STREQUAL "")
+            string(REPLACE "/W3" "/W4" ${_qwen3_tts_flag_var} "${${_qwen3_tts_flag_var}}")
+        endif()
+    endforeach()
+endif()
+
 option(QWEN3_TTS_TIMING "Enable detailed timing instrumentation" OFF)
 option(QWEN3_TTS_COREML "Enable CoreML code predictor bridge on macOS" ON)
 option(QWEN3_TTS_USE_OPENMP "Enable OpenMP when it is available" ON)
@@ -62,17 +88,24 @@ function(qwen3_tts_import_ggml_build_tree build_dir)
     qwen3_tts_read_cache_value("${_cache_file}" "ggml_SOURCE_DIR" _ggml_source_dir)
     qwen3_tts_read_cache_value("${_cache_file}" "GGML_AVAILABLE_BACKENDS" _ggml_available_backends)
 
-    if(NOT _ggml_source_dir)
-        message(FATAL_ERROR
-            "GGML build tree at ${build_dir} does not expose ggml_SOURCE_DIR in CMakeCache.txt")
+    set(_ggml_include_dir "")
+    if(_ggml_source_dir)
+        set(_ggml_include_dir "${_ggml_source_dir}/include")
+    endif()
+    if(NOT EXISTS "${_ggml_include_dir}")
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ggml/include")
+            message(STATUS
+                "GGML build tree include path is unavailable (${_ggml_include_dir}). "
+                "Falling back to vendored include dir: ${CMAKE_CURRENT_SOURCE_DIR}/ggml/include")
+            set(_ggml_include_dir "${CMAKE_CURRENT_SOURCE_DIR}/ggml/include")
+        else()
+            message(FATAL_ERROR
+                "GGML build tree at ${build_dir} does not provide a usable include directory "
+                "(cache ggml_SOURCE_DIR='${_ggml_source_dir}').")
+        endif()
     endif()
 
-    set(_ggml_include_dir "${_ggml_source_dir}/include")
     set(_ggml_lib_dir "${build_dir}/src")
-    if(NOT EXISTS "${_ggml_include_dir}")
-        message(FATAL_ERROR
-            "GGML build tree include directory not found: ${_ggml_include_dir}")
-    endif()
     if(NOT EXISTS "${_ggml_lib_dir}")
         message(FATAL_ERROR
             "GGML build tree library directory not found: ${_ggml_lib_dir}")
@@ -177,8 +210,18 @@ if(NOT ggml_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ggml/CMakeLists.txt")
     # Configure GGML options before adding it
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build shared libraries" FORCE)
     set(GGML_STATIC ON CACHE BOOL "Build GGML as static library" FORCE)
-    
+
+    set(_qwen3_tts_cmp0194_pushed OFF)
+    if(POLICY CMP0194)
+        cmake_policy(PUSH)
+        # Keep current behavior when ggml requests plain ASM under MSVC.
+        cmake_policy(SET CMP0194 OLD)
+        set(_qwen3_tts_cmp0194_pushed ON)
+    endif()
     add_subdirectory(ggml)
+    if(_qwen3_tts_cmp0194_pushed)
+        cmake_policy(POP)
+    endif()
     
     # In integrated mode, targets like 'ggml', 'ggml-base' are available directly
     if(NOT TARGET ggml::ggml)
@@ -289,7 +332,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     endif()
 elseif(MSVC)
     target_compile_options(qwen3_tts_build_options INTERFACE /W4 /utf-8)
-    target_compile_definitions(qwen3_tts_build_options INTERFACE _USE_MATH_DEFINES)
+    target_compile_definitions(qwen3_tts_build_options INTERFACE
+        _USE_MATH_DEFINES
+        _CRT_SECURE_NO_WARNINGS
+        _CRT_NONSTDC_NO_WARNINGS)
 endif()
 
 add_library(qwen3_tts_component_deps INTERFACE)

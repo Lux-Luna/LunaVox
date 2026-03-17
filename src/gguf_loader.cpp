@@ -1,8 +1,14 @@
 #include "gguf_loader.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <limits>
+
+#if !defined(_WIN32)
+#include <sys/types.h>
+#endif
 
 namespace qwen3_tts {
 
@@ -15,6 +21,14 @@ struct shared_backend_state {
 shared_backend_state & get_shared_backend_state() {
     static shared_backend_state state;
     return state;
+}
+
+bool seek_file_absolute(FILE * f, uint64_t offset) {
+#if defined(_WIN32)
+    return _fseeki64(f, static_cast<__int64>(offset), SEEK_SET) == 0;
+#else
+    return fseeko(f, static_cast<off_t>(offset), SEEK_SET) == 0;
+#endif
 }
 }
 
@@ -186,6 +200,7 @@ bool load_tensor_data_from_file(
     }
     
     const size_t data_offset = gguf_get_data_offset(ctx);
+    const uint64_t data_offset64 = static_cast<uint64_t>(data_offset);
     const int64_t n_tensors = gguf_get_n_tensors(ctx);
     std::vector<uint8_t> read_buf;
     
@@ -203,7 +218,16 @@ bool load_tensor_data_from_file(
         
         read_buf.resize(nbytes);
         
-        if (fseek(f, data_offset + offset, SEEK_SET) != 0) {
+        const uint64_t offset64 = static_cast<uint64_t>(offset);
+        if (offset64 > (std::numeric_limits<uint64_t>::max)() - data_offset64) {
+            error_msg = "Tensor offset overflow: " + std::string(name);
+            fclose(f);
+            ggml_backend_free(backend);
+            return false;
+        }
+        const uint64_t absolute_offset = data_offset64 + offset64;
+
+        if (!seek_file_absolute(f, absolute_offset)) {
             error_msg = "Failed to seek to tensor data: " + std::string(name);
             fclose(f);
             ggml_backend_free(backend);

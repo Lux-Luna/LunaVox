@@ -6,14 +6,26 @@
 #include <cstdio>
 #include <fstream>
 #include <algorithm>
+#include <cstdint>
 #include <numeric>
 #include <random>
 #include <unordered_set>
 #include <cstdlib>
 #include <cctype>
+#include <limits>
 #include <sys/stat.h>
 
 namespace qwen3_tts {
+
+namespace {
+bool seek_file_absolute(FILE * f, uint64_t offset) {
+#if defined(_WIN32)
+    return _fseeki64(f, static_cast<__int64>(offset), SEEK_SET) == 0;
+#else
+    return fseeko(f, static_cast<off_t>(offset), SEEK_SET) == 0;
+#endif
+}
+}  // namespace
 
 TTSTransformer::TTSTransformer() = default;
 
@@ -175,6 +187,7 @@ bool TTSTransformer::try_init_coreml_code_predictor(const std::string & model_pa
     }
 
 #if !defined(__APPLE__)
+    (void) model_path;
     if (use_coreml_env && use_coreml_env[0] != '\0') {
         fprintf(stderr, "  CoreML code predictor requested but this build is not on Apple platform\n");
     }
@@ -642,6 +655,7 @@ bool TTSTransformer::load_tensor_data(const std::string & path, struct gguf_cont
     }
     
     const size_t data_offset = gguf_get_data_offset(ctx);
+    const uint64_t data_offset64 = static_cast<uint64_t>(data_offset);
     const int64_t n_tensors = gguf_get_n_tensors(ctx);
     std::vector<uint8_t> read_buf;
     
@@ -659,7 +673,16 @@ bool TTSTransformer::load_tensor_data(const std::string & path, struct gguf_cont
         
         read_buf.resize(nbytes);
         
-        if (fseek(f, data_offset + offset, SEEK_SET) != 0) {
+        const uint64_t offset64 = static_cast<uint64_t>(offset);
+        if (offset64 > (std::numeric_limits<uint64_t>::max)() - data_offset64) {
+            error_msg_ = "Tensor offset overflow: " + std::string(name);
+            fclose(f);
+            release_preferred_backend(backend);
+            return false;
+        }
+        const uint64_t absolute_offset = data_offset64 + offset64;
+
+        if (!seek_file_absolute(f, absolute_offset)) {
             error_msg_ = "Failed to seek to tensor data: " + std::string(name);
             fclose(f);
             release_preferred_backend(backend);

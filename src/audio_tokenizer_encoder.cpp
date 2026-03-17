@@ -5,11 +5,14 @@
 #include <cmath>
 #include <cstring>
 #include <algorithm>
+#include <limits>
 #include <numeric>
 
 #define QWEN3_TTS_MAX_NODES 16384
 
 namespace qwen3_tts {
+
+static constexpr float kPi = 3.14159265358979323846f;
 
 // Mel filterbank computation using librosa slaney normalization
 // This matches librosa.filters.mel with norm='slaney'
@@ -98,17 +101,10 @@ static void compute_dft(const float * input, float * real, float * imag, int n) 
         real[k] = 0.0f;
         imag[k] = 0.0f;
         for (int t = 0; t < n; ++t) {
-            float angle = -2.0f * M_PI * k * t / n;
+            float angle = -2.0f * kPi * k * t / n;
             real[k] += input[t] * cosf(angle);
             imag[k] += input[t] * sinf(angle);
         }
-    }
-}
-
-// Periodic Hann window (matches torch.hann_window with periodic=True, which is default)
-static void compute_hann_window(float * window, int n) {
-    for (int i = 0; i < n; ++i) {
-        window[i] = 0.5f * (1.0f - cosf(2.0f * M_PI * i / n));
     }
 }
 
@@ -120,7 +116,7 @@ static void compute_centered_window(float * window, int n_fft, int win_length) {
     // Compute Hann window of win_length
     int offset = (n_fft - win_length) / 2;
     for (int i = 0; i < win_length; ++i) {
-        window[offset + i] = 0.5f * (1.0f - cosf(2.0f * M_PI * i / win_length));
+        window[offset + i] = 0.5f * (1.0f - cosf(2.0f * kPi * i / win_length));
     }
 }
 
@@ -215,31 +211,31 @@ bool AudioTokenizerEncoder::load_model(const std::string & model_path) {
             int blk_idx, res_idx;
             char suffix[64];
             
-            if (sscanf(name, "spk_enc.blk.%d.tdnn1.%s", &blk_idx, suffix) == 2) {
+            if (sscanf(name, "spk_enc.blk.%d.tdnn1.%63s", &blk_idx, suffix) == 2) {
                 if (blk_idx >= 1 && blk_idx <= 3) {
                     if (strcmp(suffix, "weight") == 0) model_.blocks[blk_idx-1].tdnn1_w = tensor;
                     else if (strcmp(suffix, "bias") == 0) model_.blocks[blk_idx-1].tdnn1_b = tensor;
                 }
             }
-            else if (sscanf(name, "spk_enc.blk.%d.tdnn2.%s", &blk_idx, suffix) == 2) {
+            else if (sscanf(name, "spk_enc.blk.%d.tdnn2.%63s", &blk_idx, suffix) == 2) {
                 if (blk_idx >= 1 && blk_idx <= 3) {
                     if (strcmp(suffix, "weight") == 0) model_.blocks[blk_idx-1].tdnn2_w = tensor;
                     else if (strcmp(suffix, "bias") == 0) model_.blocks[blk_idx-1].tdnn2_b = tensor;
                 }
             }
-            else if (sscanf(name, "spk_enc.blk.%d.res2net.%d.%s", &blk_idx, &res_idx, suffix) == 3) {
+            else if (sscanf(name, "spk_enc.blk.%d.res2net.%d.%63s", &blk_idx, &res_idx, suffix) == 3) {
                 if (blk_idx >= 1 && blk_idx <= 3 && res_idx >= 0 && res_idx < 7) {
                     if (strcmp(suffix, "weight") == 0) model_.blocks[blk_idx-1].res2net_w[res_idx] = tensor;
                     else if (strcmp(suffix, "bias") == 0) model_.blocks[blk_idx-1].res2net_b[res_idx] = tensor;
                 }
             }
-            else if (sscanf(name, "spk_enc.blk.%d.se.conv1.%s", &blk_idx, suffix) == 2) {
+            else if (sscanf(name, "spk_enc.blk.%d.se.conv1.%63s", &blk_idx, suffix) == 2) {
                 if (blk_idx >= 1 && blk_idx <= 3) {
                     if (strcmp(suffix, "weight") == 0) model_.blocks[blk_idx-1].se_conv1_w = tensor;
                     else if (strcmp(suffix, "bias") == 0) model_.blocks[blk_idx-1].se_conv1_b = tensor;
                 }
             }
-            else if (sscanf(name, "spk_enc.blk.%d.se.conv2.%s", &blk_idx, suffix) == 2) {
+            else if (sscanf(name, "spk_enc.blk.%d.se.conv2.%63s", &blk_idx, suffix) == 2) {
                 if (blk_idx >= 1 && blk_idx <= 3) {
                     if (strcmp(suffix, "weight") == 0) model_.blocks[blk_idx-1].se_conv2_w = tensor;
                     else if (strcmp(suffix, "bias") == 0) model_.blocks[blk_idx-1].se_conv2_b = tensor;
@@ -391,7 +387,7 @@ static struct ggml_tensor * apply_reflect_pad_1d(struct ggml_context * ctx,
                                        left_src_idx * x->nb[0]);
         left_slices[i] = ggml_cont(ctx, left_slices[i]);
         
-        int right_src_idx = T - 2 - i;
+        int64_t right_src_idx = T - 2 - i;
         right_slices[i] = ggml_view_3d(ctx, x, 1, C, B,
                                         x->nb[1], x->nb[2],
                                         right_src_idx * x->nb[0]);
@@ -485,6 +481,12 @@ struct ggml_cgraph * AudioTokenizerEncoder::build_graph(int32_t n_frames) {
      ggml_set_name(cur, "conv0_out");
     
     int64_t seq_len = cur->ne[0];
+    if (seq_len > (std::numeric_limits<int>::max)()) {
+        error_msg_ = "Sequence length exceeds supported int range";
+        ggml_free(ctx0);
+        return nullptr;
+    }
+    const int seq_len_i = static_cast<int>(seq_len);
     
     // Store block outputs for MFA (including block 0)
     struct ggml_tensor * block_outputs[4];
@@ -574,7 +576,7 @@ struct ggml_cgraph * AudioTokenizerEncoder::build_graph(int32_t n_frames) {
          
          // SE (Squeeze-Excitation)
          // Global average pooling over time: mean(dim=2, keepdim=True)
-         struct ggml_tensor * se = ggml_pool_1d(ctx0, cur, GGML_OP_POOL_AVG, seq_len, seq_len, 0);
+         struct ggml_tensor * se = ggml_pool_1d(ctx0, cur, GGML_OP_POOL_AVG, seq_len_i, seq_len_i, 0);
          se = ggml_reshape_3d(ctx0, se, 1, hidden_dim, 1);
          
          // SE conv1: 512 -> 128 with ReLU
@@ -617,12 +619,12 @@ struct ggml_cgraph * AudioTokenizerEncoder::build_graph(int32_t n_frames) {
     
     // Step 1: Compute global mean and std over time
     // mean = hidden_states.mean(dim=2, keepdim=True)  # [1, 1536, 1]
-    struct ggml_tensor * global_mean = ggml_pool_1d(ctx0, cur, GGML_OP_POOL_AVG, seq_len, seq_len, 0);
+    struct ggml_tensor * global_mean = ggml_pool_1d(ctx0, cur, GGML_OP_POOL_AVG, seq_len_i, seq_len_i, 0);
     global_mean = ggml_reshape_3d(ctx0, global_mean, 1, 1536, 1);
     
     // std = sqrt(E[x^2] - E[x]^2)
     struct ggml_tensor * sq = ggml_sqr(ctx0, cur);
-    struct ggml_tensor * mean_sq = ggml_pool_1d(ctx0, sq, GGML_OP_POOL_AVG, seq_len, seq_len, 0);
+    struct ggml_tensor * mean_sq = ggml_pool_1d(ctx0, sq, GGML_OP_POOL_AVG, seq_len_i, seq_len_i, 0);
     mean_sq = ggml_reshape_3d(ctx0, mean_sq, 1, 1536, 1);
     struct ggml_tensor * var = ggml_sub(ctx0, mean_sq, ggml_sqr(ctx0, global_mean));
     var = ggml_clamp(ctx0, var, 1e-12f, 1e10f);
@@ -663,7 +665,7 @@ struct ggml_cgraph * AudioTokenizerEncoder::build_graph(int32_t n_frames) {
     // mean, std = self._compute_statistics(hidden_states, attention)
     // mean = (attention * hidden_states).sum(dim=2)
     struct ggml_tensor * weighted = ggml_mul(ctx0, attention, cur);
-    struct ggml_tensor * weighted_mean = ggml_pool_1d(ctx0, weighted, GGML_OP_POOL_AVG, seq_len, seq_len, 0);
+    struct ggml_tensor * weighted_mean = ggml_pool_1d(ctx0, weighted, GGML_OP_POOL_AVG, seq_len_i, seq_len_i, 0);
     weighted_mean = ggml_scale(ctx0, weighted_mean, (float)seq_len);  // Convert avg to sum
     weighted_mean = ggml_reshape_3d(ctx0, weighted_mean, 1, 1536, 1);
     
@@ -673,7 +675,7 @@ struct ggml_cgraph * AudioTokenizerEncoder::build_graph(int32_t n_frames) {
     struct ggml_tensor * diff = ggml_sub(ctx0, cur, mean_for_std);
     struct ggml_tensor * diff_sq = ggml_sqr(ctx0, diff);
     struct ggml_tensor * weighted_var = ggml_mul(ctx0, attention, diff_sq);
-    struct ggml_tensor * var_sum = ggml_pool_1d(ctx0, weighted_var, GGML_OP_POOL_AVG, seq_len, seq_len, 0);
+    struct ggml_tensor * var_sum = ggml_pool_1d(ctx0, weighted_var, GGML_OP_POOL_AVG, seq_len_i, seq_len_i, 0);
     var_sum = ggml_scale(ctx0, var_sum, (float)seq_len);  // Convert avg to sum
     var_sum = ggml_reshape_3d(ctx0, var_sum, 1, 1536, 1);
     var_sum = ggml_clamp(ctx0, var_sum, 1e-12f, 1e10f);
