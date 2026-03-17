@@ -105,11 +105,13 @@ void print_usage(const char * program) {
     fprintf(stderr, "  --backend <name>       Global backend policy: auto|gpu|igpu|accel|cpu\n");
     fprintf(stderr, "  --backend-speaker <n>  Speaker encoder backend override\n");
     fprintf(stderr, "  --backend-transformer <n> Talker/Code predictor backend override\n");
-    fprintf(stderr, "  --backend-talker <n>   Talker backend hint (shared transformer backend)\n");
-    fprintf(stderr, "  --backend-code-predictor <n> Code predictor backend hint (shared transformer backend)\n");
+    fprintf(stderr, "  --backend-talker <n>   Talker backend override\n");
+    fprintf(stderr, "  --backend-code-predictor <n> Code predictor backend override\n");
     fprintf(stderr, "  --backend-decoder <n>  Codec decoder backend override\n");
     fprintf(stderr, "  --streaming-decode     Enable experimental decode pipeline overlap\n");
     fprintf(stderr, "  --decode-chunk-frames <n> Frames per decoder chunk in streaming mode (default: 32)\n");
+    fprintf(stderr, "  --streaming-max-queued-chunks <n> Max decode chunks buffered in streaming mode\n");
+    fprintf(stderr, "  --streaming-decode-batch-chunks <n> Decode N chunks per worker batch in streaming mode\n");
     fprintf(stderr, "  -j, --threads <n>      Number of threads (default: auto)\n");
     fprintf(stderr, "  -h, --help             Show this help\n");
     fprintf(stderr, "\n");
@@ -264,6 +266,18 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             params.decode_chunk_frames = std::stoi(args[i]);
+        } else if (arg == "--streaming-max-queued-chunks") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing streaming-max-queued-chunks value\n");
+                return 1;
+            }
+            params.streaming_max_queued_chunks = std::stoi(args[i]);
+        } else if (arg == "--streaming-decode-batch-chunks") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing streaming-decode-batch-chunks value\n");
+                return 1;
+            }
+            params.streaming_decode_batch_chunks = std::stoi(args[i]);
         } else if (arg == "-j" || arg == "--threads") {
             if (++i >= (int)args.size()) {
                 fprintf(stderr, "Error: missing threads value\n");

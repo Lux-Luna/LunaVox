@@ -1,0 +1,64 @@
+  Loading 151291 merges...
+Loading models from: D:\TTS\lunavox\models
+  [mem] load/start               rss=158.38 MB  phys=158.38 MB
+  Component backend policy:
+    Speaker Encoder: gpu
+    Talker:          gpu
+    Code Predictor:  gpu
+    Codec Encoder:   disabled on current inference path
+    Codec Decoder:   gpu
+Loading TTS model from D:\TTS\lunavox\models/qwen3-tts-0.6B-base.gguf...
+  Text tokenizer loaded: vocab_size=151936 (113 ms)
+  [mem] load/after-tokenizer     rss=194.05 MB  phys=194.05 MB
+  Speaker encoder: deferred (lazy load)
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24575 MiB):
+  Device 0: NVIDIA GeForce RTX 3090, compute capability 8.6, VMM: yes, VRAM: 24575 MiB
+  TTSTransformer Talker backend: CUDA0
+  TTS transformer loaded: hidden_size=1024, n_layers=28 (523 ms)
+    Runtime Talker backend: CUDA0
+    Runtime Code Predictor backend: CUDA0
+  [mem] load/after-transformer   rss=312.55 MB  phys=312.55 MB
+Loading vocoder from D:\TTS\lunavox\models/qwen3-tts-tokenizer-f16.gguf...
+  AudioTokenizerDecoder backend: CUDA0
+  Vocoder loaded: sample_rate=24000, n_codebooks=16 (84 ms)
+    Runtime backend: CUDA0
+  [mem] load/after-vocoder       rss=542.34 MB  phys=542.34 MB
+All models loaded in 722 ms
+  [mem] load/end                 rss=542.34 MB  phys=542.34 MB
+Synthesizing: "Phase D sweep run for streaming overlap tuning."
+Thread config: 8 (manual)
+  [mem] synth/start              rss=542.34 MB  phys=542.34 MB
+  [mem] synth/after-tokenize     rss=542.34 MB  phys=542.34 MB
+Language selection: auto -> en (2050)
+Streaming decode: enabled (chunk=64 frames, max-queue=2, batch=1 chunks)
+  [mem] synth/after-generate     rss=1010.19 MB  phys=1010.19 MB
+  [mem] synth/after-decode       rss=1010.19 MB  phys=1010.19 MB
+  [mem] synth/end                rss=1010.19 MB  phys=1010.19 MB
+
+Timing:
+  Tokenization:    0 ms
+  Speaker encode:  0 ms
+  Code generation: 4130 ms
+  Vocoder decode:  4512 ms
+    (streaming mode: generation/decode overlap enabled)
+    chunks=2, batches=2, decode-wall=4513 ms, overlap=2318 ms (ratio=0.56), pipeline-saved=2317 ms
+  Total:           6325 ms
+  Audio duration:  10.19 s
+  Throughput:      1.61x realtime (RTF=0.620)
+
+Memory:
+  RSS start/end:   542.34 MB -> 1010.19 MB
+  RSS peak:        1010.19 MB
+  Phys start/end:  542.34 MB -> 1010.19 MB
+  Phys peak:       1010.19 MB
+
+Output saved to: D:\TTS\lunavox\perf\phaseD_sweep128\t8_c64_q2_b1\gpu.wav
+Audio duration: 10.19 seconds
+
+Timing:
+  Load:           0 ms
+  Tokenize:       0 ms
+  Encode:         0 ms
+  Generate:    4130 ms
+  Decode:      4512 ms
+  Total:       6325 ms

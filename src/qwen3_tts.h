@@ -51,6 +51,12 @@ struct tts_params {
     // Frames per decoder chunk when streaming decode is enabled.
     int32_t decode_chunk_frames = 32;
 
+    // Maximum queued decode chunks in streaming mode.
+    int32_t streaming_max_queued_chunks = 0;
+
+    // Decoder worker batch size in chunks for streaming mode.
+    int32_t streaming_decode_batch_chunks = 0;
+
 };
 
 // TTS generation result
@@ -74,6 +80,15 @@ struct tts_result {
     int64_t t_generate_ms = 0;
     int64_t t_decode_ms = 0;
     int64_t t_total_ms = 0;
+
+    // Streaming overlap metrics (valid when streaming decode is enabled).
+    bool streaming_decode_used = false;
+    int32_t streaming_decode_chunks = 0;
+    int32_t streaming_decode_batches = 0;
+    int64_t streaming_decode_wall_ms = 0;
+    int64_t streaming_overlap_ms = 0;
+    float streaming_overlap_ratio = 0.0f;  // overlap / min(generate, decode_compute)
+    int64_t streaming_pipeline_saved_ms = 0;  // (generate + decode_compute) - total
 
     // Language used for generation after auto-detection / override.
     int32_t effective_language_id = 2050;

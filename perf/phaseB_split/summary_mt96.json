@@ -1,0 +1,54 @@
+﻿[
+    {
+        "case":  "case_gpu_gpu_mt96",
+        "frames":  "96",
+        "talker":  "CUDA0",
+        "code_predictor":  "CUDA0",
+        "talker_ms":  "643.0",
+        "code_pred_ms":  "1882.1",
+        "gen_ms":  "2632",
+        "decode_ms":  "3092",
+        "total_ms":  "5725",
+        "audio_s":  "7.66",
+        "rtf":  "0.748"
+    },
+    {
+        "case":  "case_gpu_cpu_mt96",
+        "frames":  "96",
+        "talker":  "CUDA0",
+        "code_predictor":  "CPU",
+        "talker_ms":  "721.9",
+        "code_pred_ms":  "6284.1",
+        "gen_ms":  "7100",
+        "decode_ms":  "3043",
+        "total_ms":  "10143",
+        "audio_s":  "7.66",
+        "rtf":  "1.325"
+    },
+    {
+        "case":  "case_cpu_gpu_mt96",
+        "frames":  "96",
+        "talker":  "CPU",
+        "code_predictor":  "CUDA0",
+        "talker_ms":  "1402.5",
+        "code_pred_ms":  "1953.5",
+        "gen_ms":  "3434",
+        "decode_ms":  "3032",
+        "total_ms":  "6466",
+        "audio_s":  "7.66",
+        "rtf":  "0.844"
+    },
+    {
+        "case":  "case_transformer_gpu_mt96",
+        "frames":  "96",
+        "talker":  "CUDA0",
+        "code_predictor":  "CUDA0",
+        "talker_ms":  "636.2",
+        "code_pred_ms":  "1838.2",
+        "gen_ms":  "2582",
+        "decode_ms":  "2955",
+        "total_ms":  "5537",
+        "audio_s":  "7.66",
+        "rtf":  "0.723"
+    }
+]

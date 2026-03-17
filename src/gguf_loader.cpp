@@ -106,17 +106,8 @@ static std::string resolve_component_backend_pref(const char * component_name) {
     if (comp == "TTSTransformer") {
         const char * transformer = get_non_empty_env("QWEN3_TTS_BACKEND_TRANSFORMER");
         const char * talker = get_non_empty_env("QWEN3_TTS_BACKEND_TALKER");
-        const char * code_pred = get_non_empty_env("QWEN3_TTS_BACKEND_CODE_PREDICTOR");
-        if (!transformer && talker && code_pred &&
-            to_lower_ascii(talker) != to_lower_ascii(code_pred)) {
-            fprintf(stderr,
-                    "  [backend] TTSTransformer receives conflicting TALKER(%s) and "
-                    "CODE_PREDICTOR(%s); using TALKER\n",
-                    talker, code_pred);
-        }
         if (transformer) return transformer;
         if (talker) return talker;
-        if (code_pred) return code_pred;
         return global ? global : "";
     }
 

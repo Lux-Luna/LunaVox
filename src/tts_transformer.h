@@ -12,6 +12,7 @@
 #include <random>
 #include <functional>
 #include <utility>
+#include <limits>
 #ifdef QWEN3_TTS_TIMING
 #include <chrono>
 #endif
@@ -180,6 +181,8 @@ struct tts_kv_cache {
 struct tts_transformer_state {
     ggml_backend_t backend = nullptr;
     ggml_backend_t backend_cpu = nullptr;
+    ggml_backend_t backend_code_pred = nullptr;
+    ggml_backend_t backend_code_pred_cpu = nullptr;
     ggml_backend_sched_t sched = nullptr;
     ggml_backend_sched_t sched_code_pred = nullptr;
     
@@ -188,6 +191,12 @@ struct tts_transformer_state {
     
     tts_kv_cache cache;           // Talker KV cache (28 layers)
     tts_kv_cache code_pred_cache; // Code predictor KV cache (5 layers)
+};
+
+struct code_pred_graph_cache_entry {
+    std::vector<uint8_t> compute_meta;
+    struct ggml_context * ctx = nullptr;
+    struct ggml_cgraph * gf = nullptr;
 };
 
 // TTS Transformer class
@@ -287,6 +296,8 @@ public:
     void set_n_threads(int32_t n_threads);
     const char * backend_name() const;
     bool is_cpu_backend() const;
+    const char * code_predictor_backend_name() const;
+    bool is_code_predictor_cpu_backend() const;
     
     const tts_transformer_config & get_config() const { return model_.config; }
     
@@ -302,6 +313,10 @@ public:
                             std::vector<float> & output);
     
 private:
+    void clear_code_pred_graph_cache();
+    bool ensure_code_pred_graph_cache();
+    bool parse_code_pred_sampling_range();
+
     bool try_init_coreml_code_predictor(const std::string & model_path);
     bool predict_codes_autoregressive_coreml(const float * hidden, int32_t codebook_0_token,
                                              std::vector<int32_t> & output,
@@ -333,22 +348,36 @@ private:
     // Build computation graph for single-step autoregressive code predictor
     // n_past: number of tokens already in KV cache (0-14)
     // generation_step: which codebook we're predicting (0-14)
-    struct ggml_cgraph * build_code_pred_step_graph(int32_t n_past, int32_t generation_step);
+    struct ggml_cgraph * build_code_pred_step_graph(int32_t n_past, int32_t generation_step,
+                                                    struct ggml_context ** out_ctx = nullptr,
+                                                    uint8_t * compute_meta = nullptr,
+                                                    size_t compute_meta_size = 0);
     
     // Build computation graph for 2-token prefill of code predictor
     // Processes [past_hidden, codec_embd(codebook_0_token)] together
-    struct ggml_cgraph * build_code_pred_prefill_graph();
+    struct ggml_cgraph * build_code_pred_prefill_graph(struct ggml_context ** out_ctx = nullptr,
+                                                       uint8_t * compute_meta = nullptr,
+                                                       size_t compute_meta_size = 0);
     
     // Parse hyperparameters from GGUF
     bool parse_config(struct gguf_context * ctx);
     
     // Create tensor structures
-    bool create_tensors(struct gguf_context * ctx);
+    bool create_tensors(struct gguf_context * ctx,
+                        tts_transformer_model & model,
+                        bool include_talker,
+                        bool include_code_pred);
     
     // Load tensor data from file
-    bool load_tensor_data(const std::string & path, struct gguf_context * ctx);
+    bool load_tensor_data(const std::string & path, struct gguf_context * ctx,
+                          tts_transformer_model & model,
+                          const char * backend_override);
+
+    const tts_transformer_model & code_pred_model() const;
     
     tts_transformer_model model_;
+    tts_transformer_model code_pred_model_;
+    bool split_code_pred_engine_ = false;
     tts_transformer_state state_;
     std::string error_msg_;
     
@@ -359,6 +388,11 @@ private:
     std::vector<float> code_pred_probs_scratch_;
     std::vector<std::pair<float, int32_t>> code_pred_scored_scratch_;
     std::vector<float> code_pred_cb0_embd_scratch_;
+    code_pred_graph_cache_entry code_pred_prefill_graph_;
+    std::vector<code_pred_graph_cache_entry> code_pred_step_graphs_;
+    int32_t code_pred_sample_min_id_ = 0;
+    int32_t code_pred_sample_max_id_ = (std::numeric_limits<int32_t>::max)();
+    bool code_pred_sample_range_custom_ = false;
     std::mt19937 rng_{std::random_device{}()};
     int32_t n_threads_ = 0;
     CoreMLCodePredictor coreml_code_predictor_;

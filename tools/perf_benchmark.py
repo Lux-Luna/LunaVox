@@ -23,6 +23,11 @@ from typing import Dict, List, Optional
 class CaseResult:
     case: str
     backend_env: str
+    backend_speaker: str
+    backend_transformer: str
+    backend_talker: str
+    backend_code_predictor: str
+    backend_decoder: str
     exe: str
     return_code: int
     log_path: str
@@ -35,6 +40,12 @@ class CaseResult:
     total_ms: Optional[int] = None
     audio_duration_s: Optional[float] = None
     rtf: Optional[float] = None
+    stream_chunks: Optional[int] = None
+    stream_batches: Optional[int] = None
+    stream_decode_wall_ms: Optional[int] = None
+    stream_overlap_ms: Optional[int] = None
+    stream_overlap_ratio: Optional[float] = None
+    stream_pipeline_saved_ms: Optional[int] = None
 
 
 def parse_metrics(log_text: str) -> Dict[str, Optional[float]]:
@@ -47,6 +58,12 @@ def parse_metrics(log_text: str) -> Dict[str, Optional[float]]:
         "total_ms": None,
         "audio_duration_s": None,
         "rtf": None,
+        "stream_chunks": None,
+        "stream_batches": None,
+        "stream_decode_wall_ms": None,
+        "stream_overlap_ms": None,
+        "stream_overlap_ratio": None,
+        "stream_pipeline_saved_ms": None,
     }
 
     m = re.search(r"Detailed Generation Timing \((\d+) frames\)", log_text)
@@ -81,6 +98,32 @@ def parse_metrics(log_text: str) -> Dict[str, Optional[float]]:
     if m:
         out["rtf"] = float(m.group(1))
 
+    # New format with explicit batch count.
+    m = re.search(
+        r"chunks=(\d+),\s*batches=(\d+),\s*decode-wall=(\d+)\s*ms,\s*overlap=(\d+)\s*ms\s*\(ratio=([0-9.]+)\),\s*pipeline-saved=(\d+)\s*ms",
+        log_text,
+    )
+    if m:
+        out["stream_chunks"] = int(m.group(1))
+        out["stream_batches"] = int(m.group(2))
+        out["stream_decode_wall_ms"] = int(m.group(3))
+        out["stream_overlap_ms"] = int(m.group(4))
+        out["stream_overlap_ratio"] = float(m.group(5))
+        out["stream_pipeline_saved_ms"] = int(m.group(6))
+        return out
+
+    # Backward-compatible parser for older logs without "batches=...".
+    m = re.search(
+        r"chunks=(\d+),\s*decode-wall=(\d+)\s*ms,\s*overlap=(\d+)\s*ms\s*\(ratio=([0-9.]+)\),\s*pipeline-saved=(\d+)\s*ms",
+        log_text,
+    )
+    if m:
+        out["stream_chunks"] = int(m.group(1))
+        out["stream_decode_wall_ms"] = int(m.group(2))
+        out["stream_overlap_ms"] = int(m.group(3))
+        out["stream_overlap_ratio"] = float(m.group(4))
+        out["stream_pipeline_saved_ms"] = int(m.group(5))
+
     return out
 
 
@@ -90,6 +133,8 @@ def run_case(
     backend_env: str,
     backend_speaker: str,
     backend_transformer: str,
+    backend_talker: str,
+    backend_code_predictor: str,
     backend_decoder: str,
     model_dir: Path,
     text: str,
@@ -100,6 +145,8 @@ def run_case(
     repetition_penalty: float,
     streaming_decode: bool,
     decode_chunk_frames: int,
+    streaming_max_queued_chunks: int,
+    streaming_decode_batch_chunks: int,
     out_dir: Path,
 ) -> CaseResult:
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -127,6 +174,8 @@ def run_case(
         cmd += ["--threads", str(threads)]
     if streaming_decode:
         cmd += ["--streaming-decode", "--decode-chunk-frames", str(decode_chunk_frames)]
+    if streaming_decode_batch_chunks > 0:
+        cmd += ["--streaming-decode-batch-chunks", str(streaming_decode_batch_chunks)]
 
     env = os.environ.copy()
     env["QWEN3_TTS_BACKEND"] = backend_env
@@ -134,8 +183,14 @@ def run_case(
         env["QWEN3_TTS_BACKEND_SPEAKER_ENCODER"] = backend_speaker
     if backend_transformer:
         env["QWEN3_TTS_BACKEND_TRANSFORMER"] = backend_transformer
+    if backend_talker:
+        env["QWEN3_TTS_BACKEND_TALKER"] = backend_talker
+    if backend_code_predictor:
+        env["QWEN3_TTS_BACKEND_CODE_PREDICTOR"] = backend_code_predictor
     if backend_decoder:
         env["QWEN3_TTS_BACKEND_CODEC_DECODER"] = backend_decoder
+    if streaming_max_queued_chunks > 0:
+        env["QWEN3_TTS_STREAMING_MAX_QUEUED_CHUNKS"] = str(streaming_max_queued_chunks)
 
     proc = subprocess.run(
         cmd,
@@ -152,6 +207,11 @@ def run_case(
     return CaseResult(
         case=case,
         backend_env=backend_env,
+        backend_speaker=backend_speaker,
+        backend_transformer=backend_transformer,
+        backend_talker=backend_talker,
+        backend_code_predictor=backend_code_predictor,
+        backend_decoder=backend_decoder,
         exe=str(exe),
         return_code=proc.returncode,
         log_path=str(log_path),
@@ -164,26 +224,40 @@ def run_case(
         total_ms=metrics["total_ms"],  # type: ignore[arg-type]
         audio_duration_s=metrics["audio_duration_s"],  # type: ignore[arg-type]
         rtf=metrics["rtf"],  # type: ignore[arg-type]
+        stream_chunks=metrics["stream_chunks"],  # type: ignore[arg-type]
+        stream_batches=metrics["stream_batches"],  # type: ignore[arg-type]
+        stream_decode_wall_ms=metrics["stream_decode_wall_ms"],  # type: ignore[arg-type]
+        stream_overlap_ms=metrics["stream_overlap_ms"],  # type: ignore[arg-type]
+        stream_overlap_ratio=metrics["stream_overlap_ratio"],  # type: ignore[arg-type]
+        stream_pipeline_saved_ms=metrics["stream_pipeline_saved_ms"],  # type: ignore[arg-type]
     )
 
 
 def write_markdown(results: List[CaseResult], path: Path) -> None:
-    lines = []
+    lines: List[str] = []
     lines.append("# Lunavox Benchmark Summary")
     lines.append("")
     lines.append(f"- Generated at: `{datetime.now().isoformat(timespec='seconds')}`")
     lines.append("")
-    lines.append("| case | backend | return | frames | gen(ms) | decode(ms) | total(ms) | audio(s) | RTF |")
-    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+    lines.append("| case | backend | talker | code-pred | decoder | return | frames | gen(ms) | decode(ms) | total(ms) | audio(s) | RTF | overlap(r) | saved(ms) | chunks/batches |")
+    lines.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for r in results:
         lines.append(
-            f"| {r.case} | {r.backend_env} | {r.return_code} | "
+            f"| {r.case} | {r.backend_env} | "
+            f"{r.backend_talker or r.backend_transformer or '-'} | "
+            f"{r.backend_code_predictor or r.backend_transformer or '-'} | "
+            f"{r.backend_decoder or '-'} | "
+            f"{r.return_code} | "
             f"{'' if r.frames is None else r.frames} | "
             f"{'' if r.code_generation_ms is None else r.code_generation_ms} | "
             f"{'' if r.vocoder_decode_ms is None else r.vocoder_decode_ms} | "
             f"{'' if r.total_ms is None else r.total_ms} | "
             f"{'' if r.audio_duration_s is None else f'{r.audio_duration_s:.2f}'} | "
-            f"{'' if r.rtf is None else f'{r.rtf:.3f}'} |"
+            f"{'' if r.rtf is None else f'{r.rtf:.3f}'} | "
+            f"{'' if r.stream_overlap_ratio is None else f'{r.stream_overlap_ratio:.2f}'} | "
+            f"{'' if r.stream_pipeline_saved_ms is None else r.stream_pipeline_saved_ms} | "
+            f"{'' if r.stream_chunks is None else r.stream_chunks}/"
+            f"{'' if r.stream_batches is None else r.stream_batches} |"
         )
     lines.append("")
     lines.append("## Logs")
@@ -199,7 +273,7 @@ def main() -> int:
     parser.add_argument("--model-dir", default="models")
     parser.add_argument("--cpu-exe", default="build-cpu-timing/qwen3-tts-cli.exe")
     parser.add_argument("--gpu-exe", default="build-cuda-timing/qwen3-tts-cli.exe")
-    parser.add_argument("--text", default="今天我们做一次端到端性能回归，确认代码路径已经优化完成。")
+    parser.add_argument("--text", default="Performance regression run to validate streaming overlap.")
     parser.add_argument("--max-tokens", type=int, default=256)
     parser.add_argument("--threads", type=int, default=0, help="0 means backend default")
     parser.add_argument("--temperature", type=float, default=0.9)
@@ -207,9 +281,13 @@ def main() -> int:
     parser.add_argument("--repetition-penalty", type=float, default=1.05)
     parser.add_argument("--backend-speaker", default="", help="override Speaker Encoder backend")
     parser.add_argument("--backend-transformer", default="", help="override Talker/Code Predictor backend")
+    parser.add_argument("--backend-talker", default="", help="override Talker backend")
+    parser.add_argument("--backend-code-predictor", default="", help="override Code Predictor backend")
     parser.add_argument("--backend-decoder", default="", help="override Codec Decoder backend")
     parser.add_argument("--streaming-decode", action="store_true", help="enable streaming decode overlap")
     parser.add_argument("--decode-chunk-frames", type=int, default=32, help="frames per decoder chunk")
+    parser.add_argument("--streaming-max-queued-chunks", type=int, default=0, help="0 means runtime default")
+    parser.add_argument("--streaming-decode-batch-chunks", type=int, default=1, help="decode worker batch size in chunks")
     parser.add_argument("--out-dir", default="perf")
     parser.add_argument("--skip-gpu", action="store_true")
     args = parser.parse_args()
@@ -229,6 +307,8 @@ def main() -> int:
                 backend_env="cpu",
                 backend_speaker=args.backend_speaker,
                 backend_transformer=args.backend_transformer,
+                backend_talker=args.backend_talker,
+                backend_code_predictor=args.backend_code_predictor,
                 backend_decoder=args.backend_decoder,
                 model_dir=model_dir,
                 text=args.text,
@@ -239,6 +319,8 @@ def main() -> int:
                 repetition_penalty=args.repetition_penalty,
                 streaming_decode=args.streaming_decode,
                 decode_chunk_frames=args.decode_chunk_frames,
+                streaming_max_queued_chunks=args.streaming_max_queued_chunks,
+                streaming_decode_batch_chunks=args.streaming_decode_batch_chunks,
                 out_dir=out_dir,
             )
         )
@@ -255,6 +337,8 @@ def main() -> int:
                     backend_env="gpu",
                     backend_speaker=args.backend_speaker,
                     backend_transformer=args.backend_transformer,
+                    backend_talker=args.backend_talker,
+                    backend_code_predictor=args.backend_code_predictor,
                     backend_decoder=args.backend_decoder,
                     model_dir=model_dir,
                     text=args.text,
@@ -265,6 +349,8 @@ def main() -> int:
                     repetition_penalty=args.repetition_penalty,
                     streaming_decode=args.streaming_decode,
                     decode_chunk_frames=args.decode_chunk_frames,
+                    streaming_max_queued_chunks=args.streaming_max_queued_chunks,
+                    streaming_decode_batch_chunks=args.streaming_decode_batch_chunks,
                     out_dir=out_dir,
                 )
             )
@@ -284,7 +370,9 @@ def main() -> int:
         print(
             f"[{r.case}] rc={r.return_code} "
             f"gen={r.code_generation_ms}ms decode={r.vocoder_decode_ms}ms "
-            f"total={r.total_ms}ms rtf={r.rtf}"
+            f"total={r.total_ms}ms rtf={r.rtf} "
+            f"overlap={r.stream_overlap_ratio} saved={r.stream_pipeline_saved_ms}ms "
+            f"chunks={r.stream_chunks} batches={r.stream_batches}"
         )
 
     return 0 if all(r.return_code == 0 for r in results) else 1

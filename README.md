@@ -168,11 +168,13 @@ Main CLI options:
 - `--backend`: global backend policy (`auto`, `gpu`, `igpu`, `accel`, `cpu`)
 - `--backend-speaker`: override Speaker Encoder backend
 - `--backend-transformer`: override Talker/Code Predictor backend
-- `--backend-talker`: Talker backend hint (currently shares transformer backend)
-- `--backend-code-predictor`: Code Predictor backend hint (currently shares transformer backend)
+- `--backend-talker`: Talker backend override
+- `--backend-code-predictor`: Code Predictor backend override
 - `--backend-decoder`: override Codec Decoder backend
 - `--streaming-decode`: enable experimental generate/decode overlap
 - `--decode-chunk-frames`: decoder chunk size (frames) for streaming mode
+- `--streaming-max-queued-chunks`: max queued decode chunks in streaming mode
+- `--streaming-decode-batch-chunks`: decode worker batch size (chunks) in streaming mode
 
 Threading notes:
 
@@ -183,7 +185,8 @@ Component backend notes:
 
 - Current runtime grouping is:
   - `Speaker Encoder` -> `AudioTokenizerEncoder`
-  - `Talker + Code Predictor` -> shared `TTSTransformer` backend
+  - `Talker` -> `TTSTransformer` Talker engine
+  - `Code Predictor` -> `TTSTransformer` Code Predictor engine
   - `Codec Decoder` -> `AudioTokenizerDecoder`
   - `Codec Encoder` is not used in the current inference path
 - Component-level environment overrides:
@@ -243,7 +246,13 @@ python tools/perf_benchmark.py --max-tokens 256
 Component override example:
 
 ```bash
-python tools/perf_benchmark.py --max-tokens 256 --backend-transformer gpu --backend-decoder cpu
+python tools/perf_benchmark.py --max-tokens 256 --backend-talker gpu --backend-code-predictor gpu --backend-decoder cpu
+```
+
+Split-engine strategy example (GPU Talker + CPU Code Predictor):
+
+```bash
+python tools/perf_benchmark.py --max-tokens 256 --backend-talker gpu --backend-code-predictor cpu --backend-decoder cpu
 ```
 
 Windows tip:
@@ -265,11 +274,20 @@ Streaming decode controls (experimental):
 - CLI: `--streaming-decode --decode-chunk-frames 32`
 - Env: `QWEN3_TTS_STREAMING_DECODE=1`
 - Optional queue tuning: `QWEN3_TTS_STREAMING_MAX_QUEUED_CHUNKS=<n>`
+- Optional decode batch tuning: `--streaming-decode-batch-chunks <n>`
+
+Parameter sweep helper (threads/chunk/queue/batch):
+
+```bash
+python tools/perf_sweep.py --max-tokens 128 --threads 0,8,12 --chunks 16,32,64 --queues 2,4 --batches 1,2,4 --out-root perf/phaseD_sweep128
+```
 
 Current optimization roadmap and bottleneck analysis are tracked in:
 
 - `docs/performance_blueprint.md`
+- `docs/phaseB_engine_split_report_2026-03-17.md`
 - `docs/phaseC_streaming_decode_report_2026-03-17.md`
+- `docs/phaseD_architecture_optimization_report_2026-03-17.md`
 
 ## Acknowledgments
 

@@ -11,6 +11,7 @@
 #include <random>
 #include <cstdlib>
 #include <cctype>
+#include <cerrno>
 #include <limits>
 #include <sys/stat.h>
 
@@ -23,6 +24,139 @@ bool seek_file_absolute(FILE * f, uint64_t offset) {
 #else
     return fseeko(f, static_cast<off_t>(offset), SEEK_SET) == 0;
 #endif
+}
+
+std::string to_lower_ascii(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
+        return (char) std::tolower(c);
+    });
+    return s;
+}
+
+std::string canonical_backend_pref(std::string pref) {
+    pref = to_lower_ascii(std::move(pref));
+    if (pref == "cuda" || pref == "vulkan" || pref == "metal") {
+        return "gpu";
+    }
+    return pref;
+}
+
+bool parse_i32_env(const char * name, int32_t & out) {
+    const char * env = std::getenv(name);
+    if (!env || env[0] == '\0') {
+        return false;
+    }
+    char * end = nullptr;
+    errno = 0;
+    long v = std::strtol(env, &end, 10);
+    if (errno != 0 || !end || *end != '\0' ||
+        v < (long)(std::numeric_limits<int32_t>::min)() ||
+        v > (long)(std::numeric_limits<int32_t>::max)()) {
+        return false;
+    }
+    out = (int32_t) v;
+    return true;
+}
+
+int32_t argmax_range(const float * data, int32_t begin, int32_t end_exclusive) {
+    if (!data || begin >= end_exclusive) {
+        return 0;
+    }
+    int32_t max_idx = begin;
+    float max_val = data[begin];
+    for (int32_t i = begin + 1; i < end_exclusive; ++i) {
+        if (data[i] > max_val) {
+            max_val = data[i];
+            max_idx = i;
+        }
+    }
+    return max_idx;
+}
+
+int32_t sample_from_logits_range(float * logits_ptr,
+                                 int32_t vocab_size,
+                                 int32_t sample_min,
+                                 int32_t sample_max,
+                                 float temperature,
+                                 int32_t top_k,
+                                 std::vector<float> & probs,
+                                 std::vector<std::pair<float, int32_t>> & scored,
+                                 std::mt19937 & rng) {
+    if (!logits_ptr || vocab_size <= 0) {
+        return 0;
+    }
+
+    const int32_t lo = std::max(0, std::min(sample_min, vocab_size - 1));
+    const int32_t hi = std::max(lo, std::min(sample_max, vocab_size - 1));
+    const int32_t range_size = hi - lo + 1;
+
+    if (temperature <= 0.0f) {
+        return argmax_range(logits_ptr, lo, hi + 1);
+    }
+
+    for (int32_t i = lo; i <= hi; ++i) {
+        logits_ptr[i] /= temperature;
+    }
+
+    if (top_k > 0 && top_k < range_size) {
+        if ((int32_t) scored.size() < range_size) {
+            scored.resize(range_size);
+        }
+        for (int32_t i = 0; i < range_size; ++i) {
+            const int32_t token_id = lo + i;
+            scored[(size_t) i] = {logits_ptr[token_id], token_id};
+        }
+
+        std::partial_sort(
+            scored.begin(),
+            scored.begin() + top_k,
+            scored.begin() + range_size,
+            [](const std::pair<float, int32_t> & a, const std::pair<float, int32_t> & b) {
+                return a.first > b.first;
+            });
+
+        const float threshold = scored[(size_t)(top_k - 1)].first;
+        for (int32_t i = lo; i <= hi; ++i) {
+            if (logits_ptr[i] < threshold) {
+                logits_ptr[i] = -INFINITY;
+            }
+        }
+    }
+
+    float max_logit = -INFINITY;
+    for (int32_t i = lo; i <= hi; ++i) {
+        if (logits_ptr[i] > max_logit) {
+            max_logit = logits_ptr[i];
+        }
+    }
+    if (!std::isfinite(max_logit)) {
+        return argmax_range(logits_ptr, lo, hi + 1);
+    }
+
+    if ((int32_t) probs.size() < vocab_size) {
+        probs.resize((size_t) vocab_size);
+    }
+
+    double sum = 0.0;
+    for (int32_t i = lo; i <= hi; ++i) {
+        const float p = std::exp(logits_ptr[i] - max_logit);
+        probs[(size_t) i] = std::isfinite(p) ? p : 0.0f;
+        sum += probs[(size_t) i];
+    }
+    if (sum <= 0.0) {
+        return argmax_range(logits_ptr, lo, hi + 1);
+    }
+
+    std::uniform_real_distribution<double> dist(0.0, sum);
+    double threshold = dist(rng);
+    double accum = 0.0;
+    for (int32_t i = lo; i <= hi; ++i) {
+        accum += probs[(size_t) i];
+        if (accum >= threshold) {
+            return i;
+        }
+    }
+    return hi;
 }
 
 }  // namespace
@@ -44,6 +178,12 @@ void TTSTransformer::set_n_threads(int32_t n_threads) {
     }
     if (state_.backend_cpu) {
         apply_backend_n_threads(state_.backend_cpu, n_threads_);
+    }
+    if (state_.backend_code_pred && state_.backend_code_pred != state_.backend) {
+        apply_backend_n_threads(state_.backend_code_pred, n_threads_);
+    }
+    if (state_.backend_code_pred_cpu && state_.backend_code_pred_cpu != state_.backend_cpu) {
+        apply_backend_n_threads(state_.backend_code_pred_cpu, n_threads_);
     }
 }
 
@@ -67,11 +207,148 @@ bool TTSTransformer::is_cpu_backend() const {
     return device && ggml_backend_dev_type(device) == GGML_BACKEND_DEVICE_TYPE_CPU;
 }
 
+const char * TTSTransformer::code_predictor_backend_name() const {
+    ggml_backend_t backend = state_.backend_code_pred ? state_.backend_code_pred : state_.backend;
+    if (!backend) {
+        return "uninitialized";
+    }
+    ggml_backend_dev_t device = ggml_backend_get_device(backend);
+    if (!device) {
+        return "unknown";
+    }
+    const char * name = ggml_backend_dev_name(device);
+    return name ? name : "unknown";
+}
+
+bool TTSTransformer::is_code_predictor_cpu_backend() const {
+    ggml_backend_t backend = state_.backend_code_pred ? state_.backend_code_pred : state_.backend;
+    if (!backend) {
+        return false;
+    }
+    ggml_backend_dev_t device = ggml_backend_get_device(backend);
+    return device && ggml_backend_dev_type(device) == GGML_BACKEND_DEVICE_TYPE_CPU;
+}
+
+void TTSTransformer::clear_code_pred_graph_cache() {
+    auto clear_entry = [](code_pred_graph_cache_entry & entry) {
+        entry.gf = nullptr;
+        if (entry.ctx) {
+            ggml_free(entry.ctx);
+            entry.ctx = nullptr;
+        }
+        entry.compute_meta.clear();
+    };
+
+    clear_entry(code_pred_prefill_graph_);
+    for (auto & entry : code_pred_step_graphs_) {
+        clear_entry(entry);
+    }
+    code_pred_step_graphs_.clear();
+}
+
+bool TTSTransformer::parse_code_pred_sampling_range() {
+    const int32_t vocab_size = model_.config.code_pred_vocab_size;
+    if (vocab_size <= 0) {
+        error_msg_ = "Invalid code predictor vocab size";
+        return false;
+    }
+
+    int32_t min_id = 0;
+    int32_t max_id = vocab_size - 1;
+    bool custom = false;
+    int32_t parsed = 0;
+    if (parse_i32_env("QWEN3_TTS_CODE_PRED_LIMIT_START", parsed)) {
+        min_id = parsed;
+        custom = true;
+    }
+    if (parse_i32_env("QWEN3_TTS_CODE_PRED_LIMIT_END", parsed)) {
+        max_id = parsed;
+        custom = true;
+    }
+
+    if (min_id < 0) min_id = 0;
+    if (max_id >= vocab_size) max_id = vocab_size - 1;
+
+    if (min_id > max_id) {
+        fprintf(stderr,
+                "  Invalid code predictor sampling range [%d, %d], fallback to full vocab [0, %d]\n",
+                min_id, max_id, vocab_size - 1);
+        min_id = 0;
+        max_id = vocab_size - 1;
+        custom = false;
+    }
+
+    code_pred_sample_min_id_ = min_id;
+    code_pred_sample_max_id_ = max_id;
+    code_pred_sample_range_custom_ = custom;
+
+    if (code_pred_sample_range_custom_) {
+        fprintf(stderr, "  Code Predictor sampling range: [%d, %d]\n",
+                code_pred_sample_min_id_, code_pred_sample_max_id_);
+    }
+    return true;
+}
+
+bool TTSTransformer::ensure_code_pred_graph_cache() {
+    if (!is_code_predictor_cpu_backend()) {
+        clear_code_pred_graph_cache();
+        return true;
+    }
+    if (use_coreml_code_predictor_ && coreml_code_predictor_.is_loaded()) {
+        return true;
+    }
+    const int32_t n_steps = std::max(0, model_.config.n_codebooks - 1);
+    const bool step_cache_ready = (n_steps <= 1) ||
+                                  ((size_t) n_steps <= code_pred_step_graphs_.size() &&
+                                   code_pred_step_graphs_[(size_t) (n_steps - 1)].gf != nullptr);
+    if (code_pred_prefill_graph_.gf && code_pred_prefill_graph_.ctx && step_cache_ready) {
+        return true;
+    }
+
+    clear_code_pred_graph_cache();
+    const size_t meta_size = ggml_tensor_overhead() * QWEN3_TTS_MAX_NODES + ggml_graph_overhead();
+
+    code_pred_prefill_graph_.compute_meta.resize(meta_size);
+    code_pred_prefill_graph_.gf = build_code_pred_prefill_graph(
+        &code_pred_prefill_graph_.ctx,
+        code_pred_prefill_graph_.compute_meta.data(),
+        code_pred_prefill_graph_.compute_meta.size());
+    if (!code_pred_prefill_graph_.gf || !code_pred_prefill_graph_.ctx) {
+        if (error_msg_.empty()) {
+            error_msg_ = "Failed to build cached code predictor prefill graph";
+        }
+        clear_code_pred_graph_cache();
+        return false;
+    }
+
+    code_pred_step_graphs_.clear();
+    code_pred_step_graphs_.resize((size_t) std::max(1, n_steps));
+    for (int32_t step = 1; step < n_steps; ++step) {
+        auto & entry = code_pred_step_graphs_[(size_t)step];
+        entry.compute_meta.resize(meta_size);
+        entry.gf = build_code_pred_step_graph(
+            step + 1, step,
+            &entry.ctx,
+            entry.compute_meta.data(),
+            entry.compute_meta.size());
+        if (!entry.gf || !entry.ctx) {
+            if (error_msg_.empty()) {
+                error_msg_ = "Failed to build cached code predictor step graph";
+            }
+            clear_code_pred_graph_cache();
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void TTSTransformer::unload_model() {
     coreml_code_predictor_.unload();
     use_coreml_code_predictor_ = false;
     coreml_code_predictor_path_.clear();
     skip_ggml_code_pred_layers_ = false;
+    clear_code_pred_graph_cache();
 
     if (state_.sched) {
         ggml_backend_sched_free(state_.sched);
@@ -85,20 +362,41 @@ void TTSTransformer::unload_model() {
     free_tts_kv_cache(state_.cache);
     free_tts_kv_cache(state_.code_pred_cache);
     free_transformer_model(model_);
+    free_transformer_model(code_pred_model_);
+    split_code_pred_engine_ = false;
 
-    if (state_.backend) {
-        release_preferred_backend(state_.backend);
-        state_.backend = nullptr;
+    ggml_backend_t backend_main = state_.backend;
+    ggml_backend_t backend_cpu_main = state_.backend_cpu;
+
+    if (state_.backend_code_pred) {
+        if (state_.backend_code_pred != backend_main) {
+            release_preferred_backend(state_.backend_code_pred);
+        }
+        state_.backend_code_pred = nullptr;
     }
-    if (state_.backend_cpu) {
-        ggml_backend_free(state_.backend_cpu);
-        state_.backend_cpu = nullptr;
+    if (state_.backend_code_pred_cpu) {
+        if (state_.backend_code_pred_cpu != backend_cpu_main) {
+            ggml_backend_free(state_.backend_code_pred_cpu);
+        }
+        state_.backend_code_pred_cpu = nullptr;
     }
+    if (backend_main) {
+        release_preferred_backend(backend_main);
+    }
+    if (backend_cpu_main) {
+        ggml_backend_free(backend_cpu_main);
+    }
+    state_.backend = nullptr;
+    state_.backend_cpu = nullptr;
 
     state_.compute_meta.clear();
     state_.compute_meta_code_pred.clear();
     last_hidden_.clear();
     embd_row_fp16_scratch_.clear();
+}
+
+const tts_transformer_model & TTSTransformer::code_pred_model() const {
+    return split_code_pred_engine_ ? code_pred_model_ : model_;
 }
 
 bool TTSTransformer::load_model(const std::string & model_path) {
@@ -155,30 +453,67 @@ bool TTSTransformer::load_model(const std::string & model_path) {
         if (meta_ctx) ggml_free(meta_ctx);
         return false;
     }
-    
-    if (!create_tensors(ctx)) {
+    if (!parse_code_pred_sampling_range()) {
         gguf_free(ctx);
         if (meta_ctx) ggml_free(meta_ctx);
         return false;
     }
-    
-    if (!load_tensor_data(model_path, ctx)) {
+
+    const std::string talker_pref = resolve_backend_preference_for_component("TTSTransformer");
+    const char * code_pred_env = std::getenv("QWEN3_TTS_BACKEND_CODE_PREDICTOR");
+    const std::string code_pred_pref = (code_pred_env && code_pred_env[0] != '\0')
+        ? std::string(code_pred_env)
+        : talker_pref;
+    const std::string talker_pref_cmp = canonical_backend_pref(talker_pref);
+    const std::string code_pred_pref_cmp = canonical_backend_pref(code_pred_pref);
+    split_code_pred_engine_ = !skip_ggml_code_pred_layers_ &&
+                              (talker_pref_cmp != code_pred_pref_cmp);
+
+    const bool include_talker_code_pred_tensors = !split_code_pred_engine_ && !skip_ggml_code_pred_layers_;
+    if (!create_tensors(ctx, model_, true, include_talker_code_pred_tensors)) {
+        gguf_free(ctx);
+        if (meta_ctx) ggml_free(meta_ctx);
+        return false;
+    }
+
+    if (!load_tensor_data(model_path, ctx, model_,
+                          talker_pref.empty() ? nullptr : talker_pref.c_str())) {
         free_transformer_model(model_);
         gguf_free(ctx);
         if (meta_ctx) ggml_free(meta_ctx);
         return false;
     }
-    
+
+    if (split_code_pred_engine_) {
+        code_pred_model_.config = model_.config;
+        if (!create_tensors(ctx, code_pred_model_, false, true)) {
+            free_transformer_model(model_);
+            gguf_free(ctx);
+            if (meta_ctx) ggml_free(meta_ctx);
+            return false;
+        }
+        if (!load_tensor_data(model_path, ctx, code_pred_model_,
+                              code_pred_pref.empty() ? nullptr : code_pred_pref.c_str())) {
+            free_transformer_model(model_);
+            free_transformer_model(code_pred_model_);
+            gguf_free(ctx);
+            if (meta_ctx) ggml_free(meta_ctx);
+            return false;
+        }
+    }
+
     gguf_free(ctx);
     if (meta_ctx) ggml_free(meta_ctx);
     
-    state_.backend = init_preferred_backend("TTSTransformer", &error_msg_);
+    state_.backend = init_preferred_backend("TTSTransformer",
+                                            talker_pref.empty() ? nullptr : talker_pref.c_str(),
+                                            &error_msg_);
     if (!state_.backend) {
         return false;
     }
     ggml_backend_dev_t device = ggml_backend_get_device(state_.backend);
     const char * device_name = device ? ggml_backend_dev_name(device) : "Unknown";
-    fprintf(stderr, "  TTSTransformer backend: %s\n", device_name);
+    fprintf(stderr, "  TTSTransformer Talker backend: %s\n", device_name);
 
     if (device && ggml_backend_dev_type(device) != GGML_BACKEND_DEVICE_TYPE_CPU) {
         state_.backend_cpu = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_CPU, nullptr);
@@ -188,19 +523,62 @@ bool TTSTransformer::load_model(const std::string & model_path) {
         }
     }
 
+    if (split_code_pred_engine_) {
+        state_.backend_code_pred = init_preferred_backend(
+            "TTSTransformer",
+            code_pred_pref.empty() ? nullptr : code_pred_pref.c_str(),
+            &error_msg_);
+        if (!state_.backend_code_pred) {
+            return false;
+        }
+        ggml_backend_dev_t code_pred_device = ggml_backend_get_device(state_.backend_code_pred);
+        const char * code_pred_device_name = code_pred_device
+            ? ggml_backend_dev_name(code_pred_device) : "Unknown";
+        fprintf(stderr, "  TTSTransformer Code Predictor backend: %s\n", code_pred_device_name);
+
+        if (code_pred_device &&
+            ggml_backend_dev_type(code_pred_device) != GGML_BACKEND_DEVICE_TYPE_CPU) {
+            state_.backend_code_pred_cpu = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_CPU, nullptr);
+            if (!state_.backend_code_pred_cpu) {
+                error_msg_ = "Failed to initialize CPU fallback backend for code predictor";
+                return false;
+            }
+        }
+    } else {
+        state_.backend_code_pred = state_.backend;
+        state_.backend_code_pred_cpu = state_.backend_cpu;
+    }
+
     set_n_threads(n_threads_);
     
-    std::vector<ggml_backend_t> backends;
-    backends.push_back(state_.backend);
+    std::vector<ggml_backend_t> backends_talker;
+    backends_talker.push_back(state_.backend);
     if (state_.backend_cpu) {
-        backends.push_back(state_.backend_cpu);
+        backends_talker.push_back(state_.backend_cpu);
     }
-    state_.sched = ggml_backend_sched_new(backends.data(), nullptr, (int)backends.size(), QWEN3_TTS_MAX_NODES, false, true);
+    state_.sched = ggml_backend_sched_new(backends_talker.data(), nullptr,
+                                          (int)backends_talker.size(),
+                                          QWEN3_TTS_MAX_NODES, false, true);
     if (!state_.sched) {
         error_msg_ = "Failed to create backend scheduler";
         return false;
     }
-    state_.sched_code_pred = ggml_backend_sched_new(backends.data(), nullptr, (int)backends.size(), QWEN3_TTS_MAX_NODES, false, true);
+
+    std::vector<ggml_backend_t> backends_code_pred;
+    if (state_.backend_code_pred) {
+        backends_code_pred.push_back(state_.backend_code_pred);
+    }
+    if (state_.backend_code_pred_cpu &&
+        state_.backend_code_pred_cpu != state_.backend_code_pred) {
+        backends_code_pred.push_back(state_.backend_code_pred_cpu);
+    }
+    if (backends_code_pred.empty()) {
+        error_msg_ = "Failed to prepare code predictor backends";
+        return false;
+    }
+    state_.sched_code_pred = ggml_backend_sched_new(backends_code_pred.data(), nullptr,
+                                                    (int)backends_code_pred.size(),
+                                                    QWEN3_TTS_MAX_NODES, false, true);
     if (!state_.sched_code_pred) {
         error_msg_ = "Failed to create backend scheduler for code predictor";
         return false;
@@ -404,73 +782,87 @@ bool TTSTransformer::parse_config(struct gguf_context * ctx) {
     return true;
 }
 
-bool TTSTransformer::create_tensors(struct gguf_context * ctx) {
+bool TTSTransformer::create_tensors(struct gguf_context * ctx,
+                                    tts_transformer_model & model,
+                                    bool include_talker,
+                                    bool include_code_pred) {
     const int64_t n_tensors = gguf_get_n_tensors(ctx);
-    const auto & cfg = model_.config;
-    
+    const auto & cfg = model.config;
+
     const size_t ctx_size = n_tensors * ggml_tensor_overhead();
     struct ggml_init_params params = {
         /*.mem_size   =*/ ctx_size,
         /*.mem_buffer =*/ nullptr,
         /*.no_alloc   =*/ true,
     };
-    
-    model_.ctx = ggml_init(params);
-    if (!model_.ctx) {
+
+    model.ctx = ggml_init(params);
+    if (!model.ctx) {
         error_msg_ = "Failed to create GGML context";
         return false;
     }
-    
-    model_.layers.resize(cfg.n_layers);
-    model_.code_pred_layers.resize(cfg.code_pred_layers);
-    model_.code_pred_embd.resize(cfg.n_codebooks - 1);
-    model_.code_pred_head.resize(cfg.n_codebooks - 1);
-    
+
+    model.layers.resize(cfg.n_layers);
+    model.code_pred_layers.resize(cfg.code_pred_layers);
+    model.code_pred_embd.resize(cfg.n_codebooks - 1);
+    model.code_pred_head.resize(cfg.n_codebooks - 1);
+
+    const bool include_codec_embd_for_code_pred = include_talker || include_code_pred;
+
     for (int64_t i = 0; i < n_tensors; ++i) {
         const char * name = gguf_get_tensor_name(ctx, i);
         enum ggml_type type = gguf_get_tensor_type(ctx, i);
-        
+
         int64_t ne[GGML_MAX_DIMS] = {1, 1, 1, 1};
         int n_dims = 0;
-        
+
         if (strstr(name, "spk_enc.") || strstr(name, "tok_")) {
             continue;
         }
-        
+
         if (strstr(name, "talker.text_embd.weight")) {
+            if (!include_talker) continue;
             ne[0] = cfg.text_embd_dim;
             ne[1] = cfg.text_vocab_size;
             n_dims = 2;
         } else if (strstr(name, "talker.text_proj.fc1.weight")) {
+            if (!include_talker) continue;
             ne[0] = cfg.text_embd_dim;
             ne[1] = cfg.text_embd_dim;
             n_dims = 2;
         } else if (strstr(name, "talker.text_proj.fc1.bias")) {
+            if (!include_talker) continue;
             ne[0] = cfg.text_embd_dim;
             n_dims = 1;
         } else if (strstr(name, "talker.text_proj.fc2.weight")) {
+            if (!include_talker) continue;
             ne[0] = cfg.text_embd_dim;
             ne[1] = cfg.hidden_size;
             n_dims = 2;
         } else if (strstr(name, "talker.text_proj.fc2.bias")) {
+            if (!include_talker) continue;
             ne[0] = cfg.hidden_size;
             n_dims = 1;
         } else if (strstr(name, "talker.codec_embd.weight")) {
+            if (!include_codec_embd_for_code_pred) continue;
             ne[0] = cfg.hidden_size;
             ne[1] = cfg.codec_vocab_size;
             n_dims = 2;
         } else if (strstr(name, "talker.codec_head.weight")) {
+            if (!include_talker) continue;
             ne[0] = cfg.hidden_size;
             ne[1] = cfg.codec_vocab_size;
             n_dims = 2;
         } else if (strstr(name, "talker.output_norm.weight")) {
+            if (!include_talker) continue;
             ne[0] = cfg.hidden_size;
             n_dims = 1;
         } else if (strstr(name, "talker.blk.")) {
+            if (!include_talker) continue;
             int layer_idx = -1;
-            if (sscanf(name, "talker.blk.%d.", &layer_idx) == 1 && 
+            if (sscanf(name, "talker.blk.%d.", &layer_idx) == 1 &&
                 layer_idx >= 0 && layer_idx < cfg.n_layers) {
-                
+
                 if (strstr(name, "attn_norm.weight")) {
                     ne[0] = cfg.hidden_size;
                     n_dims = 1;
@@ -518,13 +910,13 @@ bool TTSTransformer::create_tensors(struct gguf_context * ctx) {
                 continue;
             }
         } else if (strstr(name, "code_pred.blk.")) {
-            if (skip_ggml_code_pred_layers_) {
+            if (!include_code_pred || skip_ggml_code_pred_layers_) {
                 continue;
             }
             int layer_idx = -1;
-            if (sscanf(name, "code_pred.blk.%d.", &layer_idx) == 1 && 
+            if (sscanf(name, "code_pred.blk.%d.", &layer_idx) == 1 &&
                 layer_idx >= 0 && layer_idx < cfg.code_pred_layers) {
-                
+
                 if (strstr(name, "attn_norm.weight")) {
                     ne[0] = cfg.hidden_size;
                     n_dims = 1;
@@ -572,6 +964,7 @@ bool TTSTransformer::create_tensors(struct gguf_context * ctx) {
                 continue;
             }
         } else if (strstr(name, "code_pred.codec_embd.")) {
+            if (!include_code_pred) continue;
             int cb_idx = -1;
             if (sscanf(name, "code_pred.codec_embd.%d.weight", &cb_idx) == 1 &&
                 cb_idx >= 0 && cb_idx < cfg.n_codebooks - 1) {
@@ -582,7 +975,7 @@ bool TTSTransformer::create_tensors(struct gguf_context * ctx) {
                 continue;
             }
          } else if (strstr(name, "code_pred.lm_head.")) {
-             if (skip_ggml_code_pred_layers_) {
+             if (!include_code_pred || skip_ggml_code_pred_layers_) {
                  continue;
              }
              int cb_idx = -1;
@@ -595,7 +988,7 @@ bool TTSTransformer::create_tensors(struct gguf_context * ctx) {
                  continue;
              }
          } else if (strstr(name, "code_pred.output_norm.weight")) {
-             if (skip_ggml_code_pred_layers_) {
+             if (!include_code_pred || skip_ggml_code_pred_layers_) {
                  continue;
              }
              ne[0] = cfg.hidden_size;
@@ -603,36 +996,36 @@ bool TTSTransformer::create_tensors(struct gguf_context * ctx) {
          } else {
              continue;
          }
-        
-        struct ggml_tensor * tensor = ggml_new_tensor(model_.ctx, type, n_dims, ne);
+
+        struct ggml_tensor * tensor = ggml_new_tensor(model.ctx, type, n_dims, ne);
         if (!tensor) {
             error_msg_ = "Failed to create tensor: " + std::string(name);
             return false;
         }
         ggml_set_name(tensor, name);
-        model_.tensors[name] = tensor;
-        
+        model.tensors[name] = tensor;
+
         if (strstr(name, "talker.text_embd.weight")) {
-            model_.text_embd = tensor;
+            model.text_embd = tensor;
         } else if (strstr(name, "talker.text_proj.fc1.weight")) {
-            model_.text_proj_fc1 = tensor;
+            model.text_proj_fc1 = tensor;
         } else if (strstr(name, "talker.text_proj.fc1.bias")) {
-            model_.text_proj_fc1_bias = tensor;
+            model.text_proj_fc1_bias = tensor;
         } else if (strstr(name, "talker.text_proj.fc2.weight")) {
-            model_.text_proj_fc2 = tensor;
+            model.text_proj_fc2 = tensor;
         } else if (strstr(name, "talker.text_proj.fc2.bias")) {
-            model_.text_proj_fc2_bias = tensor;
+            model.text_proj_fc2_bias = tensor;
         } else if (strstr(name, "talker.codec_embd.weight")) {
-            model_.codec_embd = tensor;
+            model.codec_embd = tensor;
         } else if (strstr(name, "talker.codec_head.weight")) {
-            model_.codec_head = tensor;
+            model.codec_head = tensor;
         } else if (strstr(name, "talker.output_norm.weight")) {
-            model_.output_norm = tensor;
+            model.output_norm = tensor;
         } else if (strstr(name, "talker.blk.")) {
             int layer_idx = -1;
             sscanf(name, "talker.blk.%d.", &layer_idx);
             if (layer_idx >= 0 && layer_idx < cfg.n_layers) {
-                auto & layer = model_.layers[layer_idx];
+                auto & layer = model.layers[layer_idx];
                 if (strstr(name, "attn_norm.weight")) layer.attn_norm = tensor;
                 else if (strstr(name, "attn_q_norm.weight")) layer.attn_q_norm = tensor;
                 else if (strstr(name, "attn_k_norm.weight")) layer.attn_k_norm = tensor;
@@ -649,7 +1042,7 @@ bool TTSTransformer::create_tensors(struct gguf_context * ctx) {
             int layer_idx = -1;
             sscanf(name, "code_pred.blk.%d.", &layer_idx);
             if (layer_idx >= 0 && layer_idx < cfg.code_pred_layers) {
-                auto & layer = model_.code_pred_layers[layer_idx];
+                auto & layer = model.code_pred_layers[layer_idx];
                 if (strstr(name, "attn_norm.weight")) layer.attn_norm = tensor;
                 else if (strstr(name, "attn_q_norm.weight")) layer.attn_q_norm = tensor;
                 else if (strstr(name, "attn_k_norm.weight")) layer.attn_k_norm = tensor;
@@ -666,30 +1059,32 @@ bool TTSTransformer::create_tensors(struct gguf_context * ctx) {
             int cb_idx = -1;
             sscanf(name, "code_pred.codec_embd.%d.weight", &cb_idx);
             if (cb_idx >= 0 && cb_idx < cfg.n_codebooks - 1) {
-                model_.code_pred_embd[cb_idx] = tensor;
+                model.code_pred_embd[cb_idx] = tensor;
             }
          } else if (strstr(name, "code_pred.lm_head.")) {
              int cb_idx = -1;
              sscanf(name, "code_pred.lm_head.%d.weight", &cb_idx);
              if (cb_idx >= 0 && cb_idx < cfg.n_codebooks - 1) {
-                 model_.code_pred_head[cb_idx] = tensor;
+                 model.code_pred_head[cb_idx] = tensor;
              }
          } else if (strstr(name, "code_pred.output_norm.weight")) {
-             model_.code_pred_output_norm = tensor;
+             model.code_pred_output_norm = tensor;
          }
      }
-     
+
      return true;
  }
 
-bool TTSTransformer::load_tensor_data(const std::string & path, struct gguf_context * ctx) {
-    ggml_backend_t backend = init_preferred_backend("TTSTransformer", &error_msg_);
+bool TTSTransformer::load_tensor_data(const std::string & path, struct gguf_context * ctx,
+                                      tts_transformer_model & model,
+                                      const char * backend_override) {
+    ggml_backend_t backend = init_preferred_backend("TTSTransformer", backend_override, &error_msg_);
     if (!backend) {
         return false;
     }
     
-    model_.buffer = ggml_backend_alloc_ctx_tensors(model_.ctx, backend);
-    if (!model_.buffer) {
+    model.buffer = ggml_backend_alloc_ctx_tensors(model.ctx, backend);
+    if (!model.buffer) {
         error_msg_ = "Failed to allocate tensor buffer";
         release_preferred_backend(backend);
         return false;
@@ -711,8 +1106,8 @@ bool TTSTransformer::load_tensor_data(const std::string & path, struct gguf_cont
         const char * name = gguf_get_tensor_name(ctx, i);
         size_t offset = gguf_get_tensor_offset(ctx, i);
         
-        auto it = model_.tensors.find(name);
-        if (it == model_.tensors.end()) {
+        auto it = model.tensors.find(name);
+        if (it == model.tensors.end()) {
             continue;
         }
         
@@ -810,6 +1205,7 @@ void TTSTransformer::clear_kv_cache() {
 bool TTSTransformer::init_code_pred_kv_cache(int32_t n_ctx) {
     const auto & cfg = model_.config;
     
+    clear_code_pred_graph_cache();
     free_tts_kv_cache(state_.code_pred_cache);
     
     state_.code_pred_cache.n_ctx = n_ctx;
@@ -848,7 +1244,8 @@ bool TTSTransformer::init_code_pred_kv_cache(int32_t n_ctx) {
         ggml_format_name(state_.code_pred_cache.v_cache[il], "code_pred_v_cache_%d", il);
     }
     
-    state_.code_pred_cache.buffer = ggml_backend_alloc_ctx_tensors(state_.code_pred_cache.ctx, state_.backend);
+    ggml_backend_t backend_code_pred = state_.backend_code_pred ? state_.backend_code_pred : state_.backend;
+    state_.code_pred_cache.buffer = ggml_backend_alloc_ctx_tensors(state_.code_pred_cache.ctx, backend_code_pred);
     if (!state_.code_pred_cache.buffer) {
         error_msg_ = "Failed to allocate code predictor KV cache buffer";
         return false;
@@ -1480,7 +1877,8 @@ struct ggml_cgraph * TTSTransformer::build_step_graph(int32_t n_past) {
 }
 
 struct ggml_cgraph * TTSTransformer::build_code_pred_graph(int32_t n_prev_codes) {
-    const auto & cfg = model_.config;
+    const auto & cp_model = code_pred_model();
+    const auto & cfg = cp_model.config;
     const int n_head = cfg.n_attention_heads;
     const int n_kv_head = cfg.n_key_value_heads;
     const int head_dim = cfg.head_dim;
@@ -1514,7 +1912,7 @@ struct ggml_cgraph * TTSTransformer::build_code_pred_graph(int32_t n_prev_codes)
     if (n_prev_codes > 0 && inp_prev_codes) {
         for (int cb = 0; cb < n_prev_codes && cb < n_codebooks - 1; ++cb) {
             struct ggml_tensor * code_idx = ggml_view_1d(ctx0, inp_prev_codes, 1, cb * sizeof(int32_t));
-            struct ggml_tensor * code_embd = ggml_get_rows(ctx0, model_.code_pred_embd[cb], code_idx);
+            struct ggml_tensor * code_embd = ggml_get_rows(ctx0, cp_model.code_pred_embd[cb], code_idx);
             cur = ggml_add(ctx0, cur, code_embd);
         }
     }
@@ -1524,7 +1922,7 @@ struct ggml_cgraph * TTSTransformer::build_code_pred_graph(int32_t n_prev_codes)
     const float KQscale = 1.0f / sqrtf(float(head_dim));
     
     for (int il = 0; il < n_layer; ++il) {
-        const auto & layer = model_.code_pred_layers[il];
+        const auto & layer = cp_model.code_pred_layers[il];
         
         cur = ggml_rms_norm(ctx0, inpL, eps);
         cur = ggml_mul(ctx0, cur, layer.attn_norm);
@@ -1584,7 +1982,7 @@ struct ggml_cgraph * TTSTransformer::build_code_pred_graph(int32_t n_prev_codes)
     
     std::vector<struct ggml_tensor *> all_logits;
     for (int cb = 0; cb < n_codebooks - 1; ++cb) {
-        struct ggml_tensor * cb_logits = ggml_mul_mat(ctx0, model_.code_pred_head[cb], cur);
+        struct ggml_tensor * cb_logits = ggml_mul_mat(ctx0, cp_model.code_pred_head[cb], cur);
         ggml_format_name(cb_logits, "logits_cb%d", cb + 1);
         ggml_set_output(cb_logits);
         all_logits.push_back(cb_logits);
@@ -1599,8 +1997,12 @@ struct ggml_cgraph * TTSTransformer::build_code_pred_graph(int32_t n_prev_codes)
     return gf;
 }
 
-struct ggml_cgraph * TTSTransformer::build_code_pred_prefill_graph() {
-    const auto & cfg = model_.config;
+struct ggml_cgraph * TTSTransformer::build_code_pred_prefill_graph(
+    struct ggml_context ** out_ctx,
+    uint8_t * compute_meta,
+    size_t compute_meta_size) {
+    const auto & cp_model = code_pred_model();
+    const auto & cfg = cp_model.config;
     const int n_head = cfg.n_attention_heads;
     const int n_kv_head = cfg.n_key_value_heads;
     const int head_dim = cfg.head_dim;
@@ -1610,14 +2012,30 @@ struct ggml_cgraph * TTSTransformer::build_code_pred_prefill_graph() {
     const int n_layer = cfg.code_pred_layers;
     const int n_tokens = 2;
     
+    uint8_t * meta_buf = compute_meta ? compute_meta : state_.compute_meta_code_pred.data();
+    size_t meta_size = compute_meta_size > 0 ? compute_meta_size : state_.compute_meta_code_pred.size();
+    if (!meta_buf || meta_size == 0) {
+        error_msg_ = "Invalid metadata buffer for code predictor prefill graph";
+        return nullptr;
+    }
+
     struct ggml_init_params params = {
-        /*.mem_size   =*/ state_.compute_meta_code_pred.size(),
-        /*.mem_buffer =*/ state_.compute_meta_code_pred.data(),
+        /*.mem_size   =*/ meta_size,
+        /*.mem_buffer =*/ meta_buf,
         /*.no_alloc   =*/ true,
     };
     
     struct ggml_context * ctx0 = ggml_init(params);
+    if (!ctx0) {
+        error_msg_ = "Failed to initialize code predictor prefill graph context";
+        return nullptr;
+    }
     struct ggml_cgraph * gf = ggml_new_graph_custom(ctx0, QWEN3_TTS_MAX_NODES, false);
+    if (!gf) {
+        error_msg_ = "Failed to create code predictor prefill graph";
+        ggml_free(ctx0);
+        return nullptr;
+    }
     
     // Input: past_hidden from talker [hidden_size]
     struct ggml_tensor * inp_hidden = ggml_new_tensor_1d(ctx0, GGML_TYPE_F32, hidden_size);
@@ -1643,7 +2061,7 @@ struct ggml_cgraph * TTSTransformer::build_code_pred_prefill_graph() {
     const float KQscale = 1.0f / sqrtf(float(head_dim));
     
     for (int il = 0; il < n_layer; ++il) {
-        const auto & layer = model_.code_pred_layers[il];
+        const auto & layer = cp_model.code_pred_layers[il];
         
         cur = ggml_rms_norm(ctx0, inpL, eps);
         cur = ggml_mul(ctx0, cur, layer.attn_norm);
@@ -1726,24 +2144,33 @@ struct ggml_cgraph * TTSTransformer::build_code_pred_prefill_graph() {
      cur = inpL;
      
      cur = ggml_rms_norm(ctx0, cur, eps);
-     cur = ggml_mul(ctx0, cur, model_.code_pred_output_norm);
+     cur = ggml_mul(ctx0, cur, cp_model.code_pred_output_norm);
      
      struct ggml_tensor * last_hidden = ggml_view_2d(ctx0, cur, hidden_size, 1, 
                                                       cur->nb[1], hidden_size * sizeof(float));
      
-     struct ggml_tensor * logits = ggml_mul_mat(ctx0, model_.code_pred_head[0], last_hidden);
+     struct ggml_tensor * logits = ggml_mul_mat(ctx0, cp_model.code_pred_head[0], last_hidden);
     ggml_set_name(logits, "logits");
     ggml_set_output(logits);
     
     ggml_build_forward_expand(gf, logits);
     
-    ggml_free(ctx0);
+    if (out_ctx) {
+        *out_ctx = ctx0;
+    } else {
+        ggml_free(ctx0);
+    }
     
     return gf;
 }
 
-struct ggml_cgraph * TTSTransformer::build_code_pred_step_graph(int32_t n_past, int32_t generation_step) {
-    const auto & cfg = model_.config;
+struct ggml_cgraph * TTSTransformer::build_code_pred_step_graph(
+    int32_t n_past, int32_t generation_step,
+    struct ggml_context ** out_ctx,
+    uint8_t * compute_meta,
+    size_t compute_meta_size) {
+    const auto & cp_model = code_pred_model();
+    const auto & cfg = cp_model.config;
     const int n_head = cfg.n_attention_heads;
     const int n_kv_head = cfg.n_key_value_heads;
     const int head_dim = cfg.head_dim;
@@ -1753,14 +2180,30 @@ struct ggml_cgraph * TTSTransformer::build_code_pred_step_graph(int32_t n_past, 
     const int n_layer = cfg.code_pred_layers;
     const int n_tokens = 1;
     
+    uint8_t * meta_buf = compute_meta ? compute_meta : state_.compute_meta_code_pred.data();
+    size_t meta_size = compute_meta_size > 0 ? compute_meta_size : state_.compute_meta_code_pred.size();
+    if (!meta_buf || meta_size == 0) {
+        error_msg_ = "Invalid metadata buffer for code predictor step graph";
+        return nullptr;
+    }
+
     struct ggml_init_params params = {
-        /*.mem_size   =*/ state_.compute_meta_code_pred.size(),
-        /*.mem_buffer =*/ state_.compute_meta_code_pred.data(),
+        /*.mem_size   =*/ meta_size,
+        /*.mem_buffer =*/ meta_buf,
         /*.no_alloc   =*/ true,
     };
     
     struct ggml_context * ctx0 = ggml_init(params);
+    if (!ctx0) {
+        error_msg_ = "Failed to initialize code predictor step graph context";
+        return nullptr;
+    }
     struct ggml_cgraph * gf = ggml_new_graph_custom(ctx0, QWEN3_TTS_MAX_NODES, false);
+    if (!gf) {
+        error_msg_ = "Failed to create code predictor step graph";
+        ggml_free(ctx0);
+        return nullptr;
+    }
     
     struct ggml_tensor * inp_code = ggml_new_tensor_1d(ctx0, GGML_TYPE_I32, 1);
     ggml_set_name(inp_code, "inp_code");
@@ -1777,7 +2220,7 @@ struct ggml_cgraph * TTSTransformer::build_code_pred_step_graph(int32_t n_past, 
         ggml_set_input(inp_hidden);
         cur = ggml_reshape_2d(ctx0, inp_hidden, hidden_size, 1);
     } else {
-        cur = ggml_get_rows(ctx0, model_.code_pred_embd[generation_step - 1], inp_code);
+        cur = ggml_get_rows(ctx0, cp_model.code_pred_embd[generation_step - 1], inp_code);
         cur = ggml_reshape_2d(ctx0, cur, hidden_size, 1);
     }
     
@@ -1786,7 +2229,7 @@ struct ggml_cgraph * TTSTransformer::build_code_pred_step_graph(int32_t n_past, 
     const float KQscale = 1.0f / sqrtf(float(head_dim));
     
     for (int il = 0; il < n_layer; ++il) {
-        const auto & layer = model_.code_pred_layers[il];
+        const auto & layer = cp_model.code_pred_layers[il];
         
         cur = ggml_rms_norm(ctx0, inpL, eps);
         cur = ggml_mul(ctx0, cur, layer.attn_norm);
@@ -1880,15 +2323,19 @@ struct ggml_cgraph * TTSTransformer::build_code_pred_step_graph(int32_t n_past, 
      cur = inpL;
      
      cur = ggml_rms_norm(ctx0, cur, eps);
-     cur = ggml_mul(ctx0, cur, model_.code_pred_output_norm);
+     cur = ggml_mul(ctx0, cur, cp_model.code_pred_output_norm);
      
-     struct ggml_tensor * logits = ggml_mul_mat(ctx0, model_.code_pred_head[generation_step], cur);
+     struct ggml_tensor * logits = ggml_mul_mat(ctx0, cp_model.code_pred_head[generation_step], cur);
      ggml_set_name(logits, "logits");
      ggml_set_output(logits);
      
      ggml_build_forward_expand(gf, logits);
     
-    ggml_free(ctx0);
+    if (out_ctx) {
+        *out_ctx = ctx0;
+    } else {
+        ggml_free(ctx0);
+    }
     
     return gf;
 }
@@ -2245,15 +2692,7 @@ bool TTSTransformer::predict_codes(const float * hidden, const int32_t * prev_co
 }
 
 static int32_t argmax(const float * data, int32_t n) {
-    int32_t max_idx = 0;
-    float max_val = data[0];
-    for (int32_t i = 1; i < n; ++i) {
-        if (data[i] > max_val) {
-            max_val = data[i];
-            max_idx = i;
-        }
-    }
-    return max_idx;
+    return argmax_range(data, 0, n);
 }
 
 bool TTSTransformer::predict_codes_autoregressive_coreml(const float * hidden,
@@ -2266,8 +2705,11 @@ bool TTSTransformer::predict_codes_autoregressive_coreml(const float * hidden,
         return false;
     }
 
-    const auto & cfg = model_.config;
+    const auto & cp_model = code_pred_model();
+    const auto & cfg = cp_model.config;
     const int32_t n_steps = cfg.n_codebooks - 1;
+    const int32_t sample_min = std::max(0, std::min(code_pred_sample_min_id_, cfg.code_pred_vocab_size - 1));
+    const int32_t sample_max = std::max(sample_min, std::min(code_pred_sample_max_id_, cfg.code_pred_vocab_size - 1));
 
     output.resize(n_steps);
     auto & logits_data = code_pred_logits_scratch_;
@@ -2280,7 +2722,7 @@ bool TTSTransformer::predict_codes_autoregressive_coreml(const float * hidden,
     } else {
         scored.clear();
     }
-    std::vector<float> seq_embd((size_t)16 * cfg.hidden_size, 0.0f);
+    std::vector<float> seq_embd((size_t)(n_steps + 1) * cfg.hidden_size, 0.0f);
 
 #ifdef QWEN3_TTS_TIMING
     using clk = std::chrono::high_resolution_clock;
@@ -2288,49 +2730,15 @@ bool TTSTransformer::predict_codes_autoregressive_coreml(const float * hidden,
 #endif
 
     auto sample_or_argmax = [&](float * logits_ptr, int32_t vocab_size) -> int32_t {
-        if (temperature <= 0.0f) {
-            return argmax(logits_ptr, vocab_size);
-        }
-
-        for (int32_t i = 0; i < vocab_size; ++i) {
-            logits_ptr[i] /= temperature;
-        }
-
-        if (top_k > 0 && top_k < vocab_size) {
-            if ((int32_t)scored.size() < vocab_size) {
-                scored.resize(vocab_size);
-            }
-            for (int32_t i = 0; i < vocab_size; ++i) {
-                scored[i] = {logits_ptr[i], i};
-            }
-            std::partial_sort(scored.begin(), scored.begin() + top_k, scored.begin() + vocab_size,
-                [](const std::pair<float, int32_t> & a, const std::pair<float, int32_t> & b) {
-                    return a.first > b.first;
-                });
-            float threshold = scored[top_k - 1].first;
-            for (int32_t i = 0; i < vocab_size; ++i) {
-                if (logits_ptr[i] < threshold) {
-                    logits_ptr[i] = -INFINITY;
-                }
-            }
-        }
-
-        float max_logit = *std::max_element(logits_ptr, logits_ptr + vocab_size);
-        double sum = 0.0;
-        for (int32_t i = 0; i < vocab_size; ++i) {
-            code_probs[i] = expf(logits_ptr[i] - max_logit);
-            sum += code_probs[i];
-        }
-        for (int32_t i = 0; i < vocab_size; ++i) {
-            code_probs[i] = (float)(code_probs[i] / sum);
-        }
-
-        std::discrete_distribution<int32_t> dist(code_probs.begin(), code_probs.begin() + vocab_size);
-        return dist(rng_);
+        return sample_from_logits_range(
+            logits_ptr, vocab_size,
+            sample_min, sample_max,
+            temperature, top_k,
+            code_probs, scored, rng_);
     };
 
     memcpy(seq_embd.data(), hidden, (size_t)cfg.hidden_size * sizeof(float));
-    if (!lookup_single_embedding_row(model_.codec_embd, codebook_0_token,
+    if (!lookup_single_embedding_row(cp_model.codec_embd, codebook_0_token,
                                      seq_embd.data() + cfg.hidden_size)) {
         return false;
     }
@@ -2343,7 +2751,7 @@ bool TTSTransformer::predict_codes_autoregressive_coreml(const float * hidden,
     for (int32_t step = 0; step < n_steps; ++step) {
         if (step > 0) {
             float * dst = seq_embd.data() + (size_t)(step + 1) * cfg.hidden_size;
-            if (!lookup_single_embedding_row(model_.code_pred_embd[step - 1], output[step - 1], dst)) {
+            if (!lookup_single_embedding_row(cp_model.code_pred_embd[step - 1], output[step - 1], dst)) {
                 return false;
             }
         }
@@ -2390,7 +2798,11 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
         return false;
     }
     
-    const auto & cfg = model_.config;
+    const auto & cp_model = code_pred_model();
+    const auto & cfg = cp_model.config;
+    const int32_t n_steps = std::max(0, cfg.n_codebooks - 1);
+    const int32_t sample_min = std::max(0, std::min(code_pred_sample_min_id_, cfg.code_pred_vocab_size - 1));
+    const int32_t sample_max = std::max(sample_min, std::min(code_pred_sample_max_id_, cfg.code_pred_vocab_size - 1));
 
 #ifdef QWEN3_TTS_TIMING
     using clk = std::chrono::high_resolution_clock;
@@ -2408,14 +2820,22 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
         use_coreml_code_predictor_ = false;
     }
     
-    if (state_.code_pred_cache.n_ctx < 16) {
-        if (!init_code_pred_kv_cache(16)) {
+    const int32_t min_ctx = std::max(16, n_steps + 1);
+    if (state_.code_pred_cache.n_ctx < min_ctx) {
+        if (!init_code_pred_kv_cache(min_ctx)) {
             return false;
         }
     }
+    if (!ensure_code_pred_graph_cache()) {
+        return false;
+    }
+    const bool use_cached_graphs = is_code_predictor_cpu_backend() &&
+                                   code_pred_prefill_graph_.gf != nullptr &&
+                                   ((n_steps <= 1) || ((size_t) n_steps <= code_pred_step_graphs_.size() &&
+                                                      code_pred_step_graphs_[(size_t) (n_steps - 1)].gf != nullptr));
     clear_code_pred_kv_cache();
     
-    output.resize(15);
+    output.resize((size_t) n_steps);
     auto & logits_data = code_pred_logits_scratch_;
     logits_data.resize(cfg.code_pred_vocab_size);
     auto & code_probs = code_pred_probs_scratch_;
@@ -2427,58 +2847,27 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
         scored.clear();
     }
     
-    // Helper lambda: temperature + top-k sampling (or greedy if temperature <= 0)
     auto sample_or_argmax = [&](float * logits_ptr, int32_t vocab_size) -> int32_t {
-        if (temperature <= 0.0f) {
-            return argmax(logits_ptr, vocab_size);
-        }
-        // Temperature scaling
-        for (int32_t i = 0; i < vocab_size; ++i) {
-            logits_ptr[i] /= temperature;
-        }
-        // Top-k filtering
-        if (top_k > 0 && top_k < vocab_size) {
-            if ((int32_t)scored.size() < vocab_size) {
-                scored.resize(vocab_size);
-            }
-            for (int32_t i = 0; i < vocab_size; ++i) {
-                scored[i] = {logits_ptr[i], i};
-            }
-            std::partial_sort(scored.begin(), scored.begin() + top_k, scored.begin() + vocab_size,
-                [](const std::pair<float, int32_t> & a, const std::pair<float, int32_t> & b) {
-                    return a.first > b.first;
-                });
-            float threshold = scored[top_k - 1].first;
-            for (int32_t i = 0; i < vocab_size; ++i) {
-                if (logits_ptr[i] < threshold) {
-                    logits_ptr[i] = -INFINITY;
-                }
-            }
-        }
-        // Softmax
-        float max_logit = *std::max_element(logits_ptr, logits_ptr + vocab_size);
-        double sum = 0.0;
-        for (int32_t i = 0; i < vocab_size; ++i) {
-            code_probs[i] = expf(logits_ptr[i] - max_logit);
-            sum += code_probs[i];
-        }
-        for (int32_t i = 0; i < vocab_size; ++i) {
-            code_probs[i] = (float)(code_probs[i] / sum);
-        }
-        // Sample
-        std::discrete_distribution<int32_t> dist(code_probs.begin(), code_probs.begin() + vocab_size);
-        return dist(rng_);
+        return sample_from_logits_range(
+            logits_ptr, vocab_size,
+            sample_min, sample_max,
+            temperature, top_k,
+            code_probs, scored, rng_);
     };
     
     auto & cb0_embd = code_pred_cb0_embd_scratch_;
     cb0_embd.resize(cfg.hidden_size);
-    if (!lookup_single_embedding_row(model_.codec_embd, codebook_0_token, cb0_embd.data())) {
+    if (!lookup_single_embedding_row(cp_model.codec_embd, codebook_0_token, cb0_embd.data())) {
         return false;
     }
 #ifdef QWEN3_TTS_TIMING
     t1 = clk::now();
     if (timing_) timing_->t_code_pred_init_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
 #endif
+
+    if (n_steps <= 0) {
+        return true;
+    }
 
     // Prefill with 2 tokens [past_hidden, cb0_embd]
     {
@@ -2489,7 +2878,13 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
 #ifdef QWEN3_TTS_TIMING
         t0 = clk::now();
 #endif
-        struct ggml_cgraph * gf = build_code_pred_prefill_graph();
+        struct ggml_cgraph * gf = use_cached_graphs
+            ? code_pred_prefill_graph_.gf
+            : build_code_pred_prefill_graph();
+        if (!gf) {
+            error_msg_ = "Code predictor prefill graph unavailable";
+            return false;
+        }
 #ifdef QWEN3_TTS_TIMING
         t1 = clk::now();
         if (timing_) timing_->t_code_pred_graph_build_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -2566,17 +2961,28 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
 #endif
     }
     
-    // Generate 14 more tokens autoregressively
+    // Generate remaining codebook tokens autoregressively.
 #ifdef QWEN3_TTS_TIMING
     auto t_steps_start = clk::now();
 #endif
-    for (int step = 1; step < 15; ++step) {
+    for (int step = 1; step < n_steps; ++step) {
         int32_t n_past = step + 1;
 
 #ifdef QWEN3_TTS_TIMING
         t0 = clk::now();
 #endif
-        struct ggml_cgraph * gf = build_code_pred_step_graph(n_past, step);
+        struct ggml_cgraph * gf = nullptr;
+        if (use_cached_graphs) {
+            if ((size_t) step < code_pred_step_graphs_.size()) {
+                gf = code_pred_step_graphs_[(size_t) step].gf;
+            }
+        } else {
+            gf = build_code_pred_step_graph(n_past, step);
+        }
+        if (!gf) {
+            error_msg_ = "Code predictor step graph unavailable";
+            return false;
+        }
 #ifdef QWEN3_TTS_TIMING
         t1 = clk::now();
         if (timing_) timing_->t_code_pred_graph_build_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -2700,6 +3106,7 @@ bool TTSTransformer::generate(const int32_t * text_tokens, int32_t n_tokens,
     }
     
     const auto & cfg = model_.config;
+    const auto & cp_model = code_pred_model();
 
     std::vector<float> prefill_embd;
     std::vector<float> trailing_text_hidden;
@@ -2880,7 +3287,7 @@ bool TTSTransformer::generate(const int32_t * text_tokens, int32_t n_tokens,
 
         for (int cb = 1; cb < cfg.n_codebooks; ++cb) {
             int32_t code_token = frame_codes[cb];
-            if (!lookup_single_embedding_row(model_.code_pred_embd[cb - 1], code_token, embd_row.data())) {
+            if (!lookup_single_embedding_row(cp_model.code_pred_embd[cb - 1], code_token, embd_row.data())) {
                 return false;
             }
             for (int32_t h = 0; h < cfg.hidden_size; ++h) {
