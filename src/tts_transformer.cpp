@@ -232,11 +232,20 @@ bool TTSTransformer::is_code_predictor_cpu_backend() const {
 void TTSTransformer::clear_code_pred_graph_cache() {
     auto clear_entry = [](code_pred_graph_cache_entry & entry) {
         entry.gf = nullptr;
+        if (entry.sched) {
+            ggml_backend_sched_free(entry.sched);
+            entry.sched = nullptr;
+        }
         if (entry.ctx) {
             ggml_free(entry.ctx);
             entry.ctx = nullptr;
         }
         entry.compute_meta.clear();
+        entry.inp_hidden = nullptr;
+        entry.inp_cb0_embd = nullptr;
+        entry.inp_pos = nullptr;
+        entry.inp_code = nullptr;
+        entry.logits = nullptr;
     };
 
     clear_entry(code_pred_prefill_graph_);
@@ -300,13 +309,31 @@ bool TTSTransformer::ensure_code_pred_graph_cache() {
     const int32_t n_steps = std::max(0, model_.config.n_codebooks - 1);
     const bool step_cache_ready = (n_steps <= 1) ||
                                   ((size_t) n_steps <= code_pred_step_graphs_.size() &&
-                                   code_pred_step_graphs_[(size_t) (n_steps - 1)].gf != nullptr);
-    if (code_pred_prefill_graph_.gf && code_pred_prefill_graph_.ctx && step_cache_ready) {
+                                   code_pred_step_graphs_[(size_t) (n_steps - 1)].gf != nullptr &&
+                                   code_pred_step_graphs_[(size_t) (n_steps - 1)].sched != nullptr);
+    if (code_pred_prefill_graph_.gf && code_pred_prefill_graph_.ctx &&
+        code_pred_prefill_graph_.sched && step_cache_ready) {
         return true;
     }
 
     clear_code_pred_graph_cache();
     const size_t meta_size = ggml_tensor_overhead() * QWEN3_TTS_MAX_NODES + ggml_graph_overhead();
+    auto make_code_pred_sched = [&]() -> ggml_backend_sched_t {
+        std::vector<ggml_backend_t> backends;
+        if (state_.backend_code_pred) {
+            backends.push_back(state_.backend_code_pred);
+        }
+        if (state_.backend_code_pred_cpu &&
+            state_.backend_code_pred_cpu != state_.backend_code_pred) {
+            backends.push_back(state_.backend_code_pred_cpu);
+        }
+        if (backends.empty()) {
+            return nullptr;
+        }
+        return ggml_backend_sched_new(backends.data(), nullptr,
+                                      (int) backends.size(),
+                                      QWEN3_TTS_MAX_NODES, false, true);
+    };
 
     code_pred_prefill_graph_.compute_meta.resize(meta_size);
     code_pred_prefill_graph_.gf = build_code_pred_prefill_graph(
@@ -317,6 +344,29 @@ bool TTSTransformer::ensure_code_pred_graph_cache() {
         if (error_msg_.empty()) {
             error_msg_ = "Failed to build cached code predictor prefill graph";
         }
+        clear_code_pred_graph_cache();
+        return false;
+    }
+    code_pred_prefill_graph_.sched = make_code_pred_sched();
+    if (!code_pred_prefill_graph_.sched) {
+        error_msg_ = "Failed to create cached scheduler for code predictor prefill";
+        clear_code_pred_graph_cache();
+        return false;
+    }
+    if (!ggml_backend_sched_alloc_graph(code_pred_prefill_graph_.sched, code_pred_prefill_graph_.gf)) {
+        error_msg_ = "Failed to pre-allocate cached code predictor prefill graph";
+        clear_code_pred_graph_cache();
+        return false;
+    }
+    code_pred_prefill_graph_.inp_hidden = ggml_graph_get_tensor(code_pred_prefill_graph_.gf, "inp_hidden");
+    code_pred_prefill_graph_.inp_cb0_embd = ggml_graph_get_tensor(code_pred_prefill_graph_.gf, "inp_cb0_embd");
+    code_pred_prefill_graph_.inp_pos = ggml_graph_get_tensor(code_pred_prefill_graph_.gf, "inp_pos");
+    code_pred_prefill_graph_.logits = ggml_graph_get_tensor(code_pred_prefill_graph_.gf, "logits");
+    if (!code_pred_prefill_graph_.inp_hidden ||
+        !code_pred_prefill_graph_.inp_cb0_embd ||
+        !code_pred_prefill_graph_.inp_pos ||
+        !code_pred_prefill_graph_.logits) {
+        error_msg_ = "Missing cached tensor handles in code predictor prefill graph";
         clear_code_pred_graph_cache();
         return false;
     }
@@ -335,6 +385,25 @@ bool TTSTransformer::ensure_code_pred_graph_cache() {
             if (error_msg_.empty()) {
                 error_msg_ = "Failed to build cached code predictor step graph";
             }
+            clear_code_pred_graph_cache();
+            return false;
+        }
+        entry.sched = make_code_pred_sched();
+        if (!entry.sched) {
+            error_msg_ = "Failed to create cached scheduler for code predictor step graph";
+            clear_code_pred_graph_cache();
+            return false;
+        }
+        if (!ggml_backend_sched_alloc_graph(entry.sched, entry.gf)) {
+            error_msg_ = "Failed to pre-allocate cached code predictor step graph";
+            clear_code_pred_graph_cache();
+            return false;
+        }
+        entry.inp_code = ggml_graph_get_tensor(entry.gf, "inp_code");
+        entry.inp_pos = ggml_graph_get_tensor(entry.gf, "inp_pos");
+        entry.logits = ggml_graph_get_tensor(entry.gf, "logits");
+        if (!entry.inp_code || !entry.inp_pos || !entry.logits) {
+            error_msg_ = "Missing cached tensor handles in code predictor step graph";
             clear_code_pred_graph_cache();
             return false;
         }
@@ -2831,8 +2900,10 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
     }
     const bool use_cached_graphs = is_code_predictor_cpu_backend() &&
                                    code_pred_prefill_graph_.gf != nullptr &&
+                                   code_pred_prefill_graph_.sched != nullptr &&
                                    ((n_steps <= 1) || ((size_t) n_steps <= code_pred_step_graphs_.size() &&
-                                                      code_pred_step_graphs_[(size_t) (n_steps - 1)].gf != nullptr));
+                                                      code_pred_step_graphs_[(size_t) (n_steps - 1)].gf != nullptr &&
+                                                      code_pred_step_graphs_[(size_t) (n_steps - 1)].sched != nullptr));
     clear_code_pred_kv_cache();
     
     output.resize((size_t) n_steps);
@@ -2878,9 +2949,15 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
 #ifdef QWEN3_TTS_TIMING
         t0 = clk::now();
 #endif
-        struct ggml_cgraph * gf = use_cached_graphs
-            ? code_pred_prefill_graph_.gf
+        const code_pred_graph_cache_entry * cached_entry = use_cached_graphs
+            ? &code_pred_prefill_graph_
+            : nullptr;
+        struct ggml_cgraph * gf = cached_entry
+            ? cached_entry->gf
             : build_code_pred_prefill_graph();
+        ggml_backend_sched_t sched = cached_entry && cached_entry->sched
+            ? cached_entry->sched
+            : state_.sched_code_pred;
         if (!gf) {
             error_msg_ = "Code predictor prefill graph unavailable";
             return false;
@@ -2893,29 +2970,40 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
 #ifdef QWEN3_TTS_TIMING
         t0 = clk::now();
 #endif
-        if (!ggml_backend_sched_alloc_graph(state_.sched_code_pred, gf)) {
-            error_msg_ = "Failed to allocate code predictor prefill graph";
-            return false;
+        if (!cached_entry) {
+            if (!ggml_backend_sched_alloc_graph(sched, gf)) {
+                error_msg_ = "Failed to allocate code predictor prefill graph";
+                return false;
+            }
         }
 #ifdef QWEN3_TTS_TIMING
         t1 = clk::now();
-        if (timing_) timing_->t_code_pred_graph_alloc_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
+        if (timing_) {
+            timing_->t_code_pred_graph_alloc_ms +=
+                cached_entry ? 0.0 : std::chrono::duration<double, std::milli>(t1 - t0).count();
+        }
 #endif
 
 #ifdef QWEN3_TTS_TIMING
         t0 = clk::now();
 #endif
-        struct ggml_tensor * inp_hidden = ggml_graph_get_tensor(gf, "inp_hidden");
+        struct ggml_tensor * inp_hidden = cached_entry
+            ? cached_entry->inp_hidden
+            : ggml_graph_get_tensor(gf, "inp_hidden");
         if (inp_hidden) {
             ggml_backend_tensor_set(inp_hidden, hidden, 0, cfg.hidden_size * sizeof(float));
         }
         
-        struct ggml_tensor * inp_cb0_embd = ggml_graph_get_tensor(gf, "inp_cb0_embd");
+        struct ggml_tensor * inp_cb0_embd = cached_entry
+            ? cached_entry->inp_cb0_embd
+            : ggml_graph_get_tensor(gf, "inp_cb0_embd");
         if (inp_cb0_embd) {
             ggml_backend_tensor_set(inp_cb0_embd, cb0_embd.data(), 0, cfg.hidden_size * sizeof(float));
         }
         
-        struct ggml_tensor * inp_pos = ggml_graph_get_tensor(gf, "inp_pos");
+        struct ggml_tensor * inp_pos = cached_entry
+            ? cached_entry->inp_pos
+            : ggml_graph_get_tensor(gf, "inp_pos");
         if (inp_pos) {
             int32_t positions[2] = {0, 1};
             ggml_backend_tensor_set(inp_pos, positions, 0, 2 * sizeof(int32_t));
@@ -2928,9 +3016,11 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
 #ifdef QWEN3_TTS_TIMING
         t0 = clk::now();
 #endif
-        if (ggml_backend_sched_graph_compute(state_.sched_code_pred, gf) != GGML_STATUS_SUCCESS) {
+        if (ggml_backend_sched_graph_compute(sched, gf) != GGML_STATUS_SUCCESS) {
             error_msg_ = "Failed to compute code predictor prefill graph";
-            ggml_backend_sched_reset(state_.sched_code_pred);
+            if (!cached_entry) {
+                ggml_backend_sched_reset(sched);
+            }
             return false;
         }
 #ifdef QWEN3_TTS_TIMING
@@ -2938,10 +3028,14 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
         if (timing_) timing_->t_code_pred_compute_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
 #endif
         
-        struct ggml_tensor * logits = ggml_graph_get_tensor(gf, "logits");
+        struct ggml_tensor * logits = cached_entry
+            ? cached_entry->logits
+            : ggml_graph_get_tensor(gf, "logits");
         if (!logits) {
             error_msg_ = "Failed to find logits tensor in prefill";
-            ggml_backend_sched_reset(state_.sched_code_pred);
+            if (!cached_entry) {
+                ggml_backend_sched_reset(sched);
+            }
             return false;
         }
 
@@ -2953,7 +3047,9 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
         
         output[0] = sample_or_argmax(logits_data.data(), cfg.code_pred_vocab_size);
         
-        ggml_backend_sched_reset(state_.sched_code_pred);
+        if (!cached_entry) {
+            ggml_backend_sched_reset(sched);
+        }
 #ifdef QWEN3_TTS_TIMING
         t1 = clk::now();
         if (timing_) timing_->t_code_pred_data_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -2971,10 +3067,16 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
 #ifdef QWEN3_TTS_TIMING
         t0 = clk::now();
 #endif
+        const code_pred_graph_cache_entry * cached_entry = nullptr;
         struct ggml_cgraph * gf = nullptr;
+        ggml_backend_sched_t sched = state_.sched_code_pred;
         if (use_cached_graphs) {
             if ((size_t) step < code_pred_step_graphs_.size()) {
-                gf = code_pred_step_graphs_[(size_t) step].gf;
+                cached_entry = &code_pred_step_graphs_[(size_t) step];
+                gf = cached_entry->gf;
+                if (cached_entry->sched) {
+                    sched = cached_entry->sched;
+                }
             }
         } else {
             gf = build_code_pred_step_graph(n_past, step);
@@ -2991,25 +3093,34 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
 #ifdef QWEN3_TTS_TIMING
         t0 = clk::now();
 #endif
-        if (!ggml_backend_sched_alloc_graph(state_.sched_code_pred, gf)) {
-            error_msg_ = "Failed to allocate code predictor step graph";
-            return false;
+        if (!cached_entry) {
+            if (!ggml_backend_sched_alloc_graph(sched, gf)) {
+                error_msg_ = "Failed to allocate code predictor step graph";
+                return false;
+            }
         }
 #ifdef QWEN3_TTS_TIMING
         t1 = clk::now();
-        if (timing_) timing_->t_code_pred_graph_alloc_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
+        if (timing_) {
+            timing_->t_code_pred_graph_alloc_ms +=
+                cached_entry ? 0.0 : std::chrono::duration<double, std::milli>(t1 - t0).count();
+        }
 #endif
 
 #ifdef QWEN3_TTS_TIMING
         t0 = clk::now();
 #endif
-        struct ggml_tensor * inp_code = ggml_graph_get_tensor(gf, "inp_code");
+        struct ggml_tensor * inp_code = cached_entry
+            ? cached_entry->inp_code
+            : ggml_graph_get_tensor(gf, "inp_code");
         if (inp_code) {
             int32_t prev_code = output[step - 1];
             ggml_backend_tensor_set(inp_code, &prev_code, 0, sizeof(int32_t));
         }
         
-        struct ggml_tensor * inp_pos = ggml_graph_get_tensor(gf, "inp_pos");
+        struct ggml_tensor * inp_pos = cached_entry
+            ? cached_entry->inp_pos
+            : ggml_graph_get_tensor(gf, "inp_pos");
         if (inp_pos) {
             int32_t pos = n_past;
             ggml_backend_tensor_set(inp_pos, &pos, 0, sizeof(int32_t));
@@ -3022,9 +3133,11 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
 #ifdef QWEN3_TTS_TIMING
         t0 = clk::now();
 #endif
-        if (ggml_backend_sched_graph_compute(state_.sched_code_pred, gf) != GGML_STATUS_SUCCESS) {
+        if (ggml_backend_sched_graph_compute(sched, gf) != GGML_STATUS_SUCCESS) {
             error_msg_ = "Failed to compute code predictor step graph";
-            ggml_backend_sched_reset(state_.sched_code_pred);
+            if (!cached_entry) {
+                ggml_backend_sched_reset(sched);
+            }
             return false;
         }
 #ifdef QWEN3_TTS_TIMING
@@ -3032,10 +3145,14 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
         if (timing_) timing_->t_code_pred_compute_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
 #endif
         
-        struct ggml_tensor * logits = ggml_graph_get_tensor(gf, "logits");
+        struct ggml_tensor * logits = cached_entry
+            ? cached_entry->logits
+            : ggml_graph_get_tensor(gf, "logits");
         if (!logits) {
             error_msg_ = "Failed to find logits tensor";
-            ggml_backend_sched_reset(state_.sched_code_pred);
+            if (!cached_entry) {
+                ggml_backend_sched_reset(sched);
+            }
             return false;
         }
 
@@ -3047,7 +3164,9 @@ bool TTSTransformer::predict_codes_autoregressive(const float * hidden, int32_t 
         
         output[step] = sample_or_argmax(logits_data.data(), cfg.code_pred_vocab_size);
         
-        ggml_backend_sched_reset(state_.sched_code_pred);
+        if (!cached_entry) {
+            ggml_backend_sched_reset(sched);
+        }
 #ifdef QWEN3_TTS_TIMING
         t1 = clk::now();
         if (timing_) timing_->t_code_pred_data_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();

@@ -288,6 +288,7 @@ Current optimization roadmap and bottleneck analysis are tracked in:
 - `docs/phaseB_engine_split_report_2026-03-17.md`
 - `docs/phaseC_streaming_decode_report_2026-03-17.md`
 - `docs/phaseD_architecture_optimization_report_2026-03-17.md`
+- `docs/phaseE_predictor_scheduler_report_2026-03-17.md`
 
 ## Acknowledgments
 

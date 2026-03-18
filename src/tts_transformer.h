@@ -197,6 +197,12 @@ struct code_pred_graph_cache_entry {
     std::vector<uint8_t> compute_meta;
     struct ggml_context * ctx = nullptr;
     struct ggml_cgraph * gf = nullptr;
+    ggml_backend_sched_t sched = nullptr;
+    struct ggml_tensor * inp_hidden = nullptr;
+    struct ggml_tensor * inp_cb0_embd = nullptr;
+    struct ggml_tensor * inp_pos = nullptr;
+    struct ggml_tensor * inp_code = nullptr;
+    struct ggml_tensor * logits = nullptr;
 };
 
 // TTS Transformer class
