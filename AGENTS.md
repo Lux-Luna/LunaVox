@@ -21,9 +21,9 @@ If a detail is better explained by the code, tests, or conversion docs, link to 
 - Primary Python entry point: `python manage.py <command>`.
 - Preferred build command: `python manage.py build --backend auto`.
 - Required runtime model files:
-  - `models/qwen3-tts-0.6B-base.gguf`
-  - `models/qwen3-tts-tokenizer-f16.gguf` (preferred)
-  - or `models/qwen3-tts-tokenizer-q8_0.gguf` (fallback)
+  - `models/qwen3-tts-0.6B-base.gguf` (Main: Talker + Predictor + Vocoder + Text Tokenizer)
+- Optional auxiliary model files (required for voice cloning):
+  - `models/qwen3-tts-aux-f16.gguf` or `models/qwen3-tts-aux-q8_0.gguf`
 - Voice-cloning smoke tests also require `reference/ref-audio.wav`.
 
 ## Repository Shape
@@ -95,12 +95,12 @@ Current installed public headers include:
 
 ## Runtime Truths Agents Should Not Guess About
 
-- `Qwen3TTS::load_models()` expects exactly:
-  - `qwen3-tts-0.6B-base.gguf`
-  - `qwen3-tts-tokenizer-f16.gguf` or `qwen3-tts-tokenizer-q8_0.gguf`
-- Current loading split:
-  - base model GGUF -> tokenizer + speaker encoder + TTS transformer
-  - tokenizer GGUF -> vocoder / decoder
+- `Qwen3TTS::load_models()` expects:
+  - `qwen3-tts-0.6B-base.gguf` (required)
+  - `qwen3-tts-aux-f16.gguf` or `qwen3-tts-aux-q8_0.gguf` (optional)
+- Current loading split (restructured):
+  - base model GGUF -> text tokenizer + TTS transformer + vocoder
+  - aux model GGUF (optional) -> speaker encoder + codec encoder
 - Text tokenizer currently formats TTS input as:
   - `<|im_start|>assistant\n{text}<|im_end|>\n<|im_start|>assistant\n`
 - `QWEN3_TTS_LOW_MEM` enables lazy decoder loading and component unload/reload behavior.

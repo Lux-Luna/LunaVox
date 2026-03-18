@@ -124,12 +124,7 @@ static void compute_centered_window(float * window, int n_fft, int win_length) {
 AudioTokenizerEncoder::AudioTokenizerEncoder() = default;
 
 AudioTokenizerEncoder::~AudioTokenizerEncoder() {
-    if (state_.sched) {
-        ggml_backend_sched_free(state_.sched);
-        state_.sched = nullptr;
-    }
-
-    free_speaker_encoder_model(model_);
+    unload_model();
 
     if (state_.backend) {
         release_preferred_backend(state_.backend);
@@ -139,6 +134,16 @@ AudioTokenizerEncoder::~AudioTokenizerEncoder() {
         ggml_backend_free(state_.backend_cpu);
         state_.backend_cpu = nullptr;
     }
+}
+
+void AudioTokenizerEncoder::unload_model() {
+    if (state_.sched) {
+        ggml_backend_sched_free(state_.sched);
+        state_.sched = nullptr;
+    }
+
+    free_speaker_encoder_model(model_);
+    model_ = speaker_encoder_model();
 }
 
 void AudioTokenizerEncoder::set_n_threads(int32_t n_threads) {
@@ -472,7 +477,8 @@ static struct ggml_tensor * apply_conv1d(struct ggml_context * ctx,
     }
     if (b) {
         int64_t oc = y->ne[1];
-        y = ggml_add(ctx, y, ggml_reshape_3d(ctx, b, 1, oc, 1));
+        struct ggml_tensor * b_f32 = (b->type == GGML_TYPE_F32) ? b : ggml_cast(ctx, b, GGML_TYPE_F32);
+        y = ggml_add(ctx, y, ggml_reshape_3d(ctx, b_f32, 1, oc, 1));
     }
     return y;
 }
@@ -513,7 +519,8 @@ struct ggml_cgraph * AudioTokenizerEncoder::build_graph(int32_t n_frames) {
 
      if (model_.conv0_b) {
          int64_t oc = cur->ne[1];
-         cur = ggml_add(ctx0, cur, ggml_reshape_3d(ctx0, model_.conv0_b, 1, oc, 1));
+         struct ggml_tensor * b_f32 = (model_.conv0_b->type == GGML_TYPE_F32) ? model_.conv0_b : ggml_cast(ctx0, model_.conv0_b, GGML_TYPE_F32);
+         cur = ggml_add(ctx0, cur, ggml_reshape_3d(ctx0, b_f32, 1, oc, 1));
      }
      ggml_set_name(cur, "conv0_pre_relu");
      cur = ggml_relu(ctx0, cur);

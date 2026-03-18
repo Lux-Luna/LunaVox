@@ -293,29 +293,21 @@ static void resample_linear(const float * input, int input_len, int input_rate,
     }
 }
 
-static bool resolve_tokenizer_model_path(const std::string & model_dir,
-                                         std::string & tokenizer_model_path,
-                                         std::string & error_msg) {
+static bool resolve_aux_model_path(const std::string & model_dir,
+                                    std::string & aux_model_path) {
     const char * candidates[] = {
-        "qwen3-tts-tokenizer-f16.gguf",
-        "qwen3-tts-tokenizer-q8_0.gguf",
+        "qwen3-tts-aux-f16.gguf",
+        "qwen3-tts-aux-q8_0.gguf",
     };
 
     for (const char * candidate : candidates) {
         std::string path = model_dir + "/" + candidate;
-        FILE * f = fopen(path.c_str(), "r");
-        if (!f) {
-            continue;
-        }
+        FILE * f = fopen(path.c_str(), "rb");
+        if (!f) continue;
         fclose(f);
-        tokenizer_model_path = path;
+        aux_model_path = path;
         return true;
     }
-
-    error_msg =
-        "Required tokenizer model file not found: tried " +
-        model_dir + "/qwen3-tts-tokenizer-f16.gguf and " +
-        model_dir + "/qwen3-tts-tokenizer-q8_0.gguf";
     return false;
 }
 
@@ -333,28 +325,31 @@ bool Qwen3TTS::load_models(const std::string & model_dir) {
 
     transformer_.unload_model();
     audio_decoder_.unload_model();
+    audio_encoder_.unload_model();
     transformer_loaded_ = false;
     decoder_loaded_ = false;
+    encoder_loaded_ = false;
     
-    // Construct model paths (fixed mixed-quant main model; tokenizer prefers F16 with Q8_0 fallback).
+    // Main model path (Self-contained Synthesizer: Talker + Predictor + Vocoder)
     std::string tts_model_path = model_dir + "/qwen3-tts-0.6B-base.gguf";
-    std::string tokenizer_model_path;
     {
-        FILE * tts_file = fopen(tts_model_path.c_str(), "r");
+        FILE * tts_file = fopen(tts_model_path.c_str(), "rb");
         if (!tts_file) {
-            error_msg_ = "Required model file not found: " + tts_model_path;
+            error_msg_ = "Required main model file not found: " + tts_model_path;
             return false;
         }
         fclose(tts_file);
     }
-    if (!resolve_tokenizer_model_path(model_dir, tokenizer_model_path, error_msg_)) {
-        return false;
-    }
+    
     tts_model_path_ = tts_model_path;
-    decoder_model_path_ = tokenizer_model_path;
-    encoder_loaded_ = false;
-    transformer_loaded_ = false;
-    decoder_loaded_ = false;
+    decoder_model_path_ = tts_model_path; // Now in the same file
+    
+    // Resolve optional auxiliary model for voice cloning (Encoder)
+    if (!resolve_aux_model_path(model_dir, aux_model_path_)) {
+        fprintf(stderr, "  Auxiliary model (voice cloning) not found. Standard TTS remains available.\n");
+    } else {
+        fprintf(stderr, "  Auxiliary model found: %s\n", aux_model_path_.c_str());
+    }
 
     const char * low_mem_env = std::getenv("QWEN3_TTS_LOW_MEM");
     low_mem_mode_ = low_mem_env && low_mem_env[0] != '\0' && low_mem_env[0] != '0';
@@ -417,10 +412,10 @@ bool Qwen3TTS::load_models(const std::string & model_dir) {
     log_memory_usage("load/after-transformer");
     
     if (!low_mem_mode_) {
-        // Load vocoder (audio decoder) from tokenizer model
-        fprintf(stderr, "Loading vocoder from %s...\n", tokenizer_model_path.c_str());
+        // Load vocoder (audio decoder) from main model
+        fprintf(stderr, "Loading vocoder from %s...\n", decoder_model_path_.c_str());
         int64_t t_decoder_start = get_time_ms();
-        if (!audio_decoder_.load_model(tokenizer_model_path)) {
+        if (!audio_decoder_.load_model(decoder_model_path_)) {
             error_msg_ = "Failed to load vocoder: " + audio_decoder_.get_error();
             return false;
         }
@@ -493,12 +488,12 @@ tts_result Qwen3TTS::synthesize_with_voice(const std::string & text,
     }
 
     if (!encoder_loaded_) {
-        if (tts_model_path_.empty()) {
-            result.error_msg = "Internal error: missing TTS model path for lazy encoder load";
+        if (aux_model_path_.empty()) {
+            result.error_msg = "Voice cloning requires auxiliary model (qwen3-tts-aux-*.gguf) which was not found.";
             return result;
         }
         int64_t t_encoder_load_start = get_time_ms();
-        if (!audio_encoder_.load_model(tts_model_path_)) {
+        if (!audio_encoder_.load_model(aux_model_path_)) {
             result.error_msg = "Failed to load speaker encoder: " + audio_encoder_.get_error();
             return result;
         }
@@ -538,12 +533,12 @@ bool Qwen3TTS::extract_speaker_embedding(const float * ref_samples, int32_t n_re
     }
 
     if (!encoder_loaded_) {
-        if (tts_model_path_.empty()) {
-            error_msg_ = "Internal error: missing TTS model path for lazy encoder load";
+        if (aux_model_path_.empty()) {
+            error_msg_ = "Speaker embedding extraction requires auxiliary model (qwen3-tts-aux-*.gguf).";
             return false;
         }
         int64_t t_encoder_load_start = get_time_ms();
-        if (!audio_encoder_.load_model(tts_model_path_)) {
+        if (!audio_encoder_.load_model(aux_model_path_)) {
             error_msg_ = "Failed to load speaker encoder: " + audio_encoder_.get_error();
             return false;
         }

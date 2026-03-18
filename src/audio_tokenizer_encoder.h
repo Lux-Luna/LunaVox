@@ -113,6 +113,9 @@ public:
     const char * backend_name() const;
     bool is_cpu_backend() const;
     
+    // Release resources
+    void unload_model();
+    
     // Legacy interface for compatibility (not used for speaker encoding)
     bool encode(const float * samples, int32_t n_samples,
                 std::vector<int32_t> & codes, int32_t & n_frames) {

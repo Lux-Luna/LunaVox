@@ -4,6 +4,12 @@
 #include "tts_transformer.h"
 #include "audio_tokenizer_encoder.h"
 #include "audio_tokenizer_decoder.h"
+#pragma once
+
+#include "text_tokenizer.h"
+#include "tts_transformer.h"
+#include "audio_tokenizer_encoder.h"
+#include "audio_tokenizer_decoder.h"
 
 #include <string>
 #include <vector>
@@ -114,8 +120,8 @@ public:
     ~Qwen3TTS();
     
     // Load all models from directory
-    // model_dir should contain qwen3-tts-0.6B-base.gguf and either
-    // qwen3-tts-tokenizer-f16.gguf or qwen3-tts-tokenizer-q8_0.gguf.
+    // model_dir should contain qwen3-tts-0.6B-base.gguf (Self-contained)
+    // and optionally qwen3-tts-aux-f16.gguf or qwen3-tts-aux-q8_0.gguf for voice cloning.
     bool load_models(const std::string & model_dir);
     
     // Generate speech from text
@@ -184,6 +190,7 @@ private:
     std::string error_msg_;
     std::string tts_model_path_;
     std::string decoder_model_path_;
+    std::string aux_model_path_;
     tts_progress_callback_t progress_callback_;
 };
 
