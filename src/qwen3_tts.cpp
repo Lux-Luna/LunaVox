@@ -243,7 +243,7 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
     talker_model_path_ = model_dir + "/qwen3_tts_talker.q5_k.gguf";
     predictor_model_path_ = model_dir + "/qwen3_tts_predictor.q8_0.gguf";
     speaker_model_path_ = model_dir + "/qwen3_tts_speaker_encoder.gguf";
-    codec_encoder_model_path_ = model_dir + "/qwen3_tts_codec_encoder.gguf";
+    const std::string codec_encoder_model_path = model_dir + "/qwen3_tts_codec_encoder.gguf";
     decoder_model_path_ = model_dir + "/qwen3_tts_codec_decoder.gguf";
     embeddings_dir_path_ = model_dir + "/embeddings";
 
@@ -255,7 +255,7 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
         talker_model_path_,
         predictor_model_path_,
         speaker_model_path_,
-        codec_encoder_model_path_,
+        codec_encoder_model_path,
         decoder_model_path_,
         text_emb,
         codec_emb0,
@@ -328,7 +328,6 @@ bool Qwen3TTS::load_models(const std::string & model_dir) {
     decoder_loaded_ = false;
     error_msg_.clear();
     speaker_model_path_.clear();
-    codec_encoder_model_path_.clear();
     talker_model_path_.clear();
     predictor_model_path_.clear();
     embeddings_dir_path_.clear();
@@ -364,12 +363,9 @@ tts_result Qwen3TTS::synthesize(const std::string & text,
         result.error_msg = "Models not loaded";
         return result;
     }
-    
-    // For synthesis without voice cloning, use a zero speaker embedding.
-    const int32_t emb_dim = talker_predictor_.hidden_dim();
-    std::vector<float> zero_embedding((size_t) emb_dim, 0.0f);
-    
-    return synthesize_internal(text, zero_embedding.data(), params, result);
+
+    // Keep default path aligned with reference inference: no speaker segment.
+    return synthesize_internal(text, nullptr, params, result);
 }
 
 tts_result Qwen3TTS::synthesize_with_voice(const std::string & text,
@@ -527,6 +523,17 @@ tts_result Qwen3TTS::synthesize_internal(const std::string & text,
     int64_t t_tokenize_start = get_time_ms();
     std::vector<int32_t> text_tokens = tokenizer_.encode(text);
     std::vector<int32_t> role_prefix_tokens = tokenizer_.encode("<|im_start|>assistant\n");
+    if (role_prefix_tokens.size() != 3 ||
+        role_prefix_tokens[0] != 151644 ||
+        role_prefix_tokens[1] != 77091 ||
+        role_prefix_tokens[2] != 198) {
+        // The custom tokenizer path may not preserve special-token behavior.
+        // Use stable protocol ids for the role prefix to keep prompt alignment.
+        role_prefix_tokens = {151644, 77091, 198};
+        if (params.print_timing || params.print_progress) {
+            fprintf(stderr, "Role prefix tokenization mismatch, using fallback ids [151644,77091,198]\n");
+        }
+    }
     result.t_tokenize_ms = get_time_ms() - t_tokenize_start;
     sample_memory("synth/after-tokenize");
     

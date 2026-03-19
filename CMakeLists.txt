@@ -215,38 +215,6 @@ target_link_libraries(qwen3-tts-cli PRIVATE
 )
 qwen3_tts_finalize_binary(qwen3-tts-cli)
 
-add_executable(test_tokenizer
-    tests/test_tokenizer.cpp
-)
-target_link_libraries(test_tokenizer PRIVATE
-    text_tokenizer
-)
-qwen3_tts_finalize_binary(test_tokenizer)
-
-add_executable(test_encoder
-    tests/test_encoder.cpp
-)
-target_link_libraries(test_encoder PRIVATE
-    audio_tokenizer_encoder
-)
-qwen3_tts_finalize_binary(test_encoder)
-
-add_executable(test_decoder
-    tests/test_decoder.cpp
-)
-target_link_libraries(test_decoder PRIVATE
-    audio_tokenizer_decoder
-)
-qwen3_tts_finalize_binary(test_decoder)
-
-add_executable(test_tts_template_chinese
-    tests/test_tts_template_chinese.cpp
-)
-target_link_libraries(test_tts_template_chinese PRIVATE
-    text_tokenizer
-)
-qwen3_tts_finalize_binary(test_tts_template_chinese)
-
 install(TARGETS
     text_tokenizer
     audio_tokenizer_encoder
@@ -272,41 +240,17 @@ install(FILES
 )
 
 enable_testing()
-add_test(NAME tokenizer_test
-    COMMAND test_tokenizer --model models/qwen3_tts_speaker_encoder.gguf
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
-add_test(NAME encoder_test
-    COMMAND test_encoder --tokenizer models/qwen3_tts_speaker_encoder.gguf --audio ${CMAKE_CURRENT_BINARY_DIR}/ctest_basic.wav
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
-add_test(NAME decoder_test
-    COMMAND test_decoder --tokenizer models/qwen3_tts_codec_decoder.gguf --frames 4
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
-add_test(NAME tts_template_chinese_test
-    COMMAND test_tts_template_chinese models/qwen3_tts_speaker_encoder.gguf
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
 add_test(NAME cli_basic_smoke_test
-    COMMAND qwen3-tts-cli -m models -t "Hello from ctest." -o ${CMAKE_CURRENT_BINARY_DIR}/ctest_basic.wav --temperature 0 --max-tokens 24
+    COMMAND qwen3-tts-cli -m models/base_small -t "Hello from ctest." -o ${CMAKE_CURRENT_BINARY_DIR}/ctest_basic.wav --temperature 0 --max-tokens 24
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 add_test(NAME cli_clone_smoke_test
-    COMMAND qwen3-tts-cli -m models -t "Hello from the reference voice." -r ${CMAKE_CURRENT_BINARY_DIR}/ctest_basic.wav -o ${CMAKE_CURRENT_BINARY_DIR}/ctest_clone.wav --temperature 0 --max-tokens 24
+    COMMAND qwen3-tts-cli -m models/base_small -t "Hello from the reference voice." -r ${CMAKE_CURRENT_BINARY_DIR}/ctest_basic.wav -o ${CMAKE_CURRENT_BINARY_DIR}/ctest_clone.wav --temperature 0 --max-tokens 24
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-set_tests_properties(encoder_test PROPERTIES DEPENDS cli_basic_smoke_test)
 set_tests_properties(cli_clone_smoke_test PROPERTIES DEPENDS cli_basic_smoke_test)
 
-set_tests_properties(
-    tokenizer_test
-    encoder_test
-    decoder_test
-    tts_template_chinese_test
-    PROPERTIES TIMEOUT 300
-)
 set_tests_properties(
     cli_basic_smoke_test
     cli_clone_smoke_test

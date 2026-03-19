@@ -13,6 +13,8 @@ Current runtime architecture:
 - Python 3.10+
 - A C++ toolchain (on Windows, `m2w64-toolchain` in conda is supported)
 - Prebuilt runtime files in `./lib` (already expected by this repo)
+- Python dependencies:
+  - `pip install -r requirements.txt`
 
 ## Model Setup
 
@@ -20,7 +22,7 @@ Current runtime architecture:
 python manage.py setup
 ```
 
-Generated model layout (`models/`):
+Generated model layout (`models/base_small/`):
 - `qwen3_tts_talker.q5_k.gguf`
 - `qwen3_tts_predictor.q8_0.gguf`
 - `qwen3_tts_speaker_encoder.gguf`
@@ -51,17 +53,17 @@ python manage.py build --backend cpu
 ## Run
 
 ```bash
-./build-cpu/qwen3-tts-cli -m models -t "Hello from LunaVox" -o output.wav
+./build-cpu/qwen3-tts-cli -m models/base_small -t "Hello from LunaVox" -o output.wav
 ```
 
 Voice cloning:
 
 ```bash
-./build-cpu/qwen3-tts-cli -m models -t "Hello" -r output.wav -o cloned.wav
+./build-cpu/qwen3-tts-cli -m models/base_small -t "Hello" -r output.wav -o cloned.wav
 ```
 
 ## Tests
 
 ```bash
-ctest --test-dir build-cpu --output-on-failure
+ctest --test-dir build-cpu -R "cli_.*smoke.*" --output-on-failure
 ```

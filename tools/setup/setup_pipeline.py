@@ -12,6 +12,9 @@ artifacts needed by the current C++ pipeline:
 - models/qwen3_tts_codec_decoder.gguf
 - models/embeddings/*
 - models/tokenizer.json
+
+Default output directory:
+- models/base_small/
 """
 
 from __future__ import annotations
@@ -307,7 +310,11 @@ def convert_gguf(
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Download and prepare all runtime models for lunavox")
-    p.add_argument("--models-dir", default=str(REPO_ROOT / "models"), help="Target models directory")
+    p.add_argument(
+        "--models-dir",
+        default=str(REPO_ROOT / "models" / "base_small"),
+        help="Target models directory",
+    )
     p.add_argument("--hf-token", default=os.environ.get("HF_TOKEN", ""), help="Hugging Face token (or set HF_TOKEN)")
     p.add_argument("--skip-download", action="store_true", help="Skip model downloads")
     p.add_argument("--skip-gguf", action="store_true", help="Skip GGUF conversion")
@@ -363,7 +370,7 @@ def main() -> int:
     eprint(f"  - {out_embeddings_dir}")
     eprint(f"  - {out_tokenizer_json}")
     eprint("\nRun:")
-    eprint("  ./build-cpu/qwen3-tts-cli -m models -t \"Hello\" -o out.wav")
+    eprint("  ./build-cpu/qwen3-tts-cli -m models/base_small -t \"Hello\" -o out.wav")
     return 0
 
 

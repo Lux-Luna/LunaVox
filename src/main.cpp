@@ -94,8 +94,8 @@ void print_usage(const char * program) {
     fprintf(stderr, "  -h, --help             Show this help\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Example:\n");
-    fprintf(stderr, "  %s -m ./models -t \"Hello, world!\" -o hello.wav\n", program);
-    fprintf(stderr, "  %s -m ./models -t \"Hello!\" -r reference.wav -o cloned.wav\n", program);
+    fprintf(stderr, "  %s -m ./models/base_small -t \"Hello, world!\" -o hello.wav\n", program);
+    fprintf(stderr, "  %s -m ./models/base_small -t \"Hello!\" -r reference.wav -o cloned.wav\n", program);
 }
 
 int main(int argc, char ** argv) {

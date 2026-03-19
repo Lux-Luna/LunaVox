@@ -1,4 +1,4 @@
-#include "text_tokenizer.h"
+﻿#include "text_tokenizer.h"
 
 #include <algorithm>
 #include <cctype>
@@ -12,22 +12,22 @@ namespace qwen3_tts {
 // GPT-2 byte-to-unicode mapping
 // Maps bytes 0-255 to unicode characters to avoid control characters
 static const char * BYTE_TO_UNICODE[256] = {
-    "Ā", "ā", "Ă", "ă", "Ą", "ą", "Ć", "ć", "Ĉ", "ĉ", "Ċ", "ċ", "Č", "č", "Ď", "ď",
-    "Đ", "đ", "Ē", "ē", "Ĕ", "ĕ", "Ė", "ė", "Ę", "ę", "Ě", "ě", "Ĝ", "ĝ", "Ğ", "ğ",
-    "Ġ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/",
+    "膧", "膩", "膫", "膬", "膭", "膮", "膯", "膰", "膱", "膲", "膴", "膵", "膶", "膷", "膸", "膹",
+    "膼", "膽", "膾", "膿", "臄", "臅", "臇", "臈", "臉", "臋", "臍", "臎", "臏", "臐", "臑", "臒",
+    "臓", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/",
     "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?",
     "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O",
     "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_",
     "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o",
-    "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~", "ġ",
-    "Ģ", "ģ", "Ĥ", "ĥ", "Ħ", "ħ", "Ĩ", "ĩ", "Ī", "ī", "Ĭ", "ĭ", "Į", "į", "İ", "ı",
-    "Ĳ", "ĳ", "Ĵ", "ĵ", "Ķ", "ķ", "ĸ", "Ĺ", "ĺ", "Ļ", "ļ", "Ľ", "ľ", "Ŀ", "ŀ", "Ł",
-    "ł", "¡", "¢", "£", "¤", "¥", "¦", "§", "¨", "©", "ª", "«", "¬", "Ń", "®", "¯",
-    "°", "±", "²", "³", "´", "µ", "¶", "·", "¸", "¹", "º", "»", "¼", "½", "¾", "¿",
-    "À", "Á", "Â", "Ã", "Ä", "Å", "Æ", "Ç", "È", "É", "Ê", "Ë", "Ì", "Í", "Î", "Ï",
-    "Ð", "Ñ", "Ò", "Ó", "Ô", "Õ", "Ö", "×", "Ø", "Ù", "Ú", "Û", "Ü", "Ý", "Þ", "ß",
-    "à", "á", "â", "ã", "ä", "å", "æ", "ç", "è", "é", "ê", "ë", "ì", "í", "î", "ï",
-    "ð", "ñ", "ò", "ó", "ô", "õ", "ö", "÷", "ø", "ù", "ú", "û", "ü", "ý", "þ", "ÿ"
+    "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~", "摹",
+    "蘑", "模", "膜", "磨", "摩", "魔", "抹", "末", "莫", "墨", "默", "沫", "漠", "寞", "陌", "谋",
+    "牟", "某", "拇", "牡", "亩", "姆", "母", "墓", "暮", "幕", "募", "慕", "木", "目", "艀", "艁",
+    "艂", "隆", "垄", "拢", "陇", "楼", "娄", "搂", "篓", "漏", "陋", "芦", "卢", "艃", "庐", "炉",
+    "掳", "卤", "虏", "鲁", "麓", "碌", "露", "路", "赂", "鹿", "潞", "禄", "录", "陆", "戮", "驴",
+    "脌", "脕", "脗", "脙", "脛", "脜", "脝", "脟", "脠", "脡", "脢", "脣", "脤", "脥", "脦", "脧",
+    "脨", "脩", "脪", "脫", "脭", "脮", "脰", "脳", "脴", "脵", "脷", "脹", "脺", "脻", "脼", "脽",
+    "脿", "谩", "芒", "茫", "盲", "氓", "忙", "莽", "猫", "茅", "锚", "毛", "矛", "铆", "卯", "茂",
+    "冒", "帽", "貌", "贸", "么", "玫", "枚", "梅", "酶", "霉", "煤", "没", "眉", "媒", "镁", "每"
 };
 
 // Build reverse mapping at runtime
@@ -208,25 +208,6 @@ bool TextTokenizer::load_from_gguf(struct gguf_context * ctx) {
     if (pad_key >= 0) {
         config_.pad_token_id = (int32_t)gguf_get_val_u32(ctx, pad_key);
     }
-    
-    // Find special tokens by content
-    auto find_token = [this](const std::string & text) -> int32_t {
-        auto it = vocab_.find(text);
-        return (it != vocab_.end()) ? it->second : -1;
-    };
-    
-    assistant_token_id_ = find_token("assistant");
-    if (assistant_token_id_ < 0) {
-        // Try with space prefix (GPT-2 style)
-        assistant_token_id_ = find_token("Ġassistant");
-    }
-    
-    // Newline token
-    newline_token_id_ = find_token("Ċ");  // GPT-2 encoding for '\n'
-    if (newline_token_id_ < 0) {
-        newline_token_id_ = find_token("\n");
-    }
-    
     loaded_ = true;
     return true;
 }
@@ -335,45 +316,6 @@ std::vector<int32_t> TextTokenizer::encode(const std::string & text) const {
     return tokens;
 }
 
-std::vector<int32_t> TextTokenizer::encode_for_tts(const std::string & text) const {
-    if (!loaded_) {
-        return {};
-    }
-    
-    // Format: <|im_start|>assistant\n{text}<|im_end|>\n<|im_start|>assistant\n
-    std::vector<int32_t> tokens;
-    
-    // <|im_start|>
-    tokens.push_back(config_.bos_token_id);
-    
-    // assistant
-    tokens.push_back(assistant_token_id_);
-    
-    // \n
-    tokens.push_back(newline_token_id_);
-    
-    // Encode the text
-    auto text_tokens = encode(text);
-    tokens.insert(tokens.end(), text_tokens.begin(), text_tokens.end());
-    
-    // <|im_end|>
-    tokens.push_back(config_.eos_token_id);
-    
-    // \n
-    tokens.push_back(newline_token_id_);
-    
-    // <|im_start|>
-    tokens.push_back(config_.bos_token_id);
-    
-    // assistant
-    tokens.push_back(assistant_token_id_);
-    
-    // \n
-    tokens.push_back(newline_token_id_);
-    
-    return tokens;
-}
-
 std::string TextTokenizer::decode(const std::vector<int32_t> & tokens) const {
     std::string result;
     for (int32_t token : tokens) {
@@ -386,11 +328,12 @@ std::string TextTokenizer::decode_token(int32_t token_id) const {
     if (token_id < 0 || token_id >= (int32_t)id_to_token_.size()) {
         return "";
     }
-    
+
     const std::string & token = id_to_token_[token_id];
-    
+
     // Convert from GPT-2 unicode back to bytes
     return unicode_to_bytes(token);
 }
 
 } // namespace qwen3_tts
+

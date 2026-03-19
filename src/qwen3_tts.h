@@ -173,7 +173,6 @@ private:
     bool low_mem_mode_ = false;
     std::string error_msg_;
     std::string speaker_model_path_;
-    std::string codec_encoder_model_path_;
     std::string talker_model_path_;
     std::string predictor_model_path_;
     std::string embeddings_dir_path_;

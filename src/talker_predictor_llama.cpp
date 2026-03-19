@@ -9,6 +9,16 @@ namespace qwen3_tts {
 
 namespace {
 
+static constexpr int32_t kCodecPad = 2148;
+static constexpr int32_t kCodecBos = 2149;
+static constexpr int32_t kCodecEos = 2150;
+static constexpr int32_t kThink = 2154;
+static constexpr int32_t kNoThink = 2155;
+static constexpr int32_t kThinkBos = 2156;
+static constexpr int32_t kThinkEos = 2157;
+static constexpr int32_t kTtsBos = 151672;
+static constexpr int32_t kTtsEos = 151673;
+
 static inline bool is_valid_language_id(int32_t id) {
     return id >= 2048 && id <= 2147;
 }
@@ -163,10 +173,11 @@ bool TalkerPredictorLlama::run_prefill(
         prompt_flat.insert(prompt_flat.end(), tmp_vec.begin(), tmp_vec.end());
     };
 
-    const float * nothink = assets_->codec_row(0, 2155);
-    const float * think_bos = assets_->codec_row(0, 2156);
-    const float * think_eos = assets_->codec_row(0, 2157);
-    if (!nothink || !think_bos || !think_eos) {
+    const float * think = assets_->codec_row(0, kThink);
+    const float * nothink = assets_->codec_row(0, kNoThink);
+    const float * think_bos = assets_->codec_row(0, kThinkBos);
+    const float * think_eos = assets_->codec_row(0, kThinkEos);
+    if (!think || !nothink || !think_bos || !think_eos) {
         error_msg_ = "Missing protocol embedding rows";
         return false;
     }
@@ -180,17 +191,21 @@ bool TalkerPredictorLlama::run_prefill(
         prompt_flat.insert(prompt_flat.end(), role, role + hidden_dim_);
     }
 
-    append_sum(tts_pad, nothink);
-    append_sum(tts_pad, think_bos);
     if (is_valid_language_id(language_id)) {
+        append_sum(tts_pad, think);
+        append_sum(tts_pad, think_bos);
         const float * lang = assets_->codec_row(0, language_id);
         if (!lang) {
             error_msg_ = "Language embedding not found in codec table";
             return false;
         }
         append_sum(tts_pad, lang);
+        append_sum(tts_pad, think_eos);
+    } else {
+        append_sum(tts_pad, nothink);
+        append_sum(tts_pad, think_bos);
+        append_sum(tts_pad, think_eos);
     }
-    append_sum(tts_pad, think_eos);
 
     if (speaker_embedding) {
         for (int32_t i = 0; i < hidden_dim_; ++i) {
@@ -199,8 +214,16 @@ bool TalkerPredictorLlama::run_prefill(
         prompt_flat.insert(prompt_flat.end(), tmp_vec.begin(), tmp_vec.end());
     }
 
+    const float * tts_bos = assets_->text_row(kTtsBos);
+    const float * codec_pad = assets_->codec_row(0, kCodecPad);
+    if (!tts_bos || !codec_pad) {
+        error_msg_ = "Missing TTS_BOS text or codec PAD embedding";
+        return false;
+    }
+    append_sum(tts_bos, codec_pad);
+
     const float * text0 = assets_->text_row(text_tokens[0]);
-    const float * codec_bos = assets_->codec_row(0, 2149);
+    const float * codec_bos = assets_->codec_row(0, kCodecBos);
     if (!text0 || !codec_bos) {
         error_msg_ = "Missing first text or codec BOS embedding";
         return false;
@@ -254,7 +277,7 @@ bool TalkerPredictorLlama::run_prefill(
             trailing_text_pool_.insert(trailing_text_pool_.end(), row, row + hidden_dim_);
         }
     }
-    const float * tts_eos = assets_->text_row(151673);
+    const float * tts_eos = assets_->text_row(kTtsEos);
     if (!tts_eos) {
         error_msg_ = "Missing TTS_EOS text embedding row";
         return false;
@@ -486,7 +509,7 @@ bool TalkerPredictorLlama::generate(
         return false;
     }
 
-    const int32_t allow_tokens[1] = {2150}; // EOS
+    const int32_t allow_tokens[3] = {kCodecEos, kCodecPad, kCodecBos};
     for (int32_t step = 0; step < max_frames; ++step) {
         int32_t code0_token = -1;
         if (!sample_with_mask(
@@ -496,13 +519,13 @@ bool TalkerPredictorLlama::generate(
                 0,
                 2048,
                 allow_tokens,
-                1,
+                3,
                 code0_token)) {
             return false;
         }
         talker_sampler.accept(code0_token);
 
-        if (code0_token == 2150 || code0_token == talker_model_.eos_id()) {
+        if (code0_token == kCodecEos || code0_token == talker_model_.eos_id()) {
             break;
         }
         if (code0_token < 0 || code0_token >= 2048) {
