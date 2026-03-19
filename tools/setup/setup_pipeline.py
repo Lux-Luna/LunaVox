@@ -3,17 +3,15 @@
 One-shot model setup for LunaVox.
 
 This script downloads required Hugging Face model assets and generates all model
-artifacts needed by the final C++ pipeline:
+artifacts needed by the current C++ pipeline:
 
-- models/qwen3-tts-0.6B-base.gguf
-- models/qwen3-tts-tokenizer-f16.gguf
-- models/coreml/code_predictor.mlpackage (optional, macOS)
-
-Example:
-  python scripts/setup_pipeline_models.py
-
-Minimal usage for CI/offline conversion:
-  python scripts/setup_pipeline_models.py --skip-download
+- models/qwen3_tts_talker.q5_k.gguf
+- models/qwen3_tts_predictor.q8_0.gguf
+- models/qwen3_tts_speaker_encoder.gguf
+- models/qwen3_tts_codec_encoder.gguf
+- models/qwen3_tts_codec_decoder.gguf
+- models/embeddings/*
+- models/tokenizer.json
 """
 
 from __future__ import annotations
@@ -21,7 +19,6 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import os
-import platform
 import shutil
 import subprocess
 import sys
@@ -132,7 +129,6 @@ def ensure_tokenizer_assets(
     token: Optional[str],
     force_download: bool,
 ) -> Path:
-    # Prefer the speech_tokenizer assets from base repo when present.
     in_base = base_dir / "speech_tokenizer" / "model.safetensors"
     if in_base.exists():
         eprint("[ok] using tokenizer assets from base repo (speech_tokenizer/)")
@@ -159,8 +155,13 @@ def convert_gguf(
     python_exe: str,
     base_dir: Path,
     tokenizer_input_dir: Path,
-    out_tts: Path,
-    out_tok: Path,
+    out_talker: Path,
+    out_predictor: Path,
+    out_speaker: Path,
+    out_codec_encoder: Path,
+    out_codec_decoder: Path,
+    out_embeddings_dir: Path,
+    out_tokenizer_json: Path,
     force_convert: bool,
 ) -> None:
     require_modules(
@@ -173,12 +174,44 @@ def convert_gguf(
         ]
     )
 
-    if force_convert and out_tts.exists():
-        out_tts.unlink()
-    if force_convert and out_tok.exists():
-        out_tok.unlink()
+    outputs = [
+        out_talker,
+        out_predictor,
+        out_speaker,
+        out_codec_encoder,
+        out_codec_decoder,
+    ]
+    if force_convert:
+        for p in outputs:
+            if p.exists():
+                p.unlink()
+        if out_embeddings_dir.exists():
+            shutil.rmtree(out_embeddings_dir)
+        if out_tokenizer_json.exists():
+            out_tokenizer_json.unlink()
 
-    if not out_tts.exists():
+    if out_talker.exists() and out_predictor.exists():
+        eprint(f"[ok] exists: {out_talker}")
+        eprint(f"[ok] exists: {out_predictor}")
+
+    if not out_talker.exists() or not out_predictor.exists():
+        run_cmd(
+            [
+                python_exe,
+                str(TOOLS_DIR / "conversion" / "convert_talker_predictor_llama.py"),
+                "--input",
+                str(base_dir),
+                "--out-talker",
+                str(out_talker),
+                "--out-predictor",
+                str(out_predictor),
+                "--embeddings-dir",
+                str(out_embeddings_dir),
+            ],
+            cwd=REPO_ROOT,
+        )
+
+    if not out_speaker.exists():
         run_cmd(
             [
                 python_exe,
@@ -186,20 +219,20 @@ def convert_gguf(
                 "--input",
                 str(base_dir),
                 "--output",
-                str(out_tts),
-                "--talker-type",
-                "q5_k",
-                "--predictor-type",
-                "q8_0",
+                str(out_speaker),
+                "--type",
+                "f16",
                 "--speaker-type",
                 "f16",
+                "--modules",
+                "spk_enc",
             ],
             cwd=REPO_ROOT,
         )
     else:
-        eprint(f"[ok] exists: {out_tts}")
+        eprint(f"[ok] exists: {out_speaker}")
 
-    if not out_tok.exists():
+    if not out_codec_encoder.exists():
         run_cmd(
             [
                 python_exe,
@@ -207,67 +240,77 @@ def convert_gguf(
                 "--input",
                 str(tokenizer_input_dir),
                 "--output",
-                str(out_tok),
+                str(out_codec_encoder),
                 "--type",
                 "f16",
+                "--modules",
+                "tok_enc",
             ],
             cwd=REPO_ROOT,
         )
     else:
-        eprint(f"[ok] exists: {out_tok}")
+        eprint(f"[ok] exists: {out_codec_encoder}")
 
+    if not out_codec_decoder.exists():
+        run_cmd(
+            [
+                python_exe,
+                str(TOOLS_DIR / "conversion" / "convert_tokenizer_to_gguf.py"),
+                "--input",
+                str(tokenizer_input_dir),
+                "--output",
+                str(out_codec_decoder),
+                "--type",
+                "f16",
+                "--modules",
+                "tok_dec",
+            ],
+            cwd=REPO_ROOT,
+        )
+    else:
+        eprint(f"[ok] exists: {out_codec_decoder}")
 
-def export_coreml(
-    python_exe: str,
-    base_dir: Path,
-    out_coreml: Path,
-    force_convert: bool,
-) -> None:
-    require_modules(
-        [
-            ("coremltools", "coremltools"),
-            ("torch", "torch"),
-            ("safetensors", "safetensors"),
-            ("numpy", "numpy"),
-        ]
-    )
+    text_emb = out_embeddings_dir / "text_embedding_projected.npy"
+    codec_emb0 = out_embeddings_dir / "codec_embedding_0.npy"
+    if not text_emb.exists() or not codec_emb0.exists():
+        run_cmd(
+            [
+                python_exe,
+                str(TOOLS_DIR / "conversion" / "export_embeddings.py"),
+                "--input",
+                str(base_dir),
+                "--output",
+                str(out_embeddings_dir),
+            ],
+            cwd=REPO_ROOT,
+        )
+    else:
+        eprint(f"[ok] exists: {out_embeddings_dir}")
 
-    if force_convert and out_coreml.exists():
-        if out_coreml.is_dir():
-            shutil.rmtree(out_coreml)
-        else:
-            out_coreml.unlink()
+    src_tokenizer_json = base_dir / "tokenizer.json"
+    if src_tokenizer_json.exists():
+        out_tokenizer_json.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_tokenizer_json, out_tokenizer_json)
+    else:
+        try:
+            from transformers import AutoTokenizer
 
-    if out_coreml.exists():
-        eprint(f"[ok] exists: {out_coreml}")
-        return
-
-    out_coreml.parent.mkdir(parents=True, exist_ok=True)
-    run_cmd(
-        [
-            python_exe,
-            str(TOOLS_DIR / "conversion" / "convert_code_predictor_to_coreml.py"),
-            "--input",
-            str(base_dir),
-            "--output",
-            str(out_coreml),
-        ],
-        cwd=REPO_ROOT,
-    )
+            tok = AutoTokenizer.from_pretrained(str(base_dir), trust_remote_code=True)
+            if hasattr(tok, "backend_tokenizer"):
+                out_tokenizer_json.parent.mkdir(parents=True, exist_ok=True)
+                tok.backend_tokenizer.save(str(out_tokenizer_json))
+            else:
+                eprint("[warn] tokenizer backend not available; tokenizer.json not generated")
+        except Exception as err:
+            eprint(f"[warn] failed to generate tokenizer.json: {err}")
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Download and prepare all runtime models for qwen3-tts.cpp")
+    p = argparse.ArgumentParser(description="Download and prepare all runtime models for lunavox")
     p.add_argument("--models-dir", default=str(REPO_ROOT / "models"), help="Target models directory")
     p.add_argument("--hf-token", default=os.environ.get("HF_TOKEN", ""), help="Hugging Face token (or set HF_TOKEN)")
     p.add_argument("--skip-download", action="store_true", help="Skip model downloads")
     p.add_argument("--skip-gguf", action="store_true", help="Skip GGUF conversion")
-    p.add_argument(
-        "--coreml",
-        choices=["auto", "on", "off"],
-        default="auto",
-        help="CoreML export mode: auto=macOS only, on=force, off=disable",
-    )
     p.add_argument("--force", action="store_true", help="Re-download/re-generate outputs")
     return p.parse_args()
 
@@ -278,12 +321,15 @@ def main() -> int:
     models_dir = Path(args.models_dir).resolve()
     base_dir = models_dir / "Qwen3-TTS-12Hz-0.6B-Base"
     tokenizer_dir = models_dir / "Qwen3-TTS-Tokenizer-12Hz"
-    out_tts = models_dir / "qwen3-tts-0.6B-base.gguf"
-    out_tok = models_dir / "qwen3-tts-tokenizer-f16.gguf"
-    out_coreml = models_dir / "coreml" / "code_predictor.mlpackage"
+    out_talker = models_dir / "qwen3_tts_talker.q5_k.gguf"
+    out_predictor = models_dir / "qwen3_tts_predictor.q8_0.gguf"
+    out_speaker = models_dir / "qwen3_tts_speaker_encoder.gguf"
+    out_codec_encoder = models_dir / "qwen3_tts_codec_encoder.gguf"
+    out_codec_decoder = models_dir / "qwen3_tts_codec_decoder.gguf"
+    out_embeddings_dir = models_dir / "embeddings"
+    out_tokenizer_json = models_dir / "tokenizer.json"
 
     hf_token = args.hf_token.strip() or None
-
     models_dir.mkdir(parents=True, exist_ok=True)
 
     if not args.skip_download:
@@ -294,27 +340,30 @@ def main() -> int:
         tokenizer_input_dir = base_dir if (base_dir / "speech_tokenizer" / "model.safetensors").exists() else tokenizer_dir
 
     if not args.skip_gguf:
-        convert_gguf(sys.executable, base_dir, tokenizer_input_dir, out_tts, out_tok, args.force)
-
-    wants_coreml = args.coreml == "on" or (args.coreml == "auto" and platform.system() == "Darwin")
-    if wants_coreml:
-        if platform.system() != "Darwin":
-            raise RuntimeError("CoreML export requested on non-macOS platform")
-        export_coreml(sys.executable, base_dir, out_coreml, args.force)
+        convert_gguf(
+            sys.executable,
+            base_dir,
+            tokenizer_input_dir,
+            out_talker,
+            out_predictor,
+            out_speaker,
+            out_codec_encoder,
+            out_codec_decoder,
+            out_embeddings_dir,
+            out_tokenizer_json,
+            args.force,
+        )
 
     eprint("\n[done] Model setup complete.")
-    eprint(f"  - {out_tts}")
-    eprint(f"  - {out_tok}")
-    if wants_coreml:
-        eprint(f"  - {out_coreml}")
-        eprint("\nRun (CoreML is enabled by default on macOS):")
-        eprint("  ./build/qwen3-tts-cli -m models -t \"Hello\" -o out.wav")
-        eprint("  # Optional override path:")
-        eprint("  QWEN3_TTS_COREML_MODEL=models/coreml/code_predictor.mlpackage ./build/qwen3-tts-cli -m models -t \"Hello\" -o out.wav")
-    else:
-        eprint("\nRun without CoreML:")
-        eprint("  ./build/qwen3-tts-cli -m models -t \"Hello\" -o out.wav")
-
+    eprint(f"  - {out_talker}")
+    eprint(f"  - {out_predictor}")
+    eprint(f"  - {out_speaker}")
+    eprint(f"  - {out_codec_encoder}")
+    eprint(f"  - {out_codec_decoder}")
+    eprint(f"  - {out_embeddings_dir}")
+    eprint(f"  - {out_tokenizer_json}")
+    eprint("\nRun:")
+    eprint("  ./build-cpu/qwen3-tts-cli -m models -t \"Hello\" -o out.wav")
     return 0
 
 

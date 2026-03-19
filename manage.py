@@ -10,9 +10,10 @@ TOOLS = ROOT / "tools"
 
 COMMANDS = {
     "setup": TOOLS / "setup" / "setup_pipeline.py",
-    "convert": TOOLS / "conversion" / "convert_tts_to_gguf.py",
+    # Componentized 5-file conversion pipeline (local-only by default, see main()).
+    "convert": TOOLS / "setup" / "setup_pipeline.py",
     "convert-tok": TOOLS / "conversion" / "convert_tokenizer_to_gguf.py",
-    "convert-coreml": TOOLS / "conversion" / "convert_code_predictor_to_coreml.py",
+    "export-embeddings": TOOLS / "conversion" / "export_embeddings.py",
     "inspect": TOOLS / "conversion" / "inspect_models.py",
     "build": TOOLS / "build_manager.py",
 }
@@ -46,7 +47,11 @@ def main() -> int:
 
     cmd = [sys.executable, str(script_path)]
 
-    cmd.extend(sys.argv[2:])
+    extra_args = list(sys.argv[2:])
+    if cmd_name == "convert" and "--skip-download" not in extra_args:
+        extra_args.insert(0, "--skip-download")
+
+    cmd.extend(extra_args)
 
     try:
         subprocess.run(cmd, cwd=str(ROOT), check=True)

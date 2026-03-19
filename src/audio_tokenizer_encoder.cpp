@@ -11,6 +11,8 @@
 
 namespace qwen3_tts {
 
+constexpr float kPi = 3.14159265358979323846f;
+
 // Mel filterbank computation using librosa slaney normalization
 // This matches librosa.filters.mel with norm='slaney'
 static void compute_mel_filterbank_slaney(float * filterbank, int n_mels, int n_fft, 
@@ -98,7 +100,7 @@ static void compute_dft(const float * input, float * real, float * imag, int n) 
         real[k] = 0.0f;
         imag[k] = 0.0f;
         for (int t = 0; t < n; ++t) {
-            float angle = -2.0f * M_PI * k * t / n;
+            float angle = -2.0f * kPi * k * t / n;
             real[k] += input[t] * cosf(angle);
             imag[k] += input[t] * sinf(angle);
         }
@@ -108,7 +110,7 @@ static void compute_dft(const float * input, float * real, float * imag, int n) 
 // Periodic Hann window (matches torch.hann_window with periodic=True, which is default)
 static void compute_hann_window(float * window, int n) {
     for (int i = 0; i < n; ++i) {
-        window[i] = 0.5f * (1.0f - cosf(2.0f * M_PI * i / n));
+        window[i] = 0.5f * (1.0f - cosf(2.0f * kPi * i / n));
     }
 }
 
@@ -120,7 +122,7 @@ static void compute_centered_window(float * window, int n_fft, int win_length) {
     // Compute Hann window of win_length
     int offset = (n_fft - win_length) / 2;
     for (int i = 0; i < win_length; ++i) {
-        window[offset + i] = 0.5f * (1.0f - cosf(2.0f * M_PI * i / win_length));
+        window[offset + i] = 0.5f * (1.0f - cosf(2.0f * kPi * i / win_length));
     }
 }
 

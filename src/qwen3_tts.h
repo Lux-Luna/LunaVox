@@ -1,9 +1,10 @@
 #pragma once
 
 #include "text_tokenizer.h"
-#include "tts_transformer.h"
 #include "audio_tokenizer_encoder.h"
 #include "audio_tokenizer_decoder.h"
+#include "assets_manager.h"
+#include "talker_predictor_llama.h"
 
 #include <string>
 #include <vector>
@@ -92,8 +93,15 @@ public:
     Qwen3TTS();
     ~Qwen3TTS();
     
-    // Load all models from directory
-    // model_dir should contain: transformer.gguf, tokenizer.gguf, vocoder.gguf
+    // Load all models from directory.
+    // Required layout:
+    //   qwen3_tts_talker.q5_k.gguf
+    //   qwen3_tts_predictor.q8_0.gguf
+    //   qwen3_tts_speaker_encoder.gguf
+    //   qwen3_tts_codec_encoder.gguf
+    //   qwen3_tts_codec_decoder.gguf
+    //   embeddings/
+    //   tokenizer.json
     bool load_models(const std::string & model_dir);
     
     // Generate speech from text
@@ -148,19 +156,27 @@ private:
                                    const float * speaker_embedding,
                                    const tts_params & params,
                                    tts_result & result);
+
+    bool load_models_new_layout(const std::string & model_dir, int32_t n_threads);
     
     TextTokenizer tokenizer_;
-    TTSTransformer transformer_;
+    TalkerPredictorLlama talker_predictor_;
+    AssetsManager assets_;
     AudioTokenizerEncoder audio_encoder_;
     AudioTokenizerDecoder audio_decoder_;
     
     bool models_loaded_ = false;
     bool encoder_loaded_ = false;
-    bool transformer_loaded_ = false;
+    bool talker_predictor_loaded_ = false;
+    bool assets_loaded_ = false;
     bool decoder_loaded_ = false;
     bool low_mem_mode_ = false;
     std::string error_msg_;
-    std::string tts_model_path_;
+    std::string speaker_model_path_;
+    std::string codec_encoder_model_path_;
+    std::string talker_model_path_;
+    std::string predictor_model_path_;
+    std::string embeddings_dir_path_;
     std::string decoder_model_path_;
     tts_progress_callback_t progress_callback_;
 };

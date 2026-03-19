@@ -50,7 +50,7 @@ static std::string wide_to_utf8(const std::wstring & ws) {
     }
     std::string utf8((size_t)size, '\0');
     WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(),
-                        utf8.data(), size, nullptr, nullptr);
+                        &utf8[0], size, nullptr, nullptr);
     return utf8;
 }
 

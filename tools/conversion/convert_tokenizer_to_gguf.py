@@ -3,9 +3,9 @@
 Convert Qwen3-TTS-Tokenizer-12Hz model to GGUF format.
 
 Usage:
-    python scripts/convert_tokenizer_to_gguf.py \
+    python tools/conversion/convert_tokenizer_to_gguf.py \
         --input models/Qwen3-TTS-Tokenizer-12Hz \
-        --output models/qwen3-tts-tokenizer-f16.gguf \
+        --output models/qwen3_tts_codec_decoder.gguf \
         --type f16
 """
 
@@ -170,10 +170,12 @@ class Qwen3TTSTokenizerConverter:
         input_dir: Path,
         output_path: Path,
         output_type: str = "f16",
+        modules: set[str] | None = None,
     ):
         self.input_dir = input_dir
         self.output_path = output_path
         self.output_type = output_type
+        self.modules = modules or {"tok_enc", "tok_dec"}
 
         # Load config
         self.config = self._load_config()
@@ -248,6 +250,13 @@ class Qwen3TTSTokenizerConverter:
                 return None
 
         return None
+
+    def _is_tensor_selected(self, ggml_name: str) -> bool:
+        if ggml_name.startswith("tok_enc."):
+            return "tok_enc" in self.modules
+        if ggml_name.startswith("tok_dec."):
+            return "tok_dec" in self.modules
+        return True
 
     def _get_tensors(self) -> Iterator[tuple[str, torch.Tensor]]:
         """Iterate over all tensors from safetensors files."""
@@ -344,6 +353,9 @@ class Qwen3TTSTokenizerConverter:
 
             if ggml_name is None:
                 skipped_tensors.append(hf_name)
+                skipped_count += 1
+                continue
+            if not self._is_tensor_selected(ggml_name):
                 skipped_count += 1
                 continue
             
@@ -462,16 +474,30 @@ def main():
         action="store_true",
         help="Enable verbose logging"
     )
+    parser.add_argument(
+        "--modules",
+        default="tok_enc,tok_dec",
+        help="Comma-separated module list to export: tok_enc,tok_dec"
+    )
 
     args = parser.parse_args()
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    modules = {m.strip() for m in args.modules.split(",") if m.strip()}
+    valid_modules = {"tok_enc", "tok_dec"}
+    unknown_modules = sorted(modules - valid_modules)
+    if unknown_modules:
+        raise ValueError(f"Unknown modules: {unknown_modules}. Valid: {sorted(valid_modules)}")
+    if not modules:
+        raise ValueError("No modules selected for export")
+
     converter = Qwen3TTSTokenizerConverter(
         input_dir=args.input,
         output_path=args.output,
         output_type=args.type,
+        modules=modules,
     )
     converter.convert()
 

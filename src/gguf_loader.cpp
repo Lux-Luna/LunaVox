@@ -1,5 +1,6 @@
 #include "gguf_loader.h"
 
+#include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -16,6 +17,22 @@ shared_backend_state & get_shared_backend_state() {
     static shared_backend_state state;
     return state;
 }
+
+void ensure_ggml_backends_loaded() {
+    static bool loaded = false;
+    if (loaded) {
+        return;
+    }
+
+    const char * lib_dir = std::getenv("QWEN3_TTS_LIB_DIR");
+    if (lib_dir && lib_dir[0]) {
+        ggml_backend_load_all_from_path(lib_dir);
+    } else {
+        ggml_backend_load_all_from_path("lib");
+    }
+    ggml_backend_load_all();
+    loaded = true;
+}
 }
 
 GGUFLoader::GGUFLoader() = default;
@@ -26,6 +43,7 @@ GGUFLoader::~GGUFLoader() {
 
 ggml_backend_t init_preferred_backend(const char * component_name, std::string * error_msg) {
     if (error_msg) error_msg->clear();
+    ensure_ggml_backends_loaded();
 
     auto & shared = get_shared_backend_state();
     if (shared.backend) {
@@ -160,6 +178,8 @@ bool load_tensor_data_from_file(
     std::string & error_msg,
     enum ggml_backend_dev_type preferred_backend_type
 ) {
+    ensure_ggml_backends_loaded();
+
     ggml_backend_t backend = ggml_backend_init_by_type(preferred_backend_type, nullptr);
     if (!backend && preferred_backend_type != GGML_BACKEND_DEVICE_TYPE_CPU) {
         backend = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_CPU, nullptr);
