@@ -86,8 +86,15 @@ void print_usage(const char * program) {
     fprintf(stderr, "  --temperature <val>    Sampling temperature (default: 0.9, 0=greedy)\n");
     fprintf(stderr, "  --top-k <n>            Top-k sampling (default: 50, 0=disabled)\n");
     fprintf(stderr, "  --top-p <val>          Top-p sampling (default: 1.0)\n");
+    fprintf(stderr, "  --predictor-greedy     Use greedy decoding for predictor stage\n");
+    fprintf(stderr, "  --predictor-temperature <val> Predictor stage temperature (default: 0.9)\n");
+    fprintf(stderr, "  --predictor-top-k <n>  Predictor stage top-k (default: 50)\n");
+    fprintf(stderr, "  --predictor-top-p <val> Predictor stage top-p (default: 1.0)\n");
+    fprintf(stderr, "  --seed <n>            Talker sampler seed (default: random)\n");
+    fprintf(stderr, "  --predictor-seed <n>  Predictor sampler seed (default: random)\n");
     fprintf(stderr, "  --max-tokens <n>       Maximum audio tokens (default: 4096)\n");
     fprintf(stderr, "  --repetition-penalty <val> Repetition penalty (default: 1.05)\n");
+    fprintf(stderr, "  --stats-json <file>    Write timing/runtime stats JSON report\n");
     fprintf(stderr, "  -l, --language <lang>  Force language: en,ru,zh,ja,ko,de,fr,es,it,pt\n");
     fprintf(stderr, "  --no-auto-language     Disable language auto-detection (uses --language or en)\n");
     fprintf(stderr, "  -j, --threads <n>      Number of threads (default: 4)\n");
@@ -114,6 +121,7 @@ int main(int argc, char ** argv) {
     std::string text;
     std::string output_file = "output.wav";
     std::string reference_audio;
+    std::string stats_json_file;
     
     qwen3_tts::tts_params params;
     params.auto_language = true;
@@ -167,6 +175,39 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             params.top_p = std::stof(args[i]);
+        } else if (arg == "--predictor-greedy") {
+            params.predictor_do_sample = false;
+        } else if (arg == "--predictor-temperature") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing predictor-temperature value\n");
+                return 1;
+            }
+            params.predictor_temperature = std::stof(args[i]);
+            params.predictor_do_sample = params.predictor_temperature > 0.0f;
+        } else if (arg == "--predictor-top-k") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing predictor-top-k value\n");
+                return 1;
+            }
+            params.predictor_top_k = std::stoi(args[i]);
+        } else if (arg == "--predictor-top-p") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing predictor-top-p value\n");
+                return 1;
+            }
+            params.predictor_top_p = std::stof(args[i]);
+        } else if (arg == "--seed") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing seed value\n");
+                return 1;
+            }
+            params.seed = std::stoi(args[i]);
+        } else if (arg == "--predictor-seed") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing predictor-seed value\n");
+                return 1;
+            }
+            params.predictor_seed = std::stoi(args[i]);
         } else if (arg == "--max-tokens") {
             if (++i >= (int)args.size()) {
                 fprintf(stderr, "Error: missing max-tokens value\n");
@@ -179,6 +220,12 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             params.repetition_penalty = std::stof(args[i]);
+        } else if (arg == "--stats-json") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing stats-json file path\n");
+                return 1;
+            }
+            stats_json_file = args[i];
         } else if (arg == "-l" || arg == "--language") {
             if (++i >= (int)args.size()) {
                 fprintf(stderr, "Error: missing language value\n");
@@ -262,6 +309,58 @@ int main(int argc, char ** argv) {
     fprintf(stderr, "Output saved to: %s\n", output_file.c_str());
     fprintf(stderr, "Audio duration: %.2f seconds\n", 
             (float)result.audio.size() / result.sample_rate);
+
+    if (!stats_json_file.empty()) {
+        FILE * jf = fopen(stats_json_file.c_str(), "wb");
+        if (!jf) {
+            fprintf(stderr, "Warning: failed to write stats JSON: %s\n", stats_json_file.c_str());
+        } else {
+            const double audio_sec =
+                result.sample_rate > 0 ? (double) result.audio.size() / (double) result.sample_rate : 0.0;
+            const double wall_sec = (double) result.t_total_ms / 1000.0;
+            const double rtf = audio_sec > 0.0 ? wall_sec / audio_sec : 0.0;
+            fprintf(
+                jf,
+                "{\n"
+                "  \"success\": true,\n"
+                "  \"sample_rate\": %d,\n"
+                "  \"audio_samples\": %d,\n"
+                "  \"audio_sec\": %.6f,\n"
+                "  \"timing_ms\": {\n"
+                "    \"tokenize\": %lld,\n"
+                "    \"encode\": %lld,\n"
+                "    \"generate\": %lld,\n"
+                "    \"decode\": %lld,\n"
+                "    \"total\": %lld\n"
+                "  },\n"
+                "  \"rtf\": %.6f,\n"
+                "  \"mem\": {\n"
+                "    \"rss_start\": %llu,\n"
+                "    \"rss_end\": %llu,\n"
+                "    \"rss_peak\": %llu,\n"
+                "    \"phys_start\": %llu,\n"
+                "    \"phys_end\": %llu,\n"
+                "    \"phys_peak\": %llu\n"
+                "  }\n"
+                "}\n",
+                result.sample_rate,
+                (int) result.audio.size(),
+                audio_sec,
+                (long long) result.t_tokenize_ms,
+                (long long) result.t_encode_ms,
+                (long long) result.t_generate_ms,
+                (long long) result.t_decode_ms,
+                (long long) result.t_total_ms,
+                rtf,
+                (unsigned long long) result.mem_rss_start_bytes,
+                (unsigned long long) result.mem_rss_end_bytes,
+                (unsigned long long) result.mem_rss_peak_bytes,
+                (unsigned long long) result.mem_phys_start_bytes,
+                (unsigned long long) result.mem_phys_end_bytes,
+                (unsigned long long) result.mem_phys_peak_bytes);
+            fclose(jf);
+        }
+    }
     
     // Print timing
     if (params.print_timing) {

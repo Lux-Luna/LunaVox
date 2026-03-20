@@ -5,6 +5,3 @@ gguf
 huggingface_hub
 torch
 transformers
-onnx
-onnxruntime
-onnxruntime-tools

@@ -65,8 +65,23 @@ conda run -n lunavox python manage.py convert --force
 Build only:
 
 ```bash
-conda run -n lunavox python manage.py build --backend cpu
+conda run -n lunavox python manage.py build --backend cpu --timeout-sec 170
 ```
+
+Run alignment/performance compare (base + clone):
+
+```bash
+conda run -n lunavox python manage.py compare --mode both --timeout-sec 170 --report-out logs/compare/latest_compare_report.json
+```
+
+Notes:
+- `compare` writes per-stage command logs under `logs/manage/` and detailed artifacts under `logs/compare/_artifacts/`.
+- `--qwen-model-dir` now defaults to `models/base_small` to avoid stale external paths.
+- For clone compare, you can pass separate references:
+  - `--reference-audio` for lunavox (WAV)
+  - `--qwen-reference-audio` for Qwen side (WAV or JSON)
+- Compare defaults now include fixed seeds (`--seed`, `--predictor-seed`) for reproducibility.
+- If Qwen side model dir is incomplete, compare falls back to `--models-dir` automatically and records the decision in report `notes`.
 
 ## ONNX Export Diagnostics
 
@@ -102,6 +117,12 @@ Voice cloning:
 
 ```bash
 ./build-cpu/qwen3-tts-cli -m models/base_small -t "Hello" -r output.wav -o cloned.wav
+```
+
+Export timing/memory JSON:
+
+```bash
+./build-cpu/qwen3-tts-cli -m models/base_small -t "Hello" --stats-json logs/compare/hello_stats.json
 ```
 
 ## Tests

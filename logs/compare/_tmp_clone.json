@@ -1,0 +1,22 @@
+{
+  "success": true,
+  "sample_rate": 24000,
+  "audio_samples": 422400,
+  "audio_sec": 17.600000,
+  "timing_ms": {
+    "tokenize": 0,
+    "encode": 1437,
+    "generate": 11067,
+    "decode": 6035,
+    "total": 17102
+  },
+  "rtf": 0.971705,
+  "mem": {
+    "rss_start": 2392195072,
+    "rss_end": 2533154816,
+    "rss_peak": 2533154816,
+    "phys_start": 2392195072,
+    "phys_end": 2533154816,
+    "phys_peak": 2533154816
+  }
+}

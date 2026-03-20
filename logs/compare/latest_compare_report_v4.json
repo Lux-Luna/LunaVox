@@ -1,0 +1,190 @@
+{
+  "ok": true,
+  "timestamp": "2026-03-20 13:06:32",
+  "timeout_sec": 170,
+  "notes": [
+    {
+      "type": "qwen_model_fallback",
+      "message": "qwen-model-dir missing required files, fallback to lunavox-model-dir",
+      "requested": "D:\\TTS\\Qwen3-TTS-GGUF\\model-base-small",
+      "fallback": "D:\\TTS\\lunavox\\models\\base_small",
+      "missing": [
+        "qwen3_tts_talker.q5_k.gguf",
+        "qwen3_tts_predictor.q8_0.gguf",
+        "qwen3_tts_decoder.fp16.onnx",
+        "tokenizer.json"
+      ]
+    }
+  ],
+  "modes": {
+    "base": {
+      "lunavox": {
+        "success": true,
+        "sample_rate": 24000,
+        "audio_samples": 97920,
+        "audio_sec": 4.08,
+        "timing_ms": {
+          "tokenize": 1,
+          "encode": 0,
+          "generate": 3259,
+          "decode": 1356,
+          "total": 4616
+        },
+        "rtf": 1.131373,
+        "mem": {
+          "rss_start": 1726545920,
+          "rss_end": 1788542976,
+          "rss_peak": 1788542976,
+          "phys_start": 1726545920,
+          "phys_end": 1788542976,
+          "phys_peak": 1788542976
+        },
+        "framework": "lunavox",
+        "mode": "base",
+        "ok": true
+      },
+      "qwen": {
+        "ok": true,
+        "mode": "base",
+        "framework": "qwen3-tts-gguf",
+        "timestamp": "2026-03-20 13:06:39",
+        "resolved_model_dir": "D:\\TTS\\lunavox\\models\\base_small",
+        "model_dir_arg": "..\\lunavox\\models\\base_small",
+        "missing_core_files": [],
+        "init_sec": 2.7500052452087402,
+        "sample_rate": 24000,
+        "audio_samples": 90240,
+        "audio_sec": 3.76,
+        "wall_sec": 4.22418475151062,
+        "rtf": 1.1234533913592075,
+        "codes_frames": 47,
+        "timing_sec": {
+          "prompt": 0.0010077953338623047,
+          "prefill": 2.2167251110076904,
+          "talker": 0.2474501132965088,
+          "predictor": 0.9063112735748291,
+          "decoder": 0.845475435256958,
+          "inference_only": 3.3714942932128906,
+          "total_inference": 4.216969728469849
+        },
+        "returncode": 0
+      },
+      "summary": {
+        "lunavox_ok": true,
+        "qwen_ok": true,
+        "latency_ratio_vs_qwen": 0.09462488403371618,
+        "rtf_ratio_vs_qwen": 0.007049343303161799,
+        "breakdown": {
+          "lunavox_sec": {
+            "tokenize": 0.001,
+            "encode": 0.0,
+            "generate": 3.259,
+            "decode": 1.356,
+            "total": 4.616
+          },
+          "qwen_sec": {
+            "prefill": 2.2167251110076904,
+            "talker": 0.2474501132965088,
+            "predictor": 0.9063112735748291,
+            "decoder": 0.845475435256958,
+            "total": 4.216969728469849
+          }
+        },
+        "delta_sec": {
+          "total_lunavox_minus_qwen": 0.399030271530151,
+          "decode_lunavox_minus_qwen": 0.5105245647430421,
+          "gen_lunavox_minus_qwen_talker_predictor": 2.105238613128662
+        }
+      }
+    },
+    "clone": {
+      "lunavox": {
+        "success": true,
+        "sample_rate": 24000,
+        "audio_samples": 422400,
+        "audio_sec": 17.6,
+        "timing_ms": {
+          "tokenize": 0,
+          "encode": 1091,
+          "generate": 5288,
+          "decode": 5979,
+          "total": 11267
+        },
+        "rtf": 0.64017,
+        "mem": {
+          "rss_start": 2219794432,
+          "rss_end": 2299367424,
+          "rss_peak": 2299367424,
+          "phys_start": 2219794432,
+          "phys_end": 2299367424,
+          "phys_peak": 2299367424
+        },
+        "framework": "lunavox",
+        "mode": "clone",
+        "ok": true
+      },
+      "qwen": {
+        "ok": true,
+        "mode": "clone",
+        "framework": "qwen3-tts-gguf",
+        "timestamp": "2026-03-20 13:07:02",
+        "resolved_model_dir": "D:\\TTS\\lunavox\\models\\base_small",
+        "model_dir_arg": "..\\lunavox\\models\\base_small",
+        "missing_core_files": [],
+        "init_sec": 2.762096405029297,
+        "reference_audio_input": "D:\\TTS\\lunavox\\ref\\ref.wav",
+        "reference_audio_used": "D:\\TTS\\lunavox\\logs\\compare\\_artifacts\\clone\\ref.anchor_48000f.wav",
+        "clone_anchor_status": "clipped",
+        "sample_rate": 24000,
+        "audio_samples": 63360,
+        "audio_sec": 2.64,
+        "wall_sec": 4.112136602401733,
+        "rtf": 1.5576275009097473,
+        "codes_frames": 33,
+        "timing_sec": {
+          "prompt": 0.0010182857513427734,
+          "prefill": 2.1754841804504395,
+          "talker": 0.21577954292297363,
+          "predictor": 0.7099528312683105,
+          "decoder": 0.644378662109375,
+          "inference_only": 3.1022348403930664,
+          "total_inference": 3.7466135025024414
+        },
+        "returncode": 0
+      },
+      "summary": {
+        "lunavox_ok": true,
+        "qwen_ok": true,
+        "latency_ratio_vs_qwen": 2.007249077727002,
+        "rtf_ratio_vs_qwen": -0.5890095676751325,
+        "breakdown": {
+          "lunavox_sec": {
+            "tokenize": 0.0,
+            "encode": 1.091,
+            "generate": 5.288,
+            "decode": 5.979,
+            "total": 11.267
+          },
+          "qwen_sec": {
+            "prefill": 2.1754841804504395,
+            "talker": 0.21577954292297363,
+            "predictor": 0.7099528312683105,
+            "decoder": 0.644378662109375,
+            "total": 3.7466135025024414
+          }
+        },
+        "delta_sec": {
+          "total_lunavox_minus_qwen": 7.520386497497558,
+          "decode_lunavox_minus_qwen": 5.334621337890625,
+          "gen_lunavox_minus_qwen_talker_predictor": 4.362267625808716
+        }
+      }
+    }
+  },
+  "resolved_dirs": {
+    "lunavox_model_dir": "D:\\TTS\\lunavox\\models\\base_small",
+    "lunavox_build_dir": "D:\\TTS\\lunavox\\build-cpu",
+    "qwen_repo": "D:\\TTS\\Qwen3-TTS-GGUF",
+    "qwen_model_dir": "D:\\TTS\\lunavox\\models\\base_small"
+  }
+}

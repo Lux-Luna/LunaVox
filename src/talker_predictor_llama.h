@@ -32,9 +32,15 @@ public:
         int32_t max_frames,
         int32_t language_id,
         float repetition_penalty,
-        float temperature,
-        float top_p,
-        int32_t top_k,
+        float talker_temperature,
+        float talker_top_p,
+        int32_t talker_top_k,
+        bool predictor_do_sample,
+        float predictor_temperature,
+        float predictor_top_p,
+        int32_t predictor_top_k,
+        int32_t talker_seed,
+        int32_t predictor_seed,
         std::vector<int32_t> & output_codes);
 
 private:
@@ -50,9 +56,7 @@ private:
     bool predict_frame(
         const std::vector<float> & master_hidden,
         int32_t code0,
-        float temperature,
-        float top_p,
-        int32_t top_k,
+        LlamaSampler & predictor_sampler,
         std::vector<int32_t> & frame_codes,
         std::vector<float> & audio_sum);
 

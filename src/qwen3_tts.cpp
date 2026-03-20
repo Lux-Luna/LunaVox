@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 
 #ifdef __APPLE__
@@ -356,15 +357,31 @@ tts_result Qwen3TTS::synthesize_with_voice(
         codec_encoder_loaded_ = true;
     }
 
+    // Keep clone anchor length stable to avoid shape-sensitive ONNX exports and
+    // long-reference drift (noisy prompt / runaway generation).
+    const int32_t clone_anchor_samples = 24000; // 1 second @ 24k
+    std::vector<float> clone_ref_buffer;
+    const float * clone_ref_ptr = ref_samples;
+    int32_t clone_ref_samples = n_ref_samples;
+    if (clone_ref_samples != clone_anchor_samples) {
+        clone_ref_buffer.assign((size_t) clone_anchor_samples, 0.0f);
+        const int32_t copy_n = std::min(clone_ref_samples, clone_anchor_samples);
+        if (copy_n > 0) {
+            std::memcpy(clone_ref_buffer.data(), ref_samples, (size_t) copy_n * sizeof(float));
+        }
+        clone_ref_ptr = clone_ref_buffer.data();
+        clone_ref_samples = clone_anchor_samples;
+    }
+
     std::vector<float> speaker_embedding;
-    if (!speaker_encoder_.encode(ref_samples, n_ref_samples, speaker_embedding)) {
+    if (!speaker_encoder_.encode(clone_ref_ptr, clone_ref_samples, speaker_embedding)) {
         result.error_msg = "Failed to extract speaker embedding: " + speaker_encoder_.get_error();
         return result;
     }
 
     std::vector<int32_t> ref_codes;
     int32_t n_ref_frames = 0;
-    if (!codec_encoder_.encode(ref_samples, n_ref_samples, ref_codes, n_ref_frames)) {
+    if (!codec_encoder_.encode(clone_ref_ptr, clone_ref_samples, ref_codes, n_ref_frames)) {
         result.error_msg = "Failed to encode reference audio codes: " + codec_encoder_.get_error();
         return result;
     }
@@ -509,6 +526,12 @@ tts_result Qwen3TTS::synthesize_internal(
             params.temperature,
             params.top_p,
             params.top_k,
+            params.predictor_do_sample,
+            params.predictor_temperature,
+            params.predictor_top_p,
+            params.predictor_top_k,
+            params.seed,
+            params.predictor_seed,
             speech_codes)) {
         result.error_msg = "Failed to generate speech codes: " + talker_predictor_.get_error();
         return result;
@@ -666,6 +689,14 @@ bool load_audio_file(const std::string & path, std::vector<float> & samples, int
 }
 
 bool save_audio_file(const std::string & path, const std::vector<float> & samples, int sample_rate) {
+    try {
+        std::filesystem::path p(path);
+        if (p.has_parent_path()) {
+            std::filesystem::create_directories(p.parent_path());
+        }
+    } catch (...) {
+        // Continue and let fopen report a concrete error if directory creation fails.
+    }
     FILE * f = fopen(path.c_str(), "wb");
     if (!f) {
         fprintf(stderr, "ERROR: Cannot create WAV file: %s\n", path.c_str());

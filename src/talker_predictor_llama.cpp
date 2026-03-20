@@ -29,6 +29,13 @@ static inline void add_vec(float * dst, const float * src, int32_t n) {
     }
 }
 
+static inline uint32_t choose_seed(int32_t requested_seed, uint32_t salt = 0) {
+    if (requested_seed >= 0) {
+        return (uint32_t) requested_seed + salt;
+    }
+    return (uint32_t) std::chrono::high_resolution_clock::now().time_since_epoch().count() + salt;
+}
+
 } // namespace
 
 bool TalkerPredictorLlama::load(
@@ -216,53 +223,90 @@ bool TalkerPredictorLlama::run_prefill(
         prompt_flat.insert(prompt_flat.end(), tmp_vec.begin(), tmp_vec.end());
     }
 
-    // Lightweight ICL conditioning:
-    // inject reference codec frames (tts_pad + summed codebook embeddings) before generation BOS.
-    if (ref_codes && n_ref_frames > 0) {
-        const float * codec_bos = assets_->codec_row(0, kCodecBos);
-        if (!codec_bos) {
-            error_msg_ = "Missing codec BOS embedding for reference-code injection";
-            return false;
-        }
-        for (int32_t i = 0; i < hidden_dim_; ++i) {
-            tmp_vec[(size_t) i] = tts_pad[i] + codec_bos[i];
-        }
-        prompt_flat.insert(prompt_flat.end(), tmp_vec.begin(), tmp_vec.end());
+    const float * tts_bos = assets_->text_row(kTtsBos);
+    const float * codec_pad = assets_->codec_row(0, kCodecPad);
+    const float * codec_bos = assets_->codec_row(0, kCodecBos);
+    const float * tts_eos = assets_->text_row(kTtsEos);
+    if (!tts_bos || !codec_pad || !codec_bos || !tts_eos) {
+        error_msg_ = "Missing TTS_BOS text or codec PAD embedding";
+        return false;
+    }
 
-        for (int32_t t = 0; t < n_ref_frames; ++t) {
-            for (int32_t i = 0; i < hidden_dim_; ++i) {
-                tmp_vec[(size_t) i] = tts_pad[i];
+    append_sum(tts_bos, codec_pad);
+
+    std::vector<float> clone_trailing_pool;
+    const bool use_clone_icl = ref_codes && n_ref_frames > 0;
+    if (use_clone_icl) {
+        // Align clone prompt with Qwen3-TTS-GGUF ICL fusion:
+        // body = fused(text_pool, audio_pool), where
+        // text_pool = target text + TTS_EOS
+        // audio_pool = [codec_bos] + summed reference-code embeddings
+        std::vector<const float *> text_pool;
+        text_pool.reserve(text_tokens.size() + 1);
+        for (int32_t tid : text_tokens) {
+            const float * row = assets_->text_row(tid);
+            if (!row) {
+                error_msg_ = "Text embedding row out of range in clone ICL";
+                return false;
             }
+            text_pool.push_back(row);
+        }
+        text_pool.push_back(tts_eos);
+
+        std::vector<float> audio_pool((size_t) (n_ref_frames + 1) * (size_t) hidden_dim_, 0.0f);
+        std::memcpy(audio_pool.data(), codec_bos, (size_t) hidden_dim_ * sizeof(float));
+        for (int32_t t = 0; t < n_ref_frames; ++t) {
+            float * dst = audio_pool.data() + (size_t) (t + 1) * (size_t) hidden_dim_;
             for (int32_t q = 0; q < 16; ++q) {
                 const int32_t code = ref_codes[(size_t) t * 16 + (size_t) q];
                 const float * row = assets_->codec_row(q, code);
                 if (!row) {
-                    error_msg_ = "Reference code out of range during ICL injection";
+                    error_msg_ = "Reference code out of range during clone ICL fusion";
                     return false;
                 }
                 for (int32_t i = 0; i < hidden_dim_; ++i) {
-                    tmp_vec[(size_t) i] += row[i];
+                    dst[i] += row[i];
                 }
             }
-            prompt_flat.insert(prompt_flat.end(), tmp_vec.begin(), tmp_vec.end());
         }
-    }
 
-    const float * tts_bos = assets_->text_row(kTtsBos);
-    const float * codec_pad = assets_->codec_row(0, kCodecPad);
-    if (!tts_bos || !codec_pad) {
-        error_msg_ = "Missing TTS_BOS text or codec PAD embedding";
-        return false;
+        const int32_t t_len = (int32_t) text_pool.size();
+        const int32_t a_len = n_ref_frames + 1;
+        if (t_len > a_len) {
+            // Match reference implementation:
+            // body = text_pool[:a_len] + audio_pool, trailing = text_pool[a_len:].
+            for (int32_t i = 0; i < a_len; ++i) {
+                const float * trow = text_pool[(size_t) i];
+                const float * arow = audio_pool.data() + (size_t) i * (size_t) hidden_dim_;
+                for (int32_t d = 0; d < hidden_dim_; ++d) {
+                    tmp_vec[(size_t) d] = trow[d] + arow[d];
+                }
+                prompt_flat.insert(prompt_flat.end(), tmp_vec.begin(), tmp_vec.end());
+            }
+            clone_trailing_pool.reserve((size_t) (t_len - a_len) * (size_t) hidden_dim_);
+            for (int32_t i = a_len; i < t_len; ++i) {
+                const float * row = text_pool[(size_t) i];
+                clone_trailing_pool.insert(clone_trailing_pool.end(), row, row + hidden_dim_);
+            }
+        } else {
+            // text shorter than audio pool: pad remaining text rows with tts_pad.
+            for (int32_t i = 0; i < a_len; ++i) {
+                const float * trow = i < t_len ? text_pool[(size_t) i] : tts_pad;
+                const float * arow = audio_pool.data() + (size_t) i * (size_t) hidden_dim_;
+                for (int32_t d = 0; d < hidden_dim_; ++d) {
+                    tmp_vec[(size_t) d] = trow[d] + arow[d];
+                }
+                prompt_flat.insert(prompt_flat.end(), tmp_vec.begin(), tmp_vec.end());
+            }
+        }
+    } else {
+        const float * text0 = assets_->text_row(text_tokens[0]);
+        if (!text0) {
+            error_msg_ = "Missing first text embedding row";
+            return false;
+        }
+        append_sum(text0, codec_bos);
     }
-    append_sum(tts_bos, codec_pad);
-
-    const float * text0 = assets_->text_row(text_tokens[0]);
-    const float * codec_bos = assets_->codec_row(0, kCodecBos);
-    if (!text0 || !codec_bos) {
-        error_msg_ = "Missing first text or codec BOS embedding";
-        return false;
-    }
-    append_sum(text0, codec_bos);
 
     const int32_t n_prompt_tokens = (int32_t) (prompt_flat.size() / (size_t) hidden_dim_);
     std::vector<int32_t> pos((size_t) n_prompt_tokens * 4);
@@ -300,23 +344,22 @@ bool TalkerPredictorLlama::run_prefill(
     cur_pos_ += n_prompt_tokens;
 
     trailing_text_pool_.clear();
-    if (text_tokens.size() > 1) {
-        trailing_text_pool_.reserve((text_tokens.size()) * (size_t) hidden_dim_);
-        for (size_t i = 1; i < text_tokens.size(); ++i) {
-            const float * row = assets_->text_row(text_tokens[i]);
-            if (!row) {
-                error_msg_ = "Text embedding row out of range";
-                return false;
+    if (use_clone_icl) {
+        trailing_text_pool_ = std::move(clone_trailing_pool);
+    } else {
+        if (text_tokens.size() > 1) {
+            trailing_text_pool_.reserve((text_tokens.size()) * (size_t) hidden_dim_);
+            for (size_t i = 1; i < text_tokens.size(); ++i) {
+                const float * row = assets_->text_row(text_tokens[i]);
+                if (!row) {
+                    error_msg_ = "Text embedding row out of range";
+                    return false;
+                }
+                trailing_text_pool_.insert(trailing_text_pool_.end(), row, row + hidden_dim_);
             }
-            trailing_text_pool_.insert(trailing_text_pool_.end(), row, row + hidden_dim_);
         }
+        trailing_text_pool_.insert(trailing_text_pool_.end(), tts_eos, tts_eos + hidden_dim_);
     }
-    const float * tts_eos = assets_->text_row(kTtsEos);
-    if (!tts_eos) {
-        error_msg_ = "Missing TTS_EOS text embedding row";
-        return false;
-    }
-    trailing_text_pool_.insert(trailing_text_pool_.end(), tts_eos, tts_eos + hidden_dim_);
     trailing_count_ = (int32_t) (trailing_text_pool_.size() / (size_t) hidden_dim_);
     step_idx_ = 0;
     return true;
@@ -325,9 +368,7 @@ bool TalkerPredictorLlama::run_prefill(
 bool TalkerPredictorLlama::predict_frame(
     const std::vector<float> & master_hidden,
     int32_t code0,
-    float temperature,
-    float top_p,
-    int32_t top_k,
+    LlamaSampler & predictor_sampler,
     std::vector<int32_t> & frame_codes,
     std::vector<float> & audio_sum) {
     frame_codes.clear();
@@ -374,28 +415,11 @@ bool TalkerPredictorLlama::predict_frame(
         return false;
     }
 
-    std::string sampler_err;
-    LlamaSampler sampler;
-    if (!sampler.init(
-            temperature,
-            top_p,
-            top_k,
-            0.0f,
-            1.0f,
-            0.0f,
-            0.0f,
-            64,
-            (uint32_t) std::chrono::high_resolution_clock::now().time_since_epoch().count(),
-            sampler_err)) {
-        error_msg_ = sampler_err;
-        return false;
-    }
-
     for (int32_t cs = 1; cs < 16; ++cs) {
         const int32_t start = (cs - 1) * 2048;
         const int32_t end = cs * 2048;
         int32_t token_id = -1;
-        if (!sample_with_mask(predictor_ctx_, predictor_model_, sampler, start, end, nullptr, 0, token_id)) {
+        if (!sample_with_mask(predictor_ctx_, predictor_model_, predictor_sampler, start, end, nullptr, 0, token_id)) {
             return false;
         }
         const int32_t code = token_id - start;
@@ -499,9 +523,15 @@ bool TalkerPredictorLlama::generate(
     int32_t max_frames,
     int32_t language_id,
     float repetition_penalty,
-    float temperature,
-    float top_p,
-    int32_t top_k,
+    float talker_temperature,
+    float talker_top_p,
+    int32_t talker_top_k,
+    bool predictor_do_sample,
+    float predictor_temperature,
+    float predictor_top_p,
+    int32_t predictor_top_k,
+    int32_t talker_seed,
+    int32_t predictor_seed,
     std::vector<int32_t> & output_codes) {
     output_codes.clear();
     if (!loaded_) {
@@ -538,15 +568,34 @@ bool TalkerPredictorLlama::generate(
     std::string sampler_err;
     LlamaSampler talker_sampler;
     if (!talker_sampler.init(
-            temperature,
-            top_p,
-            top_k,
+            talker_temperature,
+            talker_top_p,
+            talker_top_k,
             0.0f,
             repetition_penalty,
             0.0f,
             0.0f,
             128,
-            (uint32_t) std::chrono::high_resolution_clock::now().time_since_epoch().count(),
+            choose_seed(talker_seed),
+            sampler_err)) {
+        error_msg_ = sampler_err;
+        return false;
+    }
+
+    LlamaSampler predictor_sampler;
+    const float pred_temp = predictor_do_sample ? predictor_temperature : 0.0f;
+    const float pred_top_p = predictor_do_sample ? predictor_top_p : 1.0f;
+    const int32_t pred_top_k = predictor_do_sample ? predictor_top_k : 0;
+    if (!predictor_sampler.init(
+            pred_temp,
+            pred_top_p,
+            pred_top_k,
+            0.0f,
+            1.0f,
+            0.0f,
+            0.0f,
+            64,
+            choose_seed(predictor_seed, 1337),
             sampler_err)) {
         error_msg_ = sampler_err;
         return false;
@@ -578,7 +627,12 @@ bool TalkerPredictorLlama::generate(
 
         std::vector<int32_t> frame_codes;
         std::vector<float> audio_sum;
-        if (!predict_frame(master_hidden, code0_token, temperature, top_p, top_k, frame_codes, audio_sum)) {
+        if (!predict_frame(
+                master_hidden,
+                code0_token,
+                predictor_sampler,
+                frame_codes,
+                audio_sum)) {
             return false;
         }
         if ((int32_t) frame_codes.size() != 16) {

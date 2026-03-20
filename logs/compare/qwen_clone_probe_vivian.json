@@ -1,0 +1,9 @@
+{
+  "ok": false,
+  "mode": "clone",
+  "framework": "qwen3-tts-gguf",
+  "timestamp": "2026-03-20 12:24:20",
+  "init_sec": 2.741976737976074,
+  "error": "set_voice(reference_audio) failed",
+  "traceback": "Traceback (most recent call last):\n  File \"D:\\TTS\\lunavox\\tools\\qwen_local_benchmark.py\", line 230, in main\n    raise RuntimeError(\"set_voice(reference_audio) failed\")\nRuntimeError: set_voice(reference_audio) failed\n"
+}

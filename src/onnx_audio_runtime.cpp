@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <complex>
 #include <cstring>
 #include <memory>
 #include <numeric>
@@ -224,21 +225,65 @@ void compute_centered_periodic_hann(const mel_config & cfg, std::vector<float> &
     }
 }
 
-void compute_dft(const float * input, int n, std::vector<float> & real, std::vector<float> & imag) {
-    real.assign((size_t) n, 0.0f);
-    imag.assign((size_t) n, 0.0f);
-    for (int k = 0; k < n; ++k) {
-        float re = 0.0f;
-        float im = 0.0f;
-        for (int t = 0; t < n; ++t) {
-            float angle = -2.0f * kPi * (float) (k * t) / (float) n;
-            float x = input[t];
-            re += x * std::cos(angle);
-            im += x * std::sin(angle);
-        }
-        real[(size_t) k] = re;
-        imag[(size_t) k] = im;
+bool is_power_of_two(int v) {
+    return v > 0 && (v & (v - 1)) == 0;
+}
+
+void fft_inplace(std::vector<std::complex<float>> & a) {
+    const size_t n = a.size();
+    if (n <= 1) {
+        return;
     }
+    size_t j = 0;
+    for (size_t i = 1; i < n; ++i) {
+        size_t bit = n >> 1;
+        for (; j & bit; bit >>= 1) {
+            j ^= bit;
+        }
+        j ^= bit;
+        if (i < j) {
+            std::swap(a[i], a[j]);
+        }
+    }
+
+    for (size_t len = 2; len <= n; len <<= 1) {
+        const float angle = -2.0f * kPi / (float) len;
+        const std::complex<float> wlen(std::cos(angle), std::sin(angle));
+        for (size_t i = 0; i < n; i += len) {
+            std::complex<float> w(1.0f, 0.0f);
+            const size_t half = len >> 1;
+            for (size_t k = 0; k < half; ++k) {
+                const std::complex<float> u = a[i + k];
+                const std::complex<float> v = a[i + k + half] * w;
+                a[i + k] = u + v;
+                a[i + k + half] = u - v;
+                w *= wlen;
+            }
+        }
+    }
+}
+
+int reflect_index(int idx, int n) {
+    if (n <= 1) {
+        return 0;
+    }
+    while (idx < 0 || idx >= n) {
+        if (idx < 0) {
+            idx = -idx;
+        } else {
+            idx = 2 * n - 2 - idx;
+        }
+    }
+    return idx;
+}
+
+int32_t find_name_index(const std::vector<std::string> & names, const std::string & target) {
+    for (size_t i = 0; i < names.size(); ++i) {
+        if (names[i] == target) {
+            return (int32_t) i;
+        }
+    }
+    return -1;
 }
 
 bool find_name(const std::vector<std::string> & names, const std::string & target) {
@@ -269,6 +314,28 @@ int64_t parse_valid_samples(const Ort::Value & val) {
         return (int64_t) std::llround(p[0]);
     }
     return 0;
+}
+
+bool extract_tensor_f32(const Ort::Value & val, std::vector<float> & out, int64_t & seq_dim) {
+    out.clear();
+    seq_dim = 0;
+    auto info = val.GetTensorTypeAndShapeInfo();
+    auto shape = info.GetShape();
+    size_t total = info.GetElementCount();
+    if (shape.size() >= 3) {
+        seq_dim = shape[2] > 0 ? shape[2] : 0;
+    } else if (shape.size() >= 2) {
+        seq_dim = shape[1] > 0 ? shape[1] : 0;
+    }
+    if (total == 0) {
+        return true;
+    }
+    if (info.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+        return false;
+    }
+    const float * p = val.GetTensorData<float>();
+    out.assign(p, p + total);
+    return true;
 }
 
 } // namespace
@@ -498,6 +565,13 @@ bool SpeakerEncoderOnnx::compute_mel_spectrogram(
         error_msg_ = "Invalid audio for mel extraction";
         return false;
     }
+    if (!ensure_mel_kernels()) {
+        return false;
+    }
+    if (!is_power_of_two(cfg_.n_fft)) {
+        error_msg_ = "Speaker mel requires n_fft as power-of-two";
+        return false;
+    }
 
     const int padding = (cfg_.n_fft - cfg_.hop_length) / 2;
     const int padded_len = n_samples + 2 * padding;
@@ -507,14 +581,9 @@ bool SpeakerEncoderOnnx::compute_mel_spectrogram(
     }
 
     std::vector<float> wav((size_t) padded_len);
-    for (int i = 0; i < padding; ++i) {
-        int src = std::min(n_samples - 1, std::max(0, padding - i));
-        wav[(size_t) i] = samples[src];
-    }
-    std::memcpy(wav.data() + padding, samples, (size_t) n_samples * sizeof(float));
-    for (int i = 0; i < padding; ++i) {
-        int src = std::min(n_samples - 1, std::max(0, n_samples - 2 - i));
-        wav[(size_t) (padding + n_samples + i)] = samples[src];
+    for (int i = 0; i < padded_len; ++i) {
+        const int src_idx = reflect_index(i - padding, n_samples);
+        wav[(size_t) i] = samples[src_idx];
     }
 
     n_frames = 1 + (padded_len - cfg_.n_fft) / cfg_.hop_length;
@@ -524,40 +593,48 @@ bool SpeakerEncoderOnnx::compute_mel_spectrogram(
     }
 
     const int n_fft_bins = cfg_.n_fft / 2 + 1;
-    std::vector<float> filterbank;
-    compute_mel_filterbank_slaney(cfg_, filterbank);
-
-    std::vector<float> window;
-    compute_centered_periodic_hann(cfg_, window);
-
     mel.assign((size_t) n_frames * (size_t) cfg_.n_mels, 0.0f);
-    std::vector<float> frame((size_t) cfg_.n_fft, 0.0f);
-    std::vector<float> real;
-    std::vector<float> imag;
+    std::vector<std::complex<float>> frame_fft((size_t) cfg_.n_fft, std::complex<float>(0.0f, 0.0f));
     std::vector<float> mag((size_t) n_fft_bins, 0.0f);
 
     for (int f = 0; f < n_frames; ++f) {
         int start = f * cfg_.hop_length;
         for (int i = 0; i < cfg_.n_fft; ++i) {
-            frame[(size_t) i] = wav[(size_t) (start + i)] * window[(size_t) i];
+            frame_fft[(size_t) i] = std::complex<float>(
+                wav[(size_t) (start + i)] * window_[(size_t) i],
+                0.0f);
         }
 
-        compute_dft(frame.data(), cfg_.n_fft, real, imag);
+        fft_inplace(frame_fft);
         for (int k = 0; k < n_fft_bins; ++k) {
-            float re = real[(size_t) k];
-            float im = imag[(size_t) k];
+            const float re = frame_fft[(size_t) k].real();
+            const float im = frame_fft[(size_t) k].imag();
             mag[(size_t) k] = std::sqrt(re * re + im * im + kEps);
         }
 
         for (int m = 0; m < cfg_.n_mels; ++m) {
             float sum = 0.0f;
-            const float * fb = &filterbank[(size_t) m * (size_t) n_fft_bins];
+            const float * fb = &mel_filterbank_[(size_t) m * (size_t) n_fft_bins];
             for (int k = 0; k < n_fft_bins; ++k) {
                 sum += fb[(size_t) k] * mag[(size_t) k];
             }
             const float log_mel = std::log(std::max(sum, 1e-5f));
             mel[(size_t) f * (size_t) cfg_.n_mels + (size_t) m] = log_mel;
         }
+    }
+    return true;
+}
+
+bool SpeakerEncoderOnnx::ensure_mel_kernels() {
+    if (mel_filterbank_.empty()) {
+        compute_mel_filterbank_slaney(cfg_, mel_filterbank_);
+    }
+    if (window_.empty()) {
+        compute_centered_periodic_hann(cfg_, window_);
+    }
+    if (mel_filterbank_.empty() || window_.empty()) {
+        error_msg_ = "Failed to initialize speaker mel kernels";
+        return false;
     }
     return true;
 }
@@ -641,7 +718,16 @@ bool StatefulDecoderOnnx::load_model(const std::string & model_path, int32_t int
         return false;
     }
 
-    num_layers_ = (int32_t) ((input_names_.size() - 5) / 2);
+    int32_t n_keys = 0;
+    int32_t n_vals = 0;
+    for (const auto & n : input_names_) {
+        if (n.rfind("past_key_", 0) == 0) {
+            ++n_keys;
+        } else if (n.rfind("past_value_", 0) == 0) {
+            ++n_vals;
+        }
+    }
+    num_layers_ = std::min(n_keys, n_vals);
     if (num_layers_ <= 0) {
         error_msg_ = "Decoder ONNX does not expose KV-cache inputs";
         unload_model();
@@ -650,7 +736,11 @@ bool StatefulDecoderOnnx::load_model(const std::string & model_path, int32_t int
 
     try {
         auto * impl = as_session(session_impl_);
-        size_t key_input_idx = 5; // audio_codes, pre_conv_history, latent_buffer, conv_history, is_last
+        int32_t key_name_idx = find_name_index(input_names_, "past_key_0");
+        if (key_name_idx < 0) {
+            key_name_idx = 5;
+        }
+        size_t key_input_idx = (size_t) key_name_idx;
         auto ti = impl->session.GetInputTypeInfo(key_input_idx).GetTensorTypeAndShapeInfo();
         auto shape = ti.GetShape();
         if (shape.size() >= 4) {
@@ -660,9 +750,26 @@ bool StatefulDecoderOnnx::load_model(const std::string & model_path, int32_t int
             num_heads_ = 8;
             head_dim_ = 64;
         }
+
+        auto read_channel = [&](const char * name, int32_t fallback) {
+            int32_t idx = find_name_index(input_names_, name);
+            if (idx < 0) return fallback;
+            auto ti2 = impl->session.GetInputTypeInfo((size_t) idx).GetTensorTypeAndShapeInfo();
+            auto sh = ti2.GetShape();
+            if (sh.size() >= 2 && sh[1] > 0) {
+                return (int32_t) sh[1];
+            }
+            return fallback;
+        };
+        pre_conv_channels_ = read_channel("pre_conv_history", 512);
+        latent_channels_ = read_channel("latent_buffer", 1024);
+        conv_channels_ = read_channel("conv_history", 1024);
     } catch (...) {
         num_heads_ = 8;
         head_dim_ = 64;
+        pre_conv_channels_ = 512;
+        latent_channels_ = 1024;
+        conv_channels_ = 1024;
     }
 
     loaded_ = true;
@@ -697,83 +804,165 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
     try {
         auto * impl = as_session(session_impl_);
         Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-
-        std::vector<int64_t> codes_i64((size_t) n_frames * 16);
-        for (int64_t i = 0; i < (int64_t) codes_i64.size(); ++i) {
-            codes_i64[(size_t) i] = (int64_t) codes[i];
-        }
-
-        std::vector<const char *> in_names;
-        std::vector<Ort::Value> in_values;
-        in_names.reserve((size_t) 5 + (size_t) 2 * (size_t) num_layers_);
-        in_values.reserve((size_t) 5 + (size_t) 2 * (size_t) num_layers_);
-
-        std::array<int64_t, 3> codes_shape = {1, (int64_t) n_frames, 16};
-        in_names.push_back("audio_codes");
-        in_values.emplace_back(Ort::Value::CreateTensor<int64_t>(
-            mem, codes_i64.data(), codes_i64.size(), codes_shape.data(), codes_shape.size()));
-
         static float dummy_f = 0.0f;
-        static int64_t dummy_i64 = 0;
 
-        std::array<int64_t, 3> pre_conv_shape = {1, 512, 0};
-        std::array<int64_t, 3> latent_shape = {1, 1024, 0};
-        std::array<int64_t, 3> conv_shape = {1, 1024, 0};
-        in_names.push_back("pre_conv_history");
-        in_values.emplace_back(Ort::Value::CreateTensor<float>(mem, &dummy_f, 0, pre_conv_shape.data(), pre_conv_shape.size()));
-        in_names.push_back("latent_buffer");
-        in_values.emplace_back(Ort::Value::CreateTensor<float>(mem, &dummy_f, 0, latent_shape.data(), latent_shape.size()));
-        in_names.push_back("conv_history");
-        in_values.emplace_back(Ort::Value::CreateTensor<float>(mem, &dummy_f, 0, conv_shape.data(), conv_shape.size()));
+        state_buffer state;
+        state.past_keys.resize((size_t) num_layers_);
+        state.past_values.resize((size_t) num_layers_);
+        state.past_key_seq.assign((size_t) num_layers_, 0);
+        state.past_value_seq.assign((size_t) num_layers_, 0);
 
-        std::array<int64_t, 1> is_last_shape = {1};
-        float is_last_val = 1.0f;
-        in_names.push_back("is_last");
-        in_values.emplace_back(Ort::Value::CreateTensor<float>(
-            mem, &is_last_val, 1, is_last_shape.data(), is_last_shape.size()));
+        audio.clear();
+        for (int32_t frame_offset = 0; frame_offset < n_frames; frame_offset += decode_chunk_frames_) {
+            const int32_t chunk_frames = std::min(decode_chunk_frames_, n_frames - frame_offset);
+            const bool is_last_chunk = (frame_offset + chunk_frames) >= n_frames;
 
-        std::array<int64_t, 4> kv_shape = {1, (int64_t) num_heads_, 0, (int64_t) head_dim_};
-        for (int i = 0; i < num_layers_; ++i) {
-            std::string name = "past_key_" + std::to_string(i);
-            in_names.push_back(input_names_[5 + (size_t) i].c_str());
-            (void) name; // keep canonical naming in case exported names are canonical.
-            in_values.emplace_back(Ort::Value::CreateTensor<float>(mem, &dummy_f, 0, kv_shape.data(), kv_shape.size()));
+            std::vector<int64_t> codes_i64((size_t) chunk_frames * 16);
+            for (int32_t i = 0; i < chunk_frames; ++i) {
+                for (int32_t q = 0; q < 16; ++q) {
+                    const size_t src_idx = (size_t) (frame_offset + i) * 16 + (size_t) q;
+                    const size_t dst_idx = (size_t) i * 16 + (size_t) q;
+                    codes_i64[dst_idx] = (int64_t) codes[src_idx];
+                }
+            }
+
+            std::vector<const char *> in_names;
+            std::vector<Ort::Value> in_values;
+            in_names.reserve((size_t) 5 + (size_t) 2 * (size_t) num_layers_);
+            in_values.reserve((size_t) 5 + (size_t) 2 * (size_t) num_layers_);
+
+            auto add_i64_tensor = [&](const char * name, int64_t * ptr, size_t count, const std::vector<int64_t> & shape) {
+                in_names.push_back(name);
+                in_values.emplace_back(Ort::Value::CreateTensor<int64_t>(
+                    mem, ptr, count, shape.data(), shape.size()));
+            };
+            auto add_f32_tensor = [&](const char * name, float * ptr, size_t count, const std::vector<int64_t> & shape) {
+                in_names.push_back(name);
+                in_values.emplace_back(Ort::Value::CreateTensor<float>(
+                    mem, ptr, count, shape.data(), shape.size()));
+            };
+
+            std::vector<int64_t> codes_shape = {1, (int64_t) chunk_frames, 16};
+            add_i64_tensor("audio_codes", codes_i64.data(), codes_i64.size(), codes_shape);
+
+            std::vector<int64_t> pre_shape = {1, (int64_t) pre_conv_channels_, state.pre_conv_seq};
+            add_f32_tensor(
+                "pre_conv_history",
+                state.pre_conv_history.empty() ? &dummy_f : state.pre_conv_history.data(),
+                state.pre_conv_history.empty() ? 0 : state.pre_conv_history.size(),
+                pre_shape);
+
+            std::vector<int64_t> latent_shape = {1, (int64_t) latent_channels_, state.latent_seq};
+            add_f32_tensor(
+                "latent_buffer",
+                state.latent_buffer.empty() ? &dummy_f : state.latent_buffer.data(),
+                state.latent_buffer.empty() ? 0 : state.latent_buffer.size(),
+                latent_shape);
+
+            std::vector<int64_t> conv_shape = {1, (int64_t) conv_channels_, state.conv_seq};
+            add_f32_tensor(
+                "conv_history",
+                state.conv_history.empty() ? &dummy_f : state.conv_history.data(),
+                state.conv_history.empty() ? 0 : state.conv_history.size(),
+                conv_shape);
+
+            std::array<int64_t, 1> is_last_shape = {1};
+            float is_last_val = is_last_chunk ? 1.0f : 0.0f;
+            in_names.push_back("is_last");
+            in_values.emplace_back(Ort::Value::CreateTensor<float>(
+                mem, &is_last_val, 1, is_last_shape.data(), is_last_shape.size()));
+
+            for (int i = 0; i < num_layers_; ++i) {
+                std::string key_name = "past_key_" + std::to_string(i);
+                int32_t idx = find_name_index(input_names_, key_name);
+                if (idx < 0) {
+                    idx = 5 + i;
+                }
+                std::vector<int64_t> kv_shape = {1, (int64_t) num_heads_, state.past_key_seq[(size_t) i], (int64_t) head_dim_};
+                add_f32_tensor(
+                    input_names_[(size_t) idx].c_str(),
+                    state.past_keys[(size_t) i].empty() ? &dummy_f : state.past_keys[(size_t) i].data(),
+                    state.past_keys[(size_t) i].empty() ? 0 : state.past_keys[(size_t) i].size(),
+                    kv_shape);
+            }
+            for (int i = 0; i < num_layers_; ++i) {
+                std::string val_name = "past_value_" + std::to_string(i);
+                int32_t idx = find_name_index(input_names_, val_name);
+                if (idx < 0) {
+                    idx = 5 + num_layers_ + i;
+                }
+                std::vector<int64_t> kv_shape = {1, (int64_t) num_heads_, state.past_value_seq[(size_t) i], (int64_t) head_dim_};
+                add_f32_tensor(
+                    input_names_[(size_t) idx].c_str(),
+                    state.past_values[(size_t) i].empty() ? &dummy_f : state.past_values[(size_t) i].data(),
+                    state.past_values[(size_t) i].empty() ? 0 : state.past_values[(size_t) i].size(),
+                    kv_shape);
+            }
+
+            std::vector<const char *> out_names;
+            out_names.reserve(output_names_.size());
+            for (const auto & n : output_names_) {
+                out_names.push_back(n.c_str());
+            }
+            auto out = impl->session.Run(
+                Ort::RunOptions{nullptr},
+                in_names.data(),
+                in_values.data(),
+                in_values.size(),
+                out_names.data(),
+                out_names.size());
+
+            if (out.size() < (size_t) (5 + 2 * num_layers_)) {
+                error_msg_ = "Decoder returned insufficient outputs";
+                return false;
+            }
+            auto wav_info = out[0].GetTensorTypeAndShapeInfo();
+            if (wav_info.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+                error_msg_ = "Decoder wav output must be float32";
+                return false;
+            }
+            const size_t wav_count = wav_info.GetElementCount();
+            const float * wav = out[0].GetTensorData<float>();
+            int64_t valid = parse_valid_samples(out[1]);
+            if (valid <= 0 || (size_t) valid > wav_count) {
+                valid = (int64_t) wav_count;
+            }
+            if (is_last_chunk) {
+                audio.insert(audio.end(), wav, wav + wav_count);
+            } else {
+                audio.insert(audio.end(), wav, wav + valid);
+            }
+
+            if (!extract_tensor_f32(out[2], state.pre_conv_history, state.pre_conv_seq)) {
+                error_msg_ = "Decoder next_pre_conv_history type is unsupported";
+                return false;
+            }
+            if (!extract_tensor_f32(out[3], state.latent_buffer, state.latent_seq)) {
+                error_msg_ = "Decoder next_latent_buffer type is unsupported";
+                return false;
+            }
+            if (!extract_tensor_f32(out[4], state.conv_history, state.conv_seq)) {
+                error_msg_ = "Decoder next_conv_history type is unsupported";
+                return false;
+            }
+            for (int i = 0; i < num_layers_; ++i) {
+                int64_t seq = 0;
+                if (!extract_tensor_f32(out[(size_t) 5 + (size_t) i], state.past_keys[(size_t) i], seq)) {
+                    error_msg_ = "Decoder next_key type is unsupported";
+                    return false;
+                }
+                state.past_key_seq[(size_t) i] = seq;
+            }
+            for (int i = 0; i < num_layers_; ++i) {
+                int64_t seq = 0;
+                if (!extract_tensor_f32(out[(size_t) 5 + (size_t) num_layers_ + (size_t) i], state.past_values[(size_t) i], seq)) {
+                    error_msg_ = "Decoder next_value type is unsupported";
+                    return false;
+                }
+                state.past_value_seq[(size_t) i] = seq;
+            }
         }
-        for (int i = 0; i < num_layers_; ++i) {
-            std::string name = "past_value_" + std::to_string(i);
-            in_names.push_back(input_names_[5 + (size_t) num_layers_ + (size_t) i].c_str());
-            (void) name;
-            in_values.emplace_back(Ort::Value::CreateTensor<float>(mem, &dummy_f, 0, kv_shape.data(), kv_shape.size()));
-        }
-
-        const char * out_names[2] = {
-            output_names_[0].c_str(),
-            output_names_[1].c_str(),
-        };
-
-        auto out = impl->session.Run(
-            Ort::RunOptions{nullptr},
-            in_names.data(),
-            in_values.data(),
-            in_values.size(),
-            out_names,
-            2);
-
-        if (out.size() < 2) {
-            error_msg_ = "Decoder returned insufficient outputs";
-            return false;
-        }
-
-        auto wav_info = out[0].GetTensorTypeAndShapeInfo();
-        size_t wav_count = wav_info.GetElementCount();
-        const float * wav = out[0].GetTensorData<float>();
-        int64_t valid = parse_valid_samples(out[1]);
-        if (valid <= 0 || (size_t) valid > wav_count) {
-            valid = (int64_t) wav_count;
-        }
-        audio.assign(wav, wav + valid);
-        (void) dummy_i64;
-        return true;
+        return !audio.empty();
     } catch (const std::exception & e) {
         error_msg_ = std::string("Decoder inference failed: ") + e.what();
         return false;

@@ -1,0 +1,8 @@
+{
+  "ok": false,
+  "mode": "clone",
+  "framework": "qwen3-tts-gguf",
+  "timestamp": "2026-03-20 12:59:23",
+  "error": "TTSEngine init failed (engine not ready)",
+  "traceback": "Traceback (most recent call last):\n  File \"D:\\TTS\\lunavox\\tools\\qwen_local_benchmark.py\", line 212, in main\n    raise RuntimeError(\"TTSEngine init failed (engine not ready)\")\nRuntimeError: TTSEngine init failed (engine not ready)\n"
+}

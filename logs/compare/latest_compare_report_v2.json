@@ -1,0 +1,67 @@
+{
+  "ok": false,
+  "timestamp": "2026-03-20 12:59:23",
+  "timeout_sec": 170,
+  "modes": {
+    "base": {
+      "lunavox": {
+        "success": true,
+        "sample_rate": 24000,
+        "audio_samples": 74880,
+        "audio_sec": 3.12,
+        "timing_ms": {
+          "tokenize": 0,
+          "encode": 0,
+          "generate": 3200,
+          "decode": 1037,
+          "total": 4237
+        },
+        "rtf": 1.358013,
+        "mem": {
+          "rss_start": 1728778240,
+          "rss_end": 1837047808,
+          "rss_peak": 1837047808,
+          "phys_start": 1728778240,
+          "phys_end": 1837047808,
+          "phys_peak": 1837047808
+        },
+        "framework": "lunavox",
+        "mode": "base",
+        "ok": true
+      },
+      "qwen": {
+        "ok": false,
+        "mode": "base",
+        "framework": "qwen3-tts-gguf",
+        "timestamp": "2026-03-20 12:59:30",
+        "error": "TTSEngine init failed (engine not ready)",
+        "traceback": "Traceback (most recent call last):\n  File \"D:\\TTS\\lunavox\\tools\\qwen_local_benchmark.py\", line 212, in main\n    raise RuntimeError(\"TTSEngine init failed (engine not ready)\")\nRuntimeError: TTSEngine init failed (engine not ready)\n",
+        "returncode": 1
+      },
+      "summary": {
+        "lunavox_ok": true,
+        "qwen_ok": false
+      }
+    },
+    "clone": {
+      "lunavox": {
+        "ok": false,
+        "returncode": 1,
+        "error": "lunavox command failed"
+      },
+      "qwen": {
+        "ok": false,
+        "mode": "clone",
+        "framework": "qwen3-tts-gguf",
+        "timestamp": "2026-03-20 12:59:33",
+        "error": "TTSEngine init failed (engine not ready)",
+        "traceback": "Traceback (most recent call last):\n  File \"D:\\TTS\\lunavox\\tools\\qwen_local_benchmark.py\", line 212, in main\n    raise RuntimeError(\"TTSEngine init failed (engine not ready)\")\nRuntimeError: TTSEngine init failed (engine not ready)\n",
+        "returncode": 1
+      },
+      "summary": {
+        "lunavox_ok": false,
+        "qwen_ok": false
+      }
+    }
+  }
+}

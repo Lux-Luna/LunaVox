@@ -51,6 +51,7 @@ public:
 
 private:
     bool compute_mel_spectrogram(const float * samples, int32_t n_samples, std::vector<float> & mel, int32_t & n_frames);
+    bool ensure_mel_kernels();
 
     mel_config cfg_;
     std::string error_msg_;
@@ -58,6 +59,8 @@ private:
     void * session_impl_ = nullptr;
     std::vector<std::string> input_names_;
     std::vector<std::string> output_names_;
+    std::vector<float> mel_filterbank_;
+    std::vector<float> window_;
 };
 
 class StatefulDecoderOnnx {
@@ -71,12 +74,29 @@ public:
     int32_t sample_rate() const { return sample_rate_; }
 
 private:
+    struct state_buffer {
+        std::vector<float> pre_conv_history;
+        int64_t pre_conv_seq = 0;
+        std::vector<float> latent_buffer;
+        int64_t latent_seq = 0;
+        std::vector<float> conv_history;
+        int64_t conv_seq = 0;
+        std::vector<std::vector<float>> past_keys;
+        std::vector<int64_t> past_key_seq;
+        std::vector<std::vector<float>> past_values;
+        std::vector<int64_t> past_value_seq;
+    };
+
     std::string error_msg_;
     bool loaded_ = false;
     int32_t sample_rate_ = 24000;
     int32_t num_layers_ = 0;
     int32_t num_heads_ = 0;
     int32_t head_dim_ = 0;
+    int32_t decode_chunk_frames_ = 12;
+    int32_t pre_conv_channels_ = 512;
+    int32_t latent_channels_ = 1024;
+    int32_t conv_channels_ = 1024;
 
     void * session_impl_ = nullptr;
     std::vector<std::string> input_names_;

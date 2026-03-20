@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "mode": "base",
+  "framework": "qwen3-tts-gguf",
+  "timestamp": "2026-03-20 12:53:16",
+  "init_sec": 2.7219972610473633,
+  "sample_rate": 24000,
+  "audio_samples": 49920,
+  "audio_sec": 2.08,
+  "wall_sec": 3.5063047409057617,
+  "rtf": 1.68572343312777,
+  "codes_frames": 26,
+  "timing_sec": {
+    "prompt": 0.0,
+    "prefill": 2.1640443801879883,
+    "talker": 0.20064115524291992,
+    "predictor": 0.6481785774230957,
+    "decoder": 0.48340439796447754,
+    "inference_only": 3.012864112854004,
+    "total_inference": 3.4962685108184814
+  }
+}

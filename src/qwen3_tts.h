@@ -25,6 +25,16 @@ struct tts_params {
     
     // Top-k sampling (0 = disabled)
     int32_t top_k = 50;
+
+    // Predictor stage sampling controls (Q1..Q15 generation).
+    bool predictor_do_sample = true;
+    float predictor_temperature = 0.9f;
+    float predictor_top_p = 1.0f;
+    int32_t predictor_top_k = 50;
+
+    // Sampling seeds (-1 means random seed from clock).
+    int32_t seed = -1;
+    int32_t predictor_seed = -1;
     
     // Number of threads
     int32_t n_threads = 4;

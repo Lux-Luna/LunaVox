@@ -257,6 +257,15 @@ class Qwen3TTSConverter:
 
         repo_root = Path(__file__).resolve().parents[2]
         env_path = os.environ.get("QWEN3_TTS_GGML_BASE_LIB", "").strip()
+        if not env_path:
+            lib_dir = os.environ.get("QWEN3_TTS_LIB_DIR", "").strip()
+            if lib_dir:
+                if sys.platform == "win32":
+                    env_path = str(Path(lib_dir) / "ggml-base.dll")
+                elif sys.platform == "darwin":
+                    env_path = str(Path(lib_dir) / "libggml-base.dylib")
+                else:
+                    env_path = str(Path(lib_dir) / "libggml-base.so")
         candidates: list[Path] = []
 
         if env_path:
@@ -306,7 +315,8 @@ class Qwen3TTSConverter:
         raise RuntimeError(
             "Q5_K quantization requires ggml-base runtime library, but it could not be loaded. "
             f"Tried: {[str(p) for p in candidates]}. "
-            "Place ggml-base runtime in ./lib or set QWEN3_TTS_GGML_BASE_LIB to the library path."
+            "Place ggml-base runtime in ./lib, or set QWEN3_TTS_LIB_DIR (recommended), "
+            "or set QWEN3_TTS_GGML_BASE_LIB to an explicit ggml-base library file."
             + (f" Last error: {last_err}" if last_err else "")
         )
 

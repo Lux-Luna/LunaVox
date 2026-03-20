@@ -1,0 +1,87 @@
+{
+  "ok": false,
+  "timestamp": "2026-03-20 12:09:14",
+  "timeout_sec": 170,
+  "modes": {
+    "base": {
+      "lunavox": {
+        "success": true,
+        "sample_rate": 24000,
+        "audio_samples": 65280,
+        "audio_sec": 2.72,
+        "timing_ms": {
+          "tokenize": 0,
+          "encode": 0,
+          "generate": 3297,
+          "decode": 823,
+          "total": 4120
+        },
+        "rtf": 1.514706,
+        "mem": {
+          "rss_start": 1728577536,
+          "rss_end": 1780645888,
+          "rss_peak": 1780645888,
+          "phys_start": 1728577536,
+          "phys_end": 1780645888,
+          "phys_peak": 1780645888
+        },
+        "framework": "lunavox",
+        "mode": "base",
+        "ok": true
+      },
+      "qwen": {
+        "ok": false,
+        "mode": "base",
+        "framework": "qwen3-tts-gguf",
+        "timestamp": "2026-03-20 12:09:21",
+        "error": "TTSEngine init failed (engine not ready)",
+        "traceback": "Traceback (most recent call last):\n  File \"D:\\TTS\\lunavox\\tools\\qwen_local_benchmark.py\", line 81, in main\n    raise RuntimeError(\"TTSEngine init failed (engine not ready)\")\nRuntimeError: TTSEngine init failed (engine not ready)\n",
+        "returncode": 1
+      },
+      "summary": {
+        "lunavox_ok": true,
+        "qwen_ok": false
+      }
+    },
+    "clone": {
+      "lunavox": {
+        "success": true,
+        "sample_rate": 24000,
+        "audio_samples": 128640,
+        "audio_sec": 5.36,
+        "timing_ms": {
+          "tokenize": 1,
+          "encode": 1329,
+          "generate": 9375,
+          "decode": 1779,
+          "total": 11155
+        },
+        "rtf": 2.081157,
+        "mem": {
+          "rss_start": 2398822400,
+          "rss_end": 2533646336,
+          "rss_peak": 2533646336,
+          "phys_start": 2398822400,
+          "phys_end": 2533646336,
+          "phys_peak": 2533646336
+        },
+        "framework": "lunavox",
+        "mode": "clone",
+        "ok": true
+      },
+      "qwen": {
+        "ok": false,
+        "mode": "clone",
+        "framework": "qwen3-tts-gguf",
+        "timestamp": "2026-03-20 12:09:37",
+        "error": "TTSEngine init failed (engine not ready)",
+        "traceback": "Traceback (most recent call last):\n  File \"D:\\TTS\\lunavox\\tools\\qwen_local_benchmark.py\", line 81, in main\n    raise RuntimeError(\"TTSEngine init failed (engine not ready)\")\nRuntimeError: TTSEngine init failed (engine not ready)\n",
+        "returncode": 1
+      },
+      "summary": {
+        "lunavox_ok": true,
+        "qwen_ok": false
+      }
+    }
+  }
+}

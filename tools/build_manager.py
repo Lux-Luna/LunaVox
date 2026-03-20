@@ -7,16 +7,20 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
 class Builder:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, timeout_sec: int = 170):
         self.root = root
         self.env = os.environ.copy()
         self.lib_dir = self.root / "lib"
         self.ort_root = self.lib_dir / "onnxruntime"
         self.tmp_dir = self.root / "_tmp_build"
+        self.timeout_sec = max(1, int(timeout_sec))
+        self.log_dir = self.root / "logs" / "build"
+        self.log_dir.mkdir(parents=True, exist_ok=True)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         # Avoid writing temp files to user profile paths that may be inaccessible in sandboxed sessions.
         self.env["TMP"] = str(self.tmp_dir)
@@ -25,19 +29,67 @@ class Builder:
         self._vs2022_available_cache: bool | None = None
         self._inject_conda_paths()
 
-    def run_cmake(self, args: list[str], cwd: Path) -> None:
-        print(f"[build] cmake {' '.join(args)}")
-        subprocess.run(["cmake"] + args, cwd=str(cwd), env=self.env, check=True)
+    def _run_logged(self, cmd: list[str], cwd: Path, stage: str, timeout_sec: int | None = None) -> None:
+        timeout = self.timeout_sec if timeout_sec is None else max(1, int(timeout_sec))
+        safe_stage = re.sub(r"[^a-zA-Z0-9._-]+", "_", stage).strip("_") or "build"
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        log_file = self.log_dir / f"{stamp}-{safe_stage}.log"
+        print(f"[build:{safe_stage}] {' '.join(cmd)}")
+        start = time.time()
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(cwd),
+                env=self.env,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as err:
+            output = ""
+            if err.stdout:
+                output += err.stdout if isinstance(err.stdout, str) else err.stdout.decode("utf-8", errors="ignore")
+            if err.stderr:
+                output += err.stderr if isinstance(err.stderr, str) else err.stderr.decode("utf-8", errors="ignore")
+            elapsed = time.time() - start
+            log_file.write_text(
+                f"[timeout] {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"stage: {safe_stage}\n"
+                f"cmd: {' '.join(cmd)}\n"
+                f"cwd: {cwd}\n"
+                f"timeout_sec: {timeout}\n"
+                f"elapsed_sec: {elapsed:.3f}\n\n"
+                f"{output}",
+                encoding="utf-8",
+            )
+            raise RuntimeError(f"Build stage '{safe_stage}' timed out after {timeout}s. See {log_file}") from err
 
-    def run_cmd(self, cmd: list[str], cwd: Path, timeout_sec: int | None = None) -> None:
-        print(f"[build] {' '.join(cmd)}")
-        subprocess.run(
-            cmd,
-            cwd=str(cwd),
-            env=self.env,
-            check=True,
-            timeout=timeout_sec,
+        elapsed = time.time() - start
+        output = proc.stdout or ""
+        status = "ok" if proc.returncode == 0 else "failed"
+        log_file.write_text(
+            f"[{status}] {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"stage: {safe_stage}\n"
+            f"cmd: {' '.join(cmd)}\n"
+            f"cwd: {cwd}\n"
+            f"timeout_sec: {timeout}\n"
+            f"elapsed_sec: {elapsed:.3f}\n"
+            f"returncode: {proc.returncode}\n\n"
+            f"{output}",
+            encoding="utf-8",
         )
+        if proc.returncode != 0:
+            raise RuntimeError(f"Build stage '{safe_stage}' failed (rc={proc.returncode}). See {log_file}")
+
+    def run_cmake(self, args: list[str], cwd: Path, stage: str) -> None:
+        self._run_logged(["cmake"] + args, cwd, stage=stage)
+
+    def run_cmd(self, cmd: list[str], cwd: Path, stage: str, timeout_sec: int | None = None) -> None:
+        self._run_logged(cmd, cwd, stage=stage, timeout_sec=timeout_sec)
 
     def _resolve_conda_prefix(self) -> Path | None:
         # Prefer the currently running interpreter prefix.
@@ -337,7 +389,7 @@ class Builder:
         exe = build_dir / ("qwen3-tts-cli.exe" if platform.system() == "Windows" else "qwen3-tts-cli")
         if not exe.exists():
             raise RuntimeError(f"Verify failed: executable not found: {exe}")
-        self.run_cmd([str(exe), "--help"], cwd=self.root, timeout_sec=60)
+        self.run_cmd([str(exe), "--help"], cwd=self.root, stage="verify_help", timeout_sec=60)
         print("[build] Verify passed: qwen3-tts-cli --help")
 
     def build(self, backend: str = "cpu", clean: bool = False, parallel: int = 4, verify: bool = False) -> None:
@@ -397,10 +449,10 @@ class Builder:
             f"-DQWEN3_TTS_PREBUILT_LIB_DIR={self._cmake_path(str(self.lib_dir))}",
             f"-DQWEN3_TTS_ORT_ROOT={self._cmake_path(str(self.ort_root))}",
         ] + toolchain_args
-        self.run_cmake(cmake_args, self.root)
+        self.run_cmake(cmake_args, self.root, stage="cmake_configure")
 
         build_cmd = ["--build", str(build_dir), "-j", str(parallel), "--config", "Release"]
-        self.run_cmake(build_cmd, self.root)
+        self.run_cmake(build_cmd, self.root, stage="cmake_build")
         self._copy_windows_runtime_dlls(build_dir)
         if verify:
             self.verify(build_dir)
@@ -414,11 +466,12 @@ def main() -> None:
     parser.add_argument("--backend", choices=["cpu", "auto"], default="auto")
     parser.add_argument("--clean", action="store_true")
     parser.add_argument("--j", type=int, default=4)
+    parser.add_argument("--timeout-sec", type=int, default=170)
     parser.add_argument("--verify", action="store_true")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[1]
-    builder = Builder(root)
+    builder = Builder(root, timeout_sec=args.timeout_sec)
     builder.build(backend=args.backend, clean=args.clean, parallel=args.j, verify=args.verify)
 
 

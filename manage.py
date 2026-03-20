@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import os
+import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Iterable
 
@@ -15,8 +17,11 @@ ROOT = Path(__file__).resolve().parent
 TOOLS = ROOT / "tools"
 SETUP_SCRIPT = TOOLS / "setup" / "setup_pipeline.py"
 BUILD_SCRIPT = TOOLS / "build_manager.py"
+COMPARE_SCRIPT = TOOLS / "compare_inference.py"
 
 EXPECTED_CONDA_ENV = "lunavox"
+DEFAULT_TIMEOUT_SEC = 170
+MANAGE_LOG_DIR = ROOT / "logs" / "manage"
 
 
 def eprint(msg: str) -> None:
@@ -141,15 +146,82 @@ def resolve_enable_quant(args: argparse.Namespace) -> bool:
     return enable_quant or (not skip_quant)
 
 
-def run_python_script(script: Path, extra_args: list[str]) -> int:
+def _safe_stage_name(stage: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9._-]+", "_", stage).strip("_") or "stage"
+
+
+def run_stage_process(
+    cmd: list[str],
+    *,
+    cwd: Path,
+    timeout_sec: int,
+    stage: str,
+) -> int:
+    MANAGE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    stage_name = _safe_stage_name(stage)
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    log_file = MANAGE_LOG_DIR / f"{ts}-{stage_name}.log"
+    start = time.time()
+    eprint(f"[run:{stage_name}] {' '.join(cmd)}")
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(cwd),
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=max(1, int(timeout_sec)),
+        )
+        output = proc.stdout or ""
+        elapsed = time.time() - start
+        status = "ok" if proc.returncode == 0 else "failed"
+        log_file.write_text(
+            f"[{status}] {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"stage: {stage_name}\n"
+            f"cmd: {' '.join(cmd)}\n"
+            f"cwd: {cwd}\n"
+            f"timeout_sec: {timeout_sec}\n"
+            f"elapsed_sec: {elapsed:.3f}\n"
+            f"returncode: {proc.returncode}\n\n"
+            f"{output}",
+            encoding="utf-8",
+        )
+        if proc.returncode != 0:
+            eprint(f"[run:{stage_name}] failed, log: {log_file}")
+        return int(proc.returncode)
+    except subprocess.TimeoutExpired as err:
+        output = ""
+        if err.stdout:
+            output += err.stdout if isinstance(err.stdout, str) else err.stdout.decode("utf-8", errors="ignore")
+        if err.stderr:
+            output += err.stderr if isinstance(err.stderr, str) else err.stderr.decode("utf-8", errors="ignore")
+        elapsed = time.time() - start
+        log_file.write_text(
+            f"[timeout] {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"stage: {stage_name}\n"
+            f"cmd: {' '.join(cmd)}\n"
+            f"cwd: {cwd}\n"
+            f"timeout_sec: {timeout_sec}\n"
+            f"elapsed_sec: {elapsed:.3f}\n\n"
+            f"{output}",
+            encoding="utf-8",
+        )
+        raise RuntimeError(
+            f"Stage '{stage_name}' timed out after {timeout_sec}s. See log: {log_file}"
+        ) from err
+
+
+def run_python_script(script: Path, extra_args: list[str], *, timeout_sec: int, stage: str) -> int:
     if not script.exists():
         raise RuntimeError(f"Script not found: {script}")
     cmd = [sys.executable, str(script)] + extra_args
-    proc = subprocess.run(cmd, cwd=str(ROOT), check=False)
-    return int(proc.returncode)
+    return run_stage_process(cmd, cwd=ROOT, timeout_sec=timeout_sec, stage=stage)
 
 
-def run_build_verify() -> int:
+def run_build_verify(timeout_sec: int) -> int:
     build_dir = ROOT / "build-cpu"
     if os.name == "nt":
         exe = build_dir / "qwen3-tts-cli.exe"
@@ -158,20 +230,15 @@ def run_build_verify() -> int:
     if not exe.exists():
         raise RuntimeError(f"Built CLI not found for verify: {exe}")
 
-    proc = subprocess.run(
+    rc = run_stage_process(
         [str(exe), "--help"],
-        cwd=str(ROOT),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        timeout=60,
-        check=False,
+        cwd=ROOT,
+        timeout_sec=timeout_sec,
+        stage="build_verify_help",
     )
-    if proc.returncode != 0:
-        eprint(proc.stdout or "")
-    else:
+    if rc == 0:
         print(f"[ok] verify passed: {exe.name} --help")
-    return int(proc.returncode)
+    return rc
 
 
 def command_setup(args: argparse.Namespace) -> int:
@@ -198,7 +265,12 @@ def command_setup(args: argparse.Namespace) -> int:
         setup_args.append("--force")
     if enable_quant:
         setup_args.append("--enable-quant")
-    return run_python_script(SETUP_SCRIPT, setup_args)
+    return run_python_script(
+        SETUP_SCRIPT,
+        setup_args,
+        timeout_sec=max(1, int(args.timeout_sec)),
+        stage="setup_pipeline_setup",
+    )
 
 
 def command_convert(args: argparse.Namespace) -> int:
@@ -222,7 +294,12 @@ def command_convert(args: argparse.Namespace) -> int:
         setup_args.append("--force")
     if enable_quant:
         setup_args.append("--enable-quant")
-    return run_python_script(SETUP_SCRIPT, setup_args)
+    return run_python_script(
+        SETUP_SCRIPT,
+        setup_args,
+        timeout_sec=max(1, int(args.timeout_sec)),
+        stage="setup_pipeline_convert",
+    )
 
 
 def command_build(args: argparse.Namespace) -> int:
@@ -232,12 +309,17 @@ def command_build(args: argparse.Namespace) -> int:
         enable_quant=False,
         fix_git_safe=args.fix_git_safe,
     )
-    build_args = ["--backend", args.backend, "--j", str(args.j)]
+    build_args = ["--backend", args.backend, "--j", str(args.j), "--timeout-sec", str(args.timeout_sec)]
     if args.clean:
         build_args.append("--clean")
     if args.verify:
         build_args.append("--verify")
-    return run_python_script(BUILD_SCRIPT, build_args)
+    return run_python_script(
+        BUILD_SCRIPT,
+        build_args,
+        timeout_sec=max(1, int(args.timeout_sec)),
+        stage="build_manager_build",
+    )
 
 
 def command_preflight(args: argparse.Namespace) -> int:
@@ -276,20 +358,92 @@ def command_bootstrap(args: argparse.Namespace) -> int:
     if enable_quant:
         setup_args.append("--enable-quant")
 
-    rc = run_python_script(SETUP_SCRIPT, setup_args)
+    rc = run_python_script(
+        SETUP_SCRIPT,
+        setup_args,
+        timeout_sec=max(1, int(args.timeout_sec)),
+        stage="setup_pipeline_bootstrap",
+    )
     if rc != 0:
         return rc
 
-    build_args = ["--backend", args.backend, "--j", str(args.j)]
+    build_args = ["--backend", args.backend, "--j", str(args.j), "--timeout-sec", str(args.timeout_sec)]
     if args.clean:
         build_args.append("--clean")
-    rc = run_python_script(BUILD_SCRIPT, build_args)
+    rc = run_python_script(
+        BUILD_SCRIPT,
+        build_args,
+        timeout_sec=max(1, int(args.timeout_sec)),
+        stage="build_manager_bootstrap",
+    )
     if rc != 0:
         return rc
 
     if args.verify:
-        return run_build_verify()
+        return run_build_verify(timeout_sec=max(1, int(args.timeout_sec)))
     return 0
+
+
+def command_compare(args: argparse.Namespace) -> int:
+    check_preflight(
+        need_convert_modules=False,
+        need_build_deps=False,
+        enable_quant=False,
+        fix_git_safe=args.fix_git_safe,
+    )
+    compare_args = [
+        "--mode",
+        args.mode,
+        "--timeout-sec",
+        str(args.timeout_sec),
+        "--report-out",
+        args.report_out,
+        "--lunavox-model-dir",
+        args.models_dir,
+        "--lunavox-build-dir",
+        args.build_dir,
+        "--text",
+        args.text,
+        "--max-steps",
+        str(args.max_steps),
+        "--temperature",
+        str(args.temperature),
+        "--top-k",
+        str(args.top_k),
+        "--top-p",
+        str(args.top_p),
+        "--predictor-temperature",
+        str(args.predictor_temperature),
+        "--predictor-top-k",
+        str(args.predictor_top_k),
+        "--predictor-top-p",
+        str(args.predictor_top_p),
+        "--seed",
+        str(args.seed),
+        "--predictor-seed",
+        str(args.predictor_seed),
+    ]
+    if args.reference_audio:
+        compare_args += ["--lunavox-reference-audio", args.reference_audio]
+    if args.qwen_reference_audio:
+        compare_args += ["--qwen-reference-audio", args.qwen_reference_audio]
+    if args.qwen_reference_text:
+        compare_args += ["--qwen-reference-text", args.qwen_reference_text]
+    if args.qwen_repo:
+        compare_args += ["--qwen-repo", args.qwen_repo]
+    if args.qwen_model_dir:
+        compare_args += ["--qwen-model-dir", args.qwen_model_dir]
+    if args.qwen_python:
+        compare_args += ["--qwen-python", args.qwen_python]
+    if args.keep_artifacts:
+        compare_args.append("--keep-artifacts")
+
+    return run_python_script(
+        COMPARE_SCRIPT,
+        compare_args,
+        timeout_sec=max(1, int(args.timeout_sec)),
+        stage="compare_inference",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -303,7 +457,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_setup.add_argument("--skip-download", action="store_true")
     p_setup.add_argument("--skip-convert", action="store_true")
     p_setup.add_argument("--force", action="store_true")
-    p_setup.add_argument("--timeout-sec", type=int, default=170)
+    p_setup.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
     p_setup.add_argument(
         "--skip-quant",
         action=argparse.BooleanOptionalAction,
@@ -318,7 +472,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_convert.add_argument("--hf-token", default="")
     p_convert.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
     p_convert.add_argument("--force", action="store_true")
-    p_convert.add_argument("--timeout-sec", type=int, default=170)
+    p_convert.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
     p_convert.add_argument(
         "--skip-quant",
         action=argparse.BooleanOptionalAction,
@@ -332,6 +486,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_build.add_argument("--backend", choices=["cpu"], default="cpu")
     p_build.add_argument("--clean", action="store_true")
     p_build.add_argument("--j", type=int, default=4)
+    p_build.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
     p_build.add_argument("--verify", action="store_true")
     p_build.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
     p_build.set_defaults(func=command_build)
@@ -362,12 +517,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip optional local ONNX int8 quantization (default: true)",
     )
     p_bootstrap.add_argument("--enable-quant", action="store_true", help="Alias of --no-skip-quant")
-    p_bootstrap.add_argument("--timeout-sec", type=int, default=170)
+    p_bootstrap.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
     p_bootstrap.add_argument("--clean", action="store_true")
     p_bootstrap.add_argument("--j", type=int, default=4)
     p_bootstrap.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
     p_bootstrap.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
     p_bootstrap.set_defaults(func=command_bootstrap)
+
+    p_compare = sub.add_parser("compare", help="Compare lunavox vs Qwen3-TTS-GGUF inference chain")
+    p_compare.add_argument("--mode", choices=["base", "clone", "both"], default="both")
+    p_compare.add_argument("--text", default="LunaVox alignment test.")
+    p_compare.add_argument("--reference-audio", default=str(ROOT / "ref" / "ref.wav"))
+    p_compare.add_argument("--qwen-reference-audio", default="")
+    p_compare.add_argument("--qwen-reference-text", default="")
+    p_compare.add_argument("--models-dir", default=str(ROOT / "models" / "base_small"))
+    p_compare.add_argument("--build-dir", default=str(ROOT / "build-cpu"))
+    p_compare.add_argument("--qwen-repo", default=str(ROOT.parent / "Qwen3-TTS-GGUF"))
+    p_compare.add_argument("--qwen-model-dir", default=str(ROOT / "models" / "base_small"))
+    p_compare.add_argument("--qwen-python", default="")
+    p_compare.add_argument("--report-out", default=str(ROOT / "logs" / "compare" / "latest_compare_report.json"))
+    p_compare.add_argument("--max-steps", type=int, default=220)
+    p_compare.add_argument("--temperature", type=float, default=0.6)
+    p_compare.add_argument("--top-k", type=int, default=50)
+    p_compare.add_argument("--top-p", type=float, default=1.0)
+    p_compare.add_argument("--predictor-temperature", type=float, default=0.6)
+    p_compare.add_argument("--predictor-top-k", type=int, default=50)
+    p_compare.add_argument("--predictor-top-p", type=float, default=1.0)
+    p_compare.add_argument("--seed", type=int, default=12345)
+    p_compare.add_argument("--predictor-seed", type=int, default=12345)
+    p_compare.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
+    p_compare.add_argument("--keep-artifacts", action="store_true")
+    p_compare.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
+    p_compare.set_defaults(func=command_compare)
 
     return parser
 
