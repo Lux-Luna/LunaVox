@@ -36,9 +36,9 @@ void qwen3_tts_default_params(Qwen3TtsParams* params);
  * New default layout expects:
  *   qwen3_tts_talker.q5_k.gguf
  *   qwen3_tts_predictor.q8_0.gguf
- *   qwen3_tts_speaker_encoder.gguf
- *   qwen3_tts_codec_encoder.gguf
- *   qwen3_tts_codec_decoder.gguf
+ *   qwen3_tts_speaker_encoder.fp16.onnx
+ *   qwen3_tts_codec_encoder.fp16.onnx
+ *   qwen3_tts_decoder.fp16.onnx
  *   embeddings/
  *   tokenizer.json
  * Returns NULL on failure. */
@@ -85,7 +85,7 @@ Qwen3TtsAudio* qwen3_tts_synthesize_with_voice_samples(
 /* Extract speaker embedding from WAV file (for caching).
  * embedding_out: caller-allocated buffer for the embedding.
  * max_size: size of embedding_out in floats.
- * Returns the actual embedding size (typically 1024), or -1 on failure. */
+ * Returns the actual embedding size (typically 2048 for Qwen3-TTS), or -1 on failure. */
 int32_t qwen3_tts_extract_embedding_file(
     Qwen3Tts* tts,
     const char* reference_audio_path,

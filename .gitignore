@@ -2,6 +2,10 @@
 build/
 build-*/
 cmake-build-*/
+_tmp_build/
+_tmp_onnx_export/
+_tmp_onnx_steps/
+.hf_home/
 *.o
 *.a
 *.so
@@ -33,3 +37,4 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+lib/

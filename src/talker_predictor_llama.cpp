@@ -150,6 +150,8 @@ bool TalkerPredictorLlama::run_prefill(
     const std::vector<int32_t> & text_tokens,
     const std::vector<int32_t> & role_prefix_tokens,
     const float * speaker_embedding,
+    const int32_t * ref_codes,
+    int32_t n_ref_frames,
     int32_t language_id,
     std::vector<float> & hidden_out) {
     if (!assets_ || text_tokens.empty()) {
@@ -212,6 +214,38 @@ bool TalkerPredictorLlama::run_prefill(
             tmp_vec[(size_t) i] = tts_pad[i] + speaker_embedding[i];
         }
         prompt_flat.insert(prompt_flat.end(), tmp_vec.begin(), tmp_vec.end());
+    }
+
+    // Lightweight ICL conditioning:
+    // inject reference codec frames (tts_pad + summed codebook embeddings) before generation BOS.
+    if (ref_codes && n_ref_frames > 0) {
+        const float * codec_bos = assets_->codec_row(0, kCodecBos);
+        if (!codec_bos) {
+            error_msg_ = "Missing codec BOS embedding for reference-code injection";
+            return false;
+        }
+        for (int32_t i = 0; i < hidden_dim_; ++i) {
+            tmp_vec[(size_t) i] = tts_pad[i] + codec_bos[i];
+        }
+        prompt_flat.insert(prompt_flat.end(), tmp_vec.begin(), tmp_vec.end());
+
+        for (int32_t t = 0; t < n_ref_frames; ++t) {
+            for (int32_t i = 0; i < hidden_dim_; ++i) {
+                tmp_vec[(size_t) i] = tts_pad[i];
+            }
+            for (int32_t q = 0; q < 16; ++q) {
+                const int32_t code = ref_codes[(size_t) t * 16 + (size_t) q];
+                const float * row = assets_->codec_row(q, code);
+                if (!row) {
+                    error_msg_ = "Reference code out of range during ICL injection";
+                    return false;
+                }
+                for (int32_t i = 0; i < hidden_dim_; ++i) {
+                    tmp_vec[(size_t) i] += row[i];
+                }
+            }
+            prompt_flat.insert(prompt_flat.end(), tmp_vec.begin(), tmp_vec.end());
+        }
     }
 
     const float * tts_bos = assets_->text_row(kTtsBos);
@@ -460,6 +494,8 @@ bool TalkerPredictorLlama::generate(
     const std::vector<int32_t> & text_tokens,
     const std::vector<int32_t> & role_prefix_tokens,
     const float * speaker_embedding,
+    const int32_t * ref_codes,
+    int32_t n_ref_frames,
     int32_t max_frames,
     int32_t language_id,
     float repetition_penalty,
@@ -488,7 +524,14 @@ bool TalkerPredictorLlama::generate(
     trailing_count_ = 0;
 
     std::vector<float> master_hidden;
-    if (!run_prefill(text_tokens, role_prefix_tokens, speaker_embedding, language_id, master_hidden)) {
+    if (!run_prefill(
+            text_tokens,
+            role_prefix_tokens,
+            speaker_embedding,
+            ref_codes,
+            n_ref_frames,
+            language_id,
+            master_hidden)) {
         return false;
     }
 

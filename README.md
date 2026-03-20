@@ -4,8 +4,8 @@ LunaVox is a C++ inference runtime for Qwen3-TTS.
 
 Current runtime architecture:
 - Talker + Predictor: `llama.cpp` official runtime from `./lib`
-- Speaker encoder / codec decoder: existing GGML C++ logic
-- Model layout: 5 GGUF files + `embeddings/` + `tokenizer.json`
+- Speaker encoder / codec encoder / decoder: ONNX Runtime (CPU)
+- Model layout: 2 GGUF + 3 ONNX + `embeddings/` + `tokenizer.json`
 
 ## Requirements
 
@@ -25,9 +25,9 @@ python manage.py setup
 Generated model layout (`models/base_small/`):
 - `qwen3_tts_talker.q5_k.gguf`
 - `qwen3_tts_predictor.q8_0.gguf`
-- `qwen3_tts_speaker_encoder.gguf`
-- `qwen3_tts_codec_encoder.gguf`
-- `qwen3_tts_codec_decoder.gguf`
+- `qwen3_tts_speaker_encoder.fp16.onnx`
+- `qwen3_tts_codec_encoder.fp16.onnx`
+- `qwen3_tts_decoder.fp16.onnx`
 - `embeddings/text_embedding_projected.npy`
 - `embeddings/codec_embedding_0.npy` ... `embeddings/codec_embedding_15.npy`
 - optional `embeddings/proj_weight.npy`, `embeddings/proj_bias.npy`
@@ -39,6 +39,12 @@ Convert only (reuse already-downloaded model assets):
 python manage.py convert --force
 ```
 
+If local ONNX export is unavailable in your environment, you can download prebuilt ONNX files:
+
+```bash
+python manage.py setup --skip-download --onnx-prebuilt-repo cgisky/qwen3-tts-custom-gguf --onnx-prebuilt-only
+```
+
 ## Build
 
 ```bash
@@ -46,8 +52,8 @@ python manage.py build --backend cpu
 ```
 
 `tools/build_manager.py` will:
-- auto-generate MinGW import libs from `lib/ggml*.dll` on Windows
-- configure CMake to use prebuilt runtime in `./lib`
+- configure CMake to use prebuilt llama runtime in `./lib`
+- configure CMake to use ONNX Runtime SDK in `./lib/onnxruntime`
 - build into `build-cpu/`
 
 ## Run

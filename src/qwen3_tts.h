@@ -1,8 +1,7 @@
 #pragma once
 
 #include "text_tokenizer.h"
-#include "audio_tokenizer_encoder.h"
-#include "audio_tokenizer_decoder.h"
+#include "onnx_audio_runtime.h"
 #include "assets_manager.h"
 #include "talker_predictor_llama.h"
 
@@ -97,9 +96,9 @@ public:
     // Required layout:
     //   qwen3_tts_talker.q5_k.gguf
     //   qwen3_tts_predictor.q8_0.gguf
-    //   qwen3_tts_speaker_encoder.gguf
-    //   qwen3_tts_codec_encoder.gguf
-    //   qwen3_tts_codec_decoder.gguf
+    //   qwen3_tts_speaker_encoder.fp16.onnx
+    //   qwen3_tts_codec_encoder.fp16.onnx
+    //   qwen3_tts_decoder.fp16.onnx
     //   embeddings/
     //   tokenizer.json
     bool load_models(const std::string & model_dir);
@@ -129,7 +128,7 @@ public:
     
     // Extract speaker embedding from raw audio samples (for caching)
     // ref_samples: 24kHz mono float32 normalized to [-1, 1]
-    // embedding: output vector (resized to hidden_size, typically 1024)
+    // embedding: output vector (typically 2048 for Qwen3-TTS)
     // Returns true on success
     bool extract_speaker_embedding(const float * ref_samples, int32_t n_ref_samples,
                                    std::vector<float> & embedding,
@@ -137,7 +136,7 @@ public:
 
     // Synthesize with pre-computed speaker embedding (skips encoder)
     // embedding: speaker embedding from extract_speaker_embedding()
-    // embedding_size: must match hidden_size (typically 1024)
+    // embedding_size: must match runtime hidden size (typically 2048)
     tts_result synthesize_with_embedding(const std::string & text,
                                           const float * embedding, int32_t embedding_size,
                                           const tts_params & params = tts_params());
@@ -154,6 +153,8 @@ public:
 private:
     tts_result synthesize_internal(const std::string & text,
                                    const float * speaker_embedding,
+                                   const int32_t * ref_codes,
+                                   int32_t n_ref_frames,
                                    const tts_params & params,
                                    tts_result & result);
 
@@ -162,21 +163,25 @@ private:
     TextTokenizer tokenizer_;
     TalkerPredictorLlama talker_predictor_;
     AssetsManager assets_;
-    AudioTokenizerEncoder audio_encoder_;
-    AudioTokenizerDecoder audio_decoder_;
+    SpeakerEncoderOnnx speaker_encoder_;
+    CodecEncoderOnnx codec_encoder_;
+    StatefulDecoderOnnx decoder_;
     
     bool models_loaded_ = false;
-    bool encoder_loaded_ = false;
+    bool speaker_encoder_loaded_ = false;
+    bool codec_encoder_loaded_ = false;
     bool talker_predictor_loaded_ = false;
     bool assets_loaded_ = false;
     bool decoder_loaded_ = false;
     bool low_mem_mode_ = false;
     std::string error_msg_;
-    std::string speaker_model_path_;
+    std::string speaker_onnx_path_;
+    std::string codec_encoder_onnx_path_;
     std::string talker_model_path_;
     std::string predictor_model_path_;
     std::string embeddings_dir_path_;
-    std::string decoder_model_path_;
+    std::string decoder_onnx_path_;
+    std::string tokenizer_json_path_;
     tts_progress_callback_t progress_callback_;
 };
 

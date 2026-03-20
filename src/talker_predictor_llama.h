@@ -27,6 +27,8 @@ public:
         const std::vector<int32_t> & text_tokens,
         const std::vector<int32_t> & role_prefix_tokens,
         const float * speaker_embedding,
+        const int32_t * ref_codes,
+        int32_t n_ref_frames,
         int32_t max_frames,
         int32_t language_id,
         float repetition_penalty,
@@ -40,6 +42,8 @@ private:
         const std::vector<int32_t> & text_tokens,
         const std::vector<int32_t> & role_prefix_tokens,
         const float * speaker_embedding,
+        const int32_t * ref_codes,
+        int32_t n_ref_frames,
         int32_t language_id,
         std::vector<float> & hidden_out);
 

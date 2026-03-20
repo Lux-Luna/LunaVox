@@ -14,7 +14,7 @@ class Builder:
         self.root = root
         self.env = os.environ.copy()
         self.lib_dir = self.root / "lib"
-        self.ggml_include_dir = self.root / "third_party" / "ggml" / "include"
+        self.ort_root = self.lib_dir / "onnxruntime"
         self.tmp_dir = self.root / "_tmp_build"
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         # Avoid writing temp files to user profile paths that may be inaccessible in sandboxed sessions.
@@ -82,50 +82,6 @@ class Builder:
     @staticmethod
     def _cmake_path(path_str: str) -> str:
         return Path(path_str).as_posix()
-
-    def _ensure_import_lib(self, dll_name: str, out_lib_name: str) -> None:
-        dll_path = self.lib_dir / dll_name
-        if not dll_path.exists():
-            raise RuntimeError(f"Required runtime DLL not found: {dll_path}")
-
-        out_lib = self.lib_dir / out_lib_name
-        if out_lib.exists() and out_lib.stat().st_mtime >= dll_path.stat().st_mtime:
-            return
-
-        gendef = self._which("gendef")
-        dlltool = self._which("dlltool")
-        if not gendef or not dlltool:
-            raise RuntimeError(
-                "Missing gendef/dlltool in PATH. Install MinGW toolchain first "
-                "(e.g. conda install -n lunavox -c conda-forge m2w64-toolchain)."
-            )
-
-        def_file = self.lib_dir / f"{dll_path.stem}.def"
-        print(f"[build] Generating import lib: {out_lib.name}")
-        subprocess.run([gendef, str(dll_path)], cwd=str(self.lib_dir), env=self.env, check=True)
-        if not def_file.exists():
-            raise RuntimeError(f"gendef did not produce expected file: {def_file}")
-
-        subprocess.run(
-            [
-                dlltool,
-                "-d",
-                str(def_file),
-                "-D",
-                dll_name,
-                "-l",
-                str(out_lib),
-            ],
-            cwd=str(self.lib_dir),
-            env=self.env,
-            check=True,
-        )
-
-    def _prepare_windows_import_libs(self) -> None:
-        if platform.system() != "Windows":
-            return
-        self._ensure_import_lib("ggml-base.dll", "libggml-base.a")
-        self._ensure_import_lib("ggml.dll", "libggml.a")
 
     def _copy_windows_runtime_dlls(self, build_dir: Path) -> None:
         if platform.system() != "Windows":
@@ -216,7 +172,7 @@ class Builder:
         windres = self._which("windres")
 
         forced = self.env.get("QWEN3_TTS_TOOLCHAIN", "").strip().lower()
-        default_order = ["mingw", "clang", "msvc"]
+        default_order = ["clang", "mingw", "msvc"]
         if forced:
             if forced not in {"mingw", "clang", "msvc", "auto"}:
                 raise RuntimeError(
@@ -260,7 +216,9 @@ class Builder:
                 return (args, toolchain)
 
             if toolchain == "msvc":
-                args: list[str] = ["-G", "Ninja"] if ninja else []
+                # Prefer Visual Studio generator so CMake can discover MSVC toolchain
+                # without requiring cl.exe to be pre-initialized in current shell.
+                args: list[str] = ["-G", "Visual Studio 17 2022", "-A", "x64"]
                 self._sanitize_toolchain_env(toolchain)
                 return (args, toolchain)
 
@@ -276,10 +234,13 @@ class Builder:
 
         if not self.lib_dir.exists():
             raise RuntimeError(f"Prebuilt runtime directory missing: {self.lib_dir}")
-        if not self.ggml_include_dir.exists():
-            raise RuntimeError(f"GGML headers missing: {self.ggml_include_dir}")
-
-        self._prepare_windows_import_libs()
+        if not self.ort_root.exists():
+            raise RuntimeError(
+                f"ONNX Runtime SDK missing: {self.ort_root}\n"
+                "Expected include/ and lib/ under this directory."
+            )
+        if not (self.ort_root / "include" / "onnxruntime_cxx_api.h").exists():
+            raise RuntimeError(f"ONNX Runtime headers missing under: {self.ort_root / 'include'}")
         toolchain_args, toolchain_name = self._resolve_toolchain()
         print(f"[build] Toolchain: {toolchain_name}")
 
@@ -295,7 +256,7 @@ class Builder:
             "-B",
             str(build_dir),
             f"-DQWEN3_TTS_PREBUILT_LIB_DIR={self._cmake_path(str(self.lib_dir))}",
-            f"-DQWEN3_TTS_GGML_INCLUDE_DIR={self._cmake_path(str(self.ggml_include_dir))}",
+            f"-DQWEN3_TTS_ORT_ROOT={self._cmake_path(str(self.ort_root))}",
         ] + toolchain_args
         self.run_cmake(cmake_args, self.root)
 

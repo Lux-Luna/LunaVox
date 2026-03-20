@@ -12,7 +12,6 @@ COMMANDS = {
     "setup": TOOLS / "setup" / "setup_pipeline.py",
     # Componentized 5-file conversion pipeline (local-only by default, see main()).
     "convert": TOOLS / "setup" / "setup_pipeline.py",
-    "convert-tok": TOOLS / "conversion" / "convert_tokenizer_to_gguf.py",
     "export-embeddings": TOOLS / "conversion" / "export_embeddings.py",
     "inspect": TOOLS / "conversion" / "inspect_models.py",
     "build": TOOLS / "build_manager.py",
