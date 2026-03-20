@@ -3,176 +3,295 @@ from __future__ import annotations
 
 import argparse
 import os
-import shutil
-import subprocess
 import sys
 from pathlib import Path
-from typing import Dict
+from typing import Iterable
+
+import onnx
+import torch
+from onnxruntime.quantization import QuantType, quantize_dynamic
+from onnxruntime.transformers.float16 import convert_float_to_float16
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parents[1]
+HF_EXPORT_DIR = SCRIPT_DIR / "hf_export"
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if str(HF_EXPORT_DIR) not in sys.path:
+    sys.path.insert(0, str(HF_EXPORT_DIR))
+
+from onnx_export_wrappers import (  # noqa: E402
+    CodecEncoderExportWrapper,
+    SpeakerEncoderExportWrapper,
+    StatefulDecoderDynamoCombined,
+)
+from speaker_encoder_local import load_speaker_encoder_from_base_dir  # noqa: E402
+from tokenizer_12hz.modeling_qwen3_tts_tokenizer_v2 import (  # noqa: E402
+    Qwen3TTSTokenizerV2Model,
+)
 
 
-def run(cmd: list[str], cwd: Path, env: dict[str, str] | None = None) -> None:
-    print(f"[run] {' '.join(cmd)}", file=sys.stderr)
-    subprocess.run(cmd, cwd=str(cwd), check=True, env=env)
+def eprint(msg: str) -> None:
+    print(msg, file=sys.stderr)
 
 
-def ensure_modelscope_layout(base_dir: Path, home_dir: Path) -> Path:
-    target = home_dir / ".cache" / "modelscope" / "hub" / "models" / "Qwen" / "Qwen3-TTS-12Hz-0.6B-Base"
-    if target.exists() and (target / "model.safetensors").exists():
-        print(f"[ok] using existing modelscope base dir: {target}", file=sys.stderr)
-        return target
-
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if target.exists():
-        shutil.rmtree(target)
-    print(f"[sync] copy base model into modelscope cache: {base_dir} -> {target}", file=sys.stderr)
-    shutil.copytree(base_dir, target)
-    return target
+def select_tokenizer_dir(base_dir: Path) -> Path:
+    speech_tokenizer = base_dir / "speech_tokenizer"
+    return speech_tokenizer if speech_tokenizer.exists() else base_dir
 
 
-def copy_onnx_from_dir(source_dir: Path, out_dir: Path) -> list[str]:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    mapping = {
-        "qwen3_tts_codec_encoder.fp16.onnx": [
-            source_dir / "qwen3_tts_codec_encoder.fp16.onnx",
-            source_dir / "qwen3_tts_codec_encoder.fp32.onnx",
-            source_dir / "qwen3_tts_codec_encoder.onnx",
-        ],
-        "qwen3_tts_speaker_encoder.fp16.onnx": [
-            source_dir / "qwen3_tts_speaker_encoder.fp16.onnx",
-            source_dir / "qwen3_tts_speaker_encoder.fp32.onnx",
-            source_dir / "qwen3_tts_speaker_encoder.onnx",
-        ],
-        "qwen3_tts_decoder.fp16.onnx": [
-            source_dir / "qwen3_tts_decoder.fp16.onnx",
-            source_dir / "qwen3_tts_decoder.fp32.onnx",
-            source_dir / "qwen3_tts_decoder.onnx",
-        ],
-    }
-
-    missing: list[str] = []
-    for dst_name, candidates in mapping.items():
-        src = next((p for p in candidates if p.exists()), None)
-        if src is None:
-            missing.append(dst_name)
-            continue
-        dst = out_dir / dst_name
-        shutil.copy2(src, dst)
-        print(f"[ok] {src.name} -> {dst}", file=sys.stderr)
-    return missing
+def ensure_exists(path: Path, name: str) -> None:
+    if not path.exists():
+        raise RuntimeError(f"Missing {name}: {path}")
 
 
-def download_prebuilt_onnx(prebuilt_repo: str, out_dir: Path, cache_home: Path) -> None:
-    from huggingface_hub import hf_hub_download
+def convert_fp32_to_fp16(src_fp32: Path, dst_fp16: Path) -> None:
+    model = onnx.load(str(src_fp32))
+    model_fp16 = convert_float_to_float16(
+        model,
+        keep_io_types=True,
+        min_positive_val=1e-7,
+        max_finite_val=65504,
+        op_block_list=["LayerNormalization", "Softmax", "Range"],
+    )
+    onnx.save(model_fp16, str(dst_fp16))
 
-    hf_home = cache_home / ".hf_home"
-    hf_cache = hf_home / "hub"
-    hf_cache.mkdir(parents=True, exist_ok=True)
 
-    os.environ["HF_HOME"] = str(hf_home)
-    os.environ["HF_HUB_CACHE"] = str(hf_cache)
-    os.environ["XDG_CACHE_HOME"] = str(hf_home)
+def export_codec_encoder(base_dir: Path, output_dir: Path) -> Path:
+    dst_fp16 = output_dir / "qwen3_tts_codec_encoder.fp16.onnx"
+    if dst_fp16.exists():
+        eprint(f"[skip] codec encoder exists: {dst_fp16}")
+        return dst_fp16
 
-    prebuilt_map: Dict[str, str] = {
-        "qwen3_tts_codec_encoder.fp16.onnx": "onnx/qwen3_tts_codec_encoder.onnx",
-        "qwen3_tts_speaker_encoder.fp16.onnx": "onnx/qwen3_tts_speaker_encoder.onnx",
-        "qwen3_tts_decoder.fp16.onnx": "onnx/qwen3_tts_decoder.onnx",
-    }
+    tokenizer_dir = select_tokenizer_dir(base_dir)
+    model = Qwen3TTSTokenizerV2Model.from_pretrained(str(tokenizer_dir))
+    model.eval()
+    model.config.return_dict = False
+    if hasattr(model, "encoder") and hasattr(model.encoder, "config"):
+        model.encoder.config.return_dict = False
+    model.encoder.apply(lambda m: m.remove_weight_norm() if hasattr(m, "remove_weight_norm") else None)
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    for dst_name, repo_file in prebuilt_map.items():
-        downloaded = hf_hub_download(
-            repo_id=prebuilt_repo,
-            filename=repo_file,
-            local_dir=str(out_dir),
+    wrapper = CodecEncoderExportWrapper(model).eval()
+    dummy_input = torch.randn(1, 24000)
+    tmp_fp32 = output_dir / "qwen3_tts_codec_encoder.fp32.onnx"
+    def export_with_torchscript() -> None:
+        torch.onnx.export(
+            wrapper,
+            (dummy_input,),
+            str(tmp_fp32),
+            input_names=["input_values"],
+            output_names=["audio_codes"],
+            dynamic_axes={
+                "input_values": {0: "batch_size", 1: "sequence_length"},
+                "audio_codes": {0: "batch_size", 1: "sequence_length"},
+            },
+            opset_version=18,
+            do_constant_folding=True,
+            dynamo=False,
         )
-        dst = out_dir / dst_name
-        shutil.copy2(downloaded, dst)
-        print(f"[ok] {repo_file} -> {dst}", file=sys.stderr)
+
+    def export_with_dynamo() -> None:
+        batch = torch.export.Dim("batch", min=1, max=8)
+        seq = torch.export.Dim("sequence_length", min=1, max=240000)
+        torch.onnx.export(
+            wrapper,
+            (dummy_input,),
+            str(tmp_fp32),
+            input_names=["input_values"],
+            output_names=["audio_codes"],
+            dynamic_shapes=({0: batch, 1: seq},),
+            opset_version=18,
+            do_constant_folding=True,
+            dynamo=True,
+        )
+
+    try:
+        export_with_torchscript()
+        eprint("[ok] codec encoder exported via torchscript path")
+    except Exception as err:
+        eprint(f"[warn] torchscript codec export failed, fallback to dynamo: {err}")
+        if tmp_fp32.exists():
+            tmp_fp32.unlink()
+        export_with_dynamo()
+        eprint("[ok] codec encoder exported via dynamo fallback")
+
+    convert_fp32_to_fp16(tmp_fp32, dst_fp16)
+    eprint(f"[ok] exported codec encoder: {dst_fp16}")
+    return dst_fp16
+
+
+def export_speaker_encoder(base_dir: Path, output_dir: Path) -> Path:
+    dst_fp16 = output_dir / "qwen3_tts_speaker_encoder.fp16.onnx"
+    if dst_fp16.exists():
+        eprint(f"[skip] speaker encoder exists: {dst_fp16}")
+        return dst_fp16
+
+    speaker_encoder_module = load_speaker_encoder_from_base_dir(base_dir)
+    wrapper = SpeakerEncoderExportWrapper(speaker_encoder_module).eval()
+    dummy_input = torch.randn(1, 100, 128)
+    tmp_fp32 = output_dir / "qwen3_tts_speaker_encoder.fp32.onnx"
+
+    torch.onnx.export(
+        wrapper,
+        (dummy_input,),
+        str(tmp_fp32),
+        input_names=["mels"],
+        output_names=["spk_emb"],
+        dynamic_axes={
+            "mels": {0: "batch_size", 1: "sequence_length"},
+            "spk_emb": {0: "batch_size"},
+        },
+        opset_version=18,
+        do_constant_folding=True,
+        dynamo=False,
+    )
+    convert_fp32_to_fp16(tmp_fp32, dst_fp16)
+    eprint(f"[ok] exported speaker encoder: {dst_fp16}")
+    return dst_fp16
+
+
+def export_decoder(base_dir: Path, output_dir: Path) -> Path:
+    dst_fp16 = output_dir / "qwen3_tts_decoder.fp16.onnx"
+    if dst_fp16.exists():
+        eprint(f"[skip] decoder exists: {dst_fp16}")
+        return dst_fp16
+
+    tokenizer_dir = select_tokenizer_dir(base_dir)
+    model = Qwen3TTSTokenizerV2Model.from_pretrained(str(tokenizer_dir)).to("cpu")
+    model.eval()
+    model.config.decoder_config._attn_implementation = "eager"
+    model.config.decoder_config.head_dim = 64
+
+    wrapper = StatefulDecoderDynamoCombined(model.decoder).to("cpu").eval()
+    num_layers = wrapper.num_layers
+    cfg = model.decoder.config
+    num_heads = cfg.num_key_value_heads if hasattr(cfg, "num_key_value_heads") else cfg.num_attention_heads
+    head_dim = cfg.head_dim
+
+    bsz = 1
+    n_frames = 3
+    n_q = 16
+    dummy_audio_codes = torch.zeros(bsz, n_frames, n_q, dtype=torch.long)
+    dummy_pre_conv_h = torch.zeros(bsz, 512, 0)
+    dummy_latent_buf = torch.zeros(bsz, 1024, 0)
+    dummy_conv_h = torch.zeros(bsz, 1024, 0)
+    dummy_is_last = torch.tensor([0.0])
+    dummy_kv = [torch.zeros(bsz, num_heads, 0, head_dim) for _ in range(num_layers * 2)]
+
+    dummy_inputs = (
+        dummy_audio_codes,
+        dummy_pre_conv_h,
+        dummy_latent_buf,
+        dummy_conv_h,
+        dummy_is_last,
+        *dummy_kv,
+    )
+
+    batch = torch.export.Dim("batch", min=1, max=8)
+    num_frames = torch.export.Dim("num_frames", min=1, max=1024)
+    past_seq = torch.export.Dim("past_seq", min=0, max=72)
+    pre_conv_seq = torch.export.Dim("pre_conv_seq", min=0, max=2)
+    latent_seq = torch.export.Dim("latent_seq", min=0, max=4)
+    conv_seq = torch.export.Dim("conv_seq", min=0, max=4)
+    dynamic_shapes = (
+        {0: batch, 1: num_frames},
+        {0: batch, 2: pre_conv_seq},
+        {0: batch, 2: latent_seq},
+        {0: batch, 2: conv_seq},
+        None,
+        tuple([{0: batch, 2: past_seq}] * (num_layers * 2)),
+    )
+
+    input_names = ["audio_codes", "pre_conv_history", "latent_buffer", "conv_history", "is_last"]
+    output_names = ["final_wav", "valid_samples", "next_pre_conv_history", "next_latent_buffer", "next_conv_history"]
+    input_names.extend([f"past_key_{i}" for i in range(num_layers)])
+    input_names.extend([f"past_value_{i}" for i in range(num_layers)])
+    output_names.extend([f"next_key_{i}" for i in range(num_layers)])
+    output_names.extend([f"next_value_{i}" for i in range(num_layers)])
+
+    tmp_fp32 = output_dir / "qwen3_tts_decoder.fp32.onnx"
+    with torch.no_grad():
+        torch.onnx.export(
+            wrapper,
+            dummy_inputs,
+            str(tmp_fp32),
+            input_names=input_names,
+            output_names=output_names,
+            dynamic_shapes=dynamic_shapes,
+            opset_version=18,
+            dynamo=True,
+        )
+    convert_fp32_to_fp16(tmp_fp32, dst_fp16)
+    eprint(f"[ok] exported decoder: {dst_fp16}")
+    return dst_fp16
+
+
+def quantize_int8_models(output_dir: Path, targets: Iterable[Path]) -> None:
+    for fp32_path in targets:
+        if not fp32_path.exists():
+            continue
+        out_int8 = fp32_path.with_suffix(".int8.onnx")
+        quantize_dynamic(
+            str(fp32_path),
+            str(out_int8),
+            op_types_to_quantize=["MatMul", "Attention", "Conv"],
+            per_channel=True,
+            reduce_range=False,
+            weight_type=QuantType.QUInt8,
+        )
+        eprint(f"[ok] quantized int8: {out_int8}")
+
+
+def parse_args() -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description="Export Qwen3-TTS ONNX artifacts from local model files")
+    ap.add_argument("--base-dir", required=True, help="Base model directory (Qwen3-TTS-12Hz-0.6B-Base)")
+    ap.add_argument("--tokenizer-dir", default="", help="Compatibility arg (unused, local export auto-detects)")
+    ap.add_argument("--output-dir", required=True, help="Destination directory for exported ONNX files")
+    ap.add_argument(
+        "--stage",
+        choices=["codec_encoder", "speaker_encoder", "decoder", "quantize", "all"],
+        default="all",
+        help="Run a single stage or all stages",
+    )
+    ap.add_argument("--enable-quant", action="store_true", help="Enable optional local INT8 quantization")
+    return ap.parse_args()
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Export Qwen3-TTS ONNX artifacts via reference Qwen3-TTS-GGUF scripts")
-    ap.add_argument("--base-dir", required=True, help="Base model directory (Qwen3-TTS-12Hz-0.6B-Base)")
-    ap.add_argument("--tokenizer-dir", required=True, help="Tokenizer model directory (unused; kept for compatibility)")
-    ap.add_argument("--output-dir", required=True, help="Destination directory for exported ONNX files")
-    ap.add_argument("--ref-repo", default="", help="Path to Qwen3-TTS-GGUF repo (default: sibling repo)")
-    ap.add_argument("--prebuilt-repo", default="", help="Optional HF repo for prebuilt ONNX fallback")
-    ap.add_argument("--prebuilt-only", action="store_true", help="Skip local export, only download prebuilt ONNX")
-    args = ap.parse_args()
-
+    args = parse_args()
     base_dir = Path(args.base_dir).resolve()
-    out_dir = Path(args.output_dir).resolve()
-    ref_repo = Path(args.ref_repo).resolve() if args.ref_repo else (Path(__file__).resolve().parents[3] / "Qwen3-TTS-GGUF")
+    output_dir = Path(args.output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    if not base_dir.exists():
-        raise RuntimeError(f"Base model directory does not exist: {base_dir}")
+    ensure_exists(base_dir, "base model directory")
+    ensure_exists(base_dir / "model.safetensors", "base model weights")
+    ensure_exists(base_dir / "config.json", "base model config")
 
-    cache_home_env = os.environ.get("LUNAVOX_MODELSCOPE_HOME", "").strip()
-    if cache_home_env:
-        cache_home = Path(cache_home_env).expanduser()
-    else:
-        cache_home = Path(__file__).resolve().parents[2] / ".cache_home"
-    cache_home.mkdir(parents=True, exist_ok=True)
+    stage = args.stage
+    if stage in {"codec_encoder", "all"}:
+        export_codec_encoder(base_dir, output_dir)
+    if stage in {"speaker_encoder", "all"}:
+        export_speaker_encoder(base_dir, output_dir)
+    if stage in {"decoder", "all"}:
+        export_decoder(base_dir, output_dir)
+    if args.enable_quant and stage in {"quantize", "all"}:
+        quantize_int8_models(
+            output_dir,
+            [
+                output_dir / "qwen3_tts_codec_encoder.fp32.onnx",
+                output_dir / "qwen3_tts_speaker_encoder.fp32.onnx",
+                output_dir / "qwen3_tts_decoder.fp32.onnx",
+            ],
+        )
+    elif stage == "quantize":
+        eprint("[skip] quantize stage requested but --enable-quant is not set")
 
-    if args.prebuilt_only:
-        if not args.prebuilt_repo:
-            raise RuntimeError("--prebuilt-only requires --prebuilt-repo")
-        download_prebuilt_onnx(args.prebuilt_repo, out_dir, cache_home)
-        print("[done] ONNX download completed", file=sys.stderr)
-        return 0
-
-    try:
-        if not ref_repo.exists():
-            raise RuntimeError(
-                f"Reference repo not found: {ref_repo}\n"
-                "Set --ref-repo to your local Qwen3-TTS-GGUF clone."
-            )
-
-        ensure_modelscope_layout(base_dir, cache_home)
-
-        scripts = [
-            "11-Export-Codec-Encoder.py",
-            "12-Export-Speaker-Encoder.py",
-            "13-Export-Decoder.py",
-            "16-Quantize-ONNX-Models.py",
-        ]
-        env = os.environ.copy()
-        # Reference scripts resolve "~/.cache/modelscope/..." from HOME/USERPROFILE.
-        env["HOME"] = str(cache_home)
-        env["USERPROFILE"] = str(cache_home)
-        env["PYTHONUTF8"] = "1"
-        env["PYTHONIOENCODING"] = "utf-8"
-
-        py_root = Path(sys.executable).resolve().parent
-        extra_path_entries = [
-            py_root,
-            py_root / "Library" / "bin",
-            py_root / "Scripts",
-        ]
-        path_parts = [str(p) for p in extra_path_entries if p.exists()]
-        if path_parts:
-            env["PATH"] = os.pathsep.join(path_parts + [env.get("PATH", "")])
-        for s in scripts:
-            p = ref_repo / s
-            if not p.exists():
-                raise RuntimeError(f"Missing export script in reference repo: {p}")
-            run([sys.executable, str(p)], cwd=ref_repo, env=env)
-
-        export_dir = ref_repo / "model-base-small"
-        if not export_dir.exists():
-            raise RuntimeError(f"Reference export directory not found: {export_dir}")
-
-        missing = copy_onnx_from_dir(export_dir, out_dir)
-        if missing:
-            raise RuntimeError("Missing exported ONNX artifacts: " + ", ".join(missing))
-    except Exception as export_err:
-        if not args.prebuilt_repo:
-            raise
-        print(f"[warn] local ONNX export failed: {export_err}", file=sys.stderr)
-        print(f"[warn] falling back to prebuilt repo: {args.prebuilt_repo}", file=sys.stderr)
-        download_prebuilt_onnx(args.prebuilt_repo, out_dir, cache_home)
-
-    print("[done] ONNX export completed", file=sys.stderr)
+    eprint("[done] local ONNX export completed")
     return 0
 
 

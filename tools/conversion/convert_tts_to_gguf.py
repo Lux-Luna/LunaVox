@@ -63,7 +63,7 @@ class Qwen3TTSConverter:
         "q5_k": gguf.LlamaFileType.MOSTLY_Q5_K_M,
     }
 
-    # Keep in sync with enum ggml_type in ggml/include/ggml.h.
+    # Keep in sync with GGML quant type ids used by llama.cpp / GGUF tooling.
     GGML_TYPE_MAP = {
         "f32": 0,
         "f16": 1,

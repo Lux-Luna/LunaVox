@@ -31,6 +31,12 @@ private:
     void * session_impl_ = nullptr;
     std::vector<std::string> input_names_;
     std::vector<std::string> output_names_;
+    // Dynamo-exported codec ONNX can require aligned input lengths.
+    // Keep defaults compatible with current Qwen3-TTS tokenizer-12Hz exports.
+    int32_t align_min_samples_ = 24000;
+    int32_t align_mod_base_ = 960;
+    int32_t align_mod_stride_ = 1920;
+    bool align_grid_enabled_ = true;
 };
 
 class SpeakerEncoderOnnx {

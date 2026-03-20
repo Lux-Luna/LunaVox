@@ -359,68 +359,119 @@ bool CodecEncoderOnnx::encode(
         return false;
     }
 
-    try {
-        auto * impl = as_session(session_impl_);
-        Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    auto * impl = as_session(session_impl_);
+    Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    const char * in_name = input_names_[0].c_str();
+    const char * out_name = output_names_[0].c_str();
+    std::array<const char *, 1> in_names = {in_name};
+    std::array<const char *, 1> out_names = {out_name};
 
-        std::vector<float> wav((size_t) n_samples);
+    auto push_unique = [](std::vector<int32_t> & values, int32_t v) {
+        if (v <= 0) {
+            return;
+        }
+        if (std::find(values.begin(), values.end(), v) == values.end()) {
+            values.push_back(v);
+        }
+    };
+
+    std::vector<int32_t> candidate_lengths;
+    if (align_grid_enabled_ && align_mod_stride_ > 0) {
+        int32_t aligned = std::max(n_samples, align_min_samples_);
+        int32_t target_mod = align_mod_base_ % align_mod_stride_;
+        if (target_mod < 0) {
+            target_mod += align_mod_stride_;
+        }
+        int32_t rem = aligned % align_mod_stride_;
+        if (rem < 0) {
+            rem += align_mod_stride_;
+        }
+        aligned += (target_mod - rem + align_mod_stride_) % align_mod_stride_;
+
+        push_unique(candidate_lengths, aligned);
+        // Also try one and two strides forward in case the aligned point is still rejected.
+        push_unique(candidate_lengths, aligned + align_mod_stride_);
+        push_unique(candidate_lengths, aligned + align_mod_stride_ * 2);
+    }
+
+    // Keep fallback probes for non-aligned exports or future model variants.
+    const std::array<int32_t, 23> pad_candidates = {
+        0, 1, 2, 4, 8, 16, 32, 64, 96, 128, 160, 192, 224, 256, 320, 384, 448, 512, 768, 1024, 1536, 2048, 4096,
+    };
+    for (int32_t pad : pad_candidates) {
+        push_unique(candidate_lengths, n_samples + pad);
+    }
+
+    std::string last_runtime_error;
+    for (size_t len_idx = 0; len_idx < candidate_lengths.size(); ++len_idx) {
+        const int32_t effective_samples = candidate_lengths[len_idx];
+        std::vector<float> wav((size_t) effective_samples, 0.0f);
         std::memcpy(wav.data(), samples, (size_t) n_samples * sizeof(float));
 
-        std::array<int64_t, 2> in_shape = {1, (int64_t) n_samples};
-        Ort::Value in_tensor = Ort::Value::CreateTensor<float>(
-            mem, wav.data(), wav.size(), in_shape.data(), in_shape.size());
+        try {
+            std::array<int64_t, 2> in_shape = {1, (int64_t) effective_samples};
+            Ort::Value in_tensor = Ort::Value::CreateTensor<float>(
+                mem, wav.data(), wav.size(), in_shape.data(), in_shape.size());
+            std::array<Ort::Value, 1> in_values = {std::move(in_tensor)};
 
-        const char * in_name = input_names_[0].c_str();
-        const char * out_name = output_names_[0].c_str();
-        std::array<const char *, 1> in_names = {in_name};
-        std::array<const char *, 1> out_names = {out_name};
-        std::array<Ort::Value, 1> in_values = {std::move(in_tensor)};
+            auto out = impl->session.Run(
+                Ort::RunOptions{nullptr},
+                in_names.data(),
+                in_values.data(),
+                in_values.size(),
+                out_names.data(),
+                out_names.size());
 
-        auto out = impl->session.Run(
-            Ort::RunOptions{nullptr},
-            in_names.data(),
-            in_values.data(),
-            in_values.size(),
-            out_names.data(),
-            out_names.size());
+            if (out.empty()) {
+                error_msg_ = "Codec encoder returned no outputs";
+                return false;
+            }
 
-        if (out.empty()) {
-            error_msg_ = "Codec encoder returned no outputs";
+            auto info = out[0].GetTensorTypeAndShapeInfo();
+            auto shape = info.GetShape();
+            if (shape.size() < 3) {
+                error_msg_ = "Codec encoder output shape is invalid";
+                return false;
+            }
+
+            const int64_t batch = shape[0] < 0 ? 1 : shape[0];
+            const int64_t frames = shape[1] < 0 ? 0 : shape[1];
+            const int64_t codebooks = shape[2] < 0 ? 16 : shape[2];
+            if (batch != 1 || frames <= 0 || codebooks <= 0) {
+                error_msg_ = "Codec encoder output dimensions are not supported";
+                return false;
+            }
+
+            const int64_t total = info.GetElementCount();
+            if (total != frames * codebooks) {
+                error_msg_ = "Codec encoder output element count mismatch";
+                return false;
+            }
+
+            const int64_t * raw = out[0].GetTensorData<int64_t>();
+            codes.resize((size_t) total);
+            for (int64_t i = 0; i < total; ++i) {
+                codes[(size_t) i] = (int32_t) raw[i];
+            }
+            n_frames = (int32_t) frames;
+            return true;
+        } catch (const std::exception & e) {
+            last_runtime_error = e.what();
+            const bool maybe_reshape_mismatch =
+                last_runtime_error.find("Reshape") != std::string::npos ||
+                last_runtime_error.find("input_shape_size == size was false") != std::string::npos ||
+                last_runtime_error.find("BroadcastIterator::Init") != std::string::npos;
+            if (maybe_reshape_mismatch && (len_idx + 1) < candidate_lengths.size()) {
+                continue;
+            }
+            error_msg_ = std::string("Codec encoder inference failed: ") + e.what();
             return false;
         }
-
-        auto info = out[0].GetTensorTypeAndShapeInfo();
-        auto shape = info.GetShape();
-        if (shape.size() < 3) {
-            error_msg_ = "Codec encoder output shape is invalid";
-            return false;
-        }
-
-        const int64_t batch = shape[0] < 0 ? 1 : shape[0];
-        const int64_t frames = shape[1] < 0 ? 0 : shape[1];
-        const int64_t codebooks = shape[2] < 0 ? 16 : shape[2];
-        if (batch != 1 || frames <= 0 || codebooks <= 0) {
-            error_msg_ = "Codec encoder output dimensions are not supported";
-            return false;
-        }
-
-        const int64_t total = info.GetElementCount();
-        if (total != frames * codebooks) {
-            error_msg_ = "Codec encoder output element count mismatch";
-            return false;
-        }
-
-        const int64_t * raw = out[0].GetTensorData<int64_t>();
-        codes.resize((size_t) total);
-        for (int64_t i = 0; i < total; ++i) {
-            codes[(size_t) i] = (int32_t) raw[i];
-        }
-        n_frames = (int32_t) frames;
-        return true;
-    } catch (const std::exception & e) {
-        error_msg_ = std::string("Codec encoder inference failed: ") + e.what();
-        return false;
     }
+
+    error_msg_ =
+        "Codec encoder inference failed after retrying candidate lengths: " + last_runtime_error;
+    return false;
 }
 
 bool SpeakerEncoderOnnx::load_model(const std::string & model_path, int32_t intra_threads) {

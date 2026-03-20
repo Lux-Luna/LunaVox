@@ -1,6 +1,7 @@
 #include "text_tokenizer.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -12,35 +13,6 @@
 namespace qwen3_tts {
 
 namespace {
-
-static const char * BYTE_TO_UNICODE[256] = {
-    "膧", "膩", "膫", "膬", "膭", "膮", "膯", "膰", "膱", "膲", "膴", "膵", "膶", "膷", "膸", "膹",
-    "膼", "膽", "膾", "膿", "臄", "臅", "臇", "臈", "臉", "臋", "臍", "臎", "臏", "臐", "臑", "臒",
-    "臓", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/",
-    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?",
-    "@", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O",
-    "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "[", "\\", "]", "^", "_",
-    "`", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o",
-    "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "{", "|", "}", "~", "摹",
-    "蘑", "模", "膜", "磨", "摩", "魔", "抹", "末", "莫", "墨", "默", "沫", "漠", "寞", "陌", "谋",
-    "牟", "某", "拇", "牡", "亩", "姆", "母", "墓", "暮", "幕", "募", "慕", "木", "目", "艀", "艁",
-    "艂", "隆", "垄", "拢", "陇", "楼", "娄", "搂", "篓", "漏", "陋", "芦", "卢", "艃", "庐", "炉",
-    "掳", "卤", "虏", "鲁", "麓", "碌", "露", "路", "赂", "鹿", "潞", "禄", "录", "陆", "戮", "驴",
-    "脌", "脕", "脗", "脙", "脛", "脜", "脝", "脟", "脠", "脡", "脢", "脣", "脤", "脥", "脦", "脧",
-    "脨", "脩", "脪", "脫", "脭", "脮", "脰", "脳", "脴", "脵", "脷", "脹", "脺", "脻", "脼", "脽",
-    "脿", "谩", "芒", "茫", "盲", "氓", "忙", "莽", "猫", "茅", "锚", "毛", "矛", "铆", "卯", "茂",
-    "冒", "帽", "貌", "贸", "么", "玫", "枚", "梅", "酶", "霉", "煤", "没", "眉", "媒", "镁", "每"
-};
-
-static std::unordered_map<std::string, uint8_t> build_unicode_to_byte() {
-    std::unordered_map<std::string, uint8_t> result;
-    for (int i = 0; i < 256; ++i) {
-        result[BYTE_TO_UNICODE[i]] = (uint8_t) i;
-    }
-    return result;
-}
-
-static const std::unordered_map<std::string, uint8_t> UNICODE_TO_BYTE = build_unicode_to_byte();
 
 void append_utf8(uint32_t cp, std::string & out) {
     if (cp <= 0x7F) {
@@ -63,6 +35,48 @@ void append_utf8(uint32_t cp, std::string & out) {
     out.push_back((char) (0x80 | ((cp >> 6) & 0x3F)));
     out.push_back((char) (0x80 | (cp & 0x3F)));
 }
+
+std::array<std::string, 256> build_byte_to_unicode() {
+    std::array<std::string, 256> table;
+
+    std::vector<int> bs;
+    bs.reserve(256);
+    for (int c = (int) '!'; c <= (int) '~'; ++c) bs.push_back(c);
+    for (int c = 0xA1; c <= 0xAC; ++c) bs.push_back(c);
+    for (int c = 0xAE; c <= 0xFF; ++c) bs.push_back(c);
+
+    std::vector<int> cs = bs;
+    std::array<bool, 256> in_bs = {};
+    for (int b : bs) in_bs[(size_t) b] = true;
+
+    int n = 0;
+    for (int b = 0; b < 256; ++b) {
+        if (!in_bs[(size_t) b]) {
+            bs.push_back(b);
+            cs.push_back(256 + n);
+            ++n;
+        }
+    }
+
+    for (size_t i = 0; i < bs.size(); ++i) {
+        std::string sym;
+        append_utf8((uint32_t) cs[i], sym);
+        table[(size_t) bs[i]] = std::move(sym);
+    }
+    return table;
+}
+
+static const std::array<std::string, 256> BYTE_TO_UNICODE = build_byte_to_unicode();
+
+static std::unordered_map<std::string, uint8_t> build_unicode_to_byte() {
+    std::unordered_map<std::string, uint8_t> result;
+    for (size_t i = 0; i < BYTE_TO_UNICODE.size(); ++i) {
+        result[BYTE_TO_UNICODE[i]] = (uint8_t) i;
+    }
+    return result;
+}
+
+static const std::unordered_map<std::string, uint8_t> UNICODE_TO_BYTE = build_unicode_to_byte();
 
 bool skip_ws(const std::string & s, size_t & i) {
     while (i < s.size() && std::isspace((unsigned char) s[i])) {

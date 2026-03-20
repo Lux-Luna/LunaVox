@@ -21,6 +21,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -40,9 +41,75 @@ def eprint(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
-def run_cmd(cmd: list[str], cwd: Path, env: Optional[dict[str, str]] = None) -> None:
+def run_cmd(
+    cmd: list[str],
+    cwd: Path,
+    env: Optional[dict[str, str]] = None,
+    timeout_sec: Optional[int] = None,
+    log_file: Optional[Path] = None,
+) -> None:
     eprint(f"[run] {' '.join(cmd)}")
-    subprocess.run(cmd, cwd=str(cwd), check=True, env=env)
+    start = time.time()
+    output_text = ""
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(cwd),
+            check=True,
+            env=env,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout_sec if timeout_sec and timeout_sec > 0 else None,
+        )
+        output_text = proc.stdout or ""
+    except subprocess.TimeoutExpired as err:
+        output_text = ""
+        if err.stdout:
+            output_text += err.stdout if isinstance(err.stdout, str) else err.stdout.decode("utf-8", errors="ignore")
+        if err.stderr:
+            output_text += err.stderr if isinstance(err.stderr, str) else err.stderr.decode("utf-8", errors="ignore")
+        if log_file:
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+            log_file.write_text(
+                f"[timeout] {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"cmd: {' '.join(cmd)}\n"
+                f"cwd: {cwd}\n"
+                f"timeout_sec: {timeout_sec}\n\n"
+                f"{output_text}",
+                encoding="utf-8",
+            )
+        msg = f"Command timed out after {timeout_sec}s: {' '.join(cmd)}"
+        if log_file:
+            msg += f"\nSee log: {log_file}"
+        raise RuntimeError(msg) from err
+    except subprocess.CalledProcessError as err:
+        output_text = err.stdout or ""
+        if log_file:
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+            log_file.write_text(
+                f"[failed] {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"cmd: {' '.join(cmd)}\n"
+                f"cwd: {cwd}\n"
+                f"returncode: {err.returncode}\n\n"
+                f"{output_text}",
+                encoding="utf-8",
+            )
+        raise
+
+    if log_file:
+        elapsed = time.time() - start
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        log_file.write_text(
+            f"[ok] {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"cmd: {' '.join(cmd)}\n"
+            f"cwd: {cwd}\n"
+            f"elapsed_sec: {elapsed:.3f}\n\n"
+            f"{output_text}",
+            encoding="utf-8",
+        )
 
 
 def has_module(name: str) -> bool:
@@ -209,49 +276,104 @@ def ensure_tokenizer_json(base_dir: Path, out_tokenizer_json: Path) -> None:
         return
     from transformers import AutoTokenizer
 
-    tok = AutoTokenizer.from_pretrained(str(base_dir), trust_remote_code=True)
+    tok = AutoTokenizer.from_pretrained(str(base_dir), trust_remote_code=True, fix_mistral_regex=True)
     if not hasattr(tok, "backend_tokenizer"):
         raise RuntimeError("Tokenizer backend is unavailable; failed to generate tokenizer.json")
     tok.backend_tokenizer.save(str(out_tokenizer_json))
 
 
-def ensure_onnx_artifacts(
+def run_onnx_stage(
     python_exe: str,
+    stage: str,
     base_dir: Path,
-    tokenizer_input_dir: Path,
     models_dir: Path,
-    out_codec_encoder: Path,
-    out_speaker_encoder: Path,
-    out_decoder: Path,
-    onnx_prebuilt_repo: str,
-    onnx_prebuilt_only: bool,
+    timeout_sec: int,
+    logs_dir: Path,
+    enable_quant: bool,
 ) -> None:
-    if out_codec_encoder.exists() and out_speaker_encoder.exists() and out_decoder.exists():
-        eprint(f"[ok] exists: {out_codec_encoder}")
-        eprint(f"[ok] exists: {out_speaker_encoder}")
-        eprint(f"[ok] exists: {out_decoder}")
-        return
-
+    log_file = logs_dir / f"{stage}.log"
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
     cmd = [
         python_exe,
         str(TOOLS_DIR / "conversion" / "export_onnx_models.py"),
         "--base-dir",
         str(base_dir),
-        "--tokenizer-dir",
-        str(tokenizer_input_dir),
         "--output-dir",
         str(models_dir),
+        "--stage",
+        stage,
     ]
-    if onnx_prebuilt_repo:
-        cmd += ["--prebuilt-repo", onnx_prebuilt_repo]
-    if onnx_prebuilt_only:
-        cmd += ["--prebuilt-only"]
+    if enable_quant:
+        cmd.append("--enable-quant")
+    run_cmd(
+        cmd,
+        cwd=REPO_ROOT,
+        env=env,
+        timeout_sec=timeout_sec,
+        log_file=log_file,
+    )
 
-    run_cmd(cmd, cwd=REPO_ROOT)
+
+def ensure_onnx_artifacts(
+    python_exe: str,
+    base_dir: Path,
+    models_dir: Path,
+    out_codec_encoder: Path,
+    out_speaker_encoder: Path,
+    out_decoder: Path,
+    timeout_sec: int,
+    logs_dir: Path,
+    enable_quant: bool,
+) -> None:
+    stage_to_output = {
+        "codec_encoder": out_codec_encoder,
+        "speaker_encoder": out_speaker_encoder,
+        "decoder": out_decoder,
+    }
+
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    for stage, artifact in stage_to_output.items():
+        if artifact.exists():
+            eprint(f"[skip] ONNX stage '{stage}' already done: {artifact}")
+            continue
+        run_onnx_stage(
+            python_exe=python_exe,
+            stage=stage,
+            base_dir=base_dir,
+            models_dir=models_dir,
+            timeout_sec=timeout_sec,
+            logs_dir=logs_dir,
+            enable_quant=enable_quant,
+        )
+
+    if enable_quant:
+        run_onnx_stage(
+            python_exe=python_exe,
+            stage="quantize",
+            base_dir=base_dir,
+            models_dir=models_dir,
+            timeout_sec=timeout_sec,
+            logs_dir=logs_dir,
+            enable_quant=enable_quant,
+        )
 
     missing = [p for p in [out_codec_encoder, out_speaker_encoder, out_decoder] if not p.exists()]
     if missing:
         raise RuntimeError("ONNX export did not produce required files:\n" + "\n".join(str(p) for p in missing))
+
+    run_cmd(
+        [
+            python_exe,
+            str(TOOLS_DIR / "conversion" / "validate_onnx_models.py"),
+            "--models-dir",
+            str(models_dir),
+        ],
+        cwd=REPO_ROOT,
+        timeout_sec=timeout_sec,
+        log_file=logs_dir / "validate.log",
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -261,13 +383,20 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--skip-download", action="store_true", help="Skip model downloads")
     p.add_argument("--skip-convert", action="store_true", help="Skip artifact conversion/export")
     p.add_argument("--force", action="store_true", help="Re-download/re-generate outputs")
-    p.add_argument("--onnx-prebuilt-repo", default="", help="Optional HF repo for ONNX fallback download")
-    p.add_argument("--onnx-prebuilt-only", action="store_true", help="Skip local ONNX export and only download prebuilt ONNX")
+    p.add_argument("--timeout-sec", type=int, default=170, help="Per-stage timeout in seconds for ONNX export")
+    p.add_argument(
+        "--skip-quant",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Skip optional local ONNX int8 quantization stage (default: true)",
+    )
+    p.add_argument("--enable-quant", action="store_true", help="Alias of --no-skip-quant")
     return p.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    enable_quant = bool(args.enable_quant or (not args.skip_quant))
 
     require_modules(
         [
@@ -277,10 +406,17 @@ def main() -> int:
             ("safetensors", "safetensors"),
             ("gguf", "gguf"),
             ("transformers", "transformers"),
-            ("onnx", "onnx"),
-            ("onnxruntime", "onnxruntime"),
         ]
     )
+    if not args.skip_convert:
+        require_modules(
+            [
+                ("onnx", "onnx"),
+                ("onnxruntime", "onnxruntime"),
+            ]
+        )
+        if enable_quant:
+            require_modules([("onnxruntime.quantization", "onnxruntime-tools")])
 
     models_dir = Path(args.models_dir).resolve()
     base_dir = models_dir / "Qwen3-TTS-12Hz-0.6B-Base"
@@ -293,6 +429,7 @@ def main() -> int:
     out_decoder = models_dir / "qwen3_tts_decoder.fp16.onnx"
     out_embeddings_dir = models_dir / "embeddings"
     out_tokenizer_json = models_dir / "tokenizer.json"
+    logs_dir = REPO_ROOT / "logs" / "convert_onnx"
 
     hf_token = args.hf_token.strip() or None
     models_dir.mkdir(parents=True, exist_ok=True)
@@ -300,9 +437,7 @@ def main() -> int:
     if not args.skip_download:
         require_modules([("huggingface_hub", "huggingface_hub")])
         ensure_base_assets(base_dir, hf_token, args.force)
-        tokenizer_input_dir = ensure_tokenizer_assets(base_dir, tokenizer_dir, hf_token, args.force)
-    else:
-        tokenizer_input_dir = base_dir if (base_dir / "speech_tokenizer" / "model.safetensors").exists() else tokenizer_dir
+        ensure_tokenizer_assets(base_dir, tokenizer_dir, hf_token, args.force)
 
     if not args.skip_convert:
         if args.force:
@@ -316,15 +451,15 @@ def main() -> int:
         ensure_embeddings(sys.executable, base_dir, out_embeddings_dir)
         ensure_tokenizer_json(base_dir, out_tokenizer_json)
         ensure_onnx_artifacts(
-            sys.executable,
-            base_dir,
-            tokenizer_input_dir,
-            models_dir,
-            out_codec_encoder,
-            out_speaker_encoder,
-            out_decoder,
-            args.onnx_prebuilt_repo.strip(),
-            bool(args.onnx_prebuilt_only),
+            python_exe=sys.executable,
+            base_dir=base_dir,
+            models_dir=models_dir,
+            out_codec_encoder=out_codec_encoder,
+            out_speaker_encoder=out_speaker_encoder,
+            out_decoder=out_decoder,
+            timeout_sec=max(1, int(args.timeout_sec)),
+            logs_dir=logs_dir,
+            enable_quant=enable_quant,
         )
 
     eprint("\n[done] Model setup complete.")

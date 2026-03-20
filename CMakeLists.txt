@@ -179,6 +179,11 @@ add_executable(qwen3-tts-cli src/main.cpp)
 target_link_libraries(qwen3-tts-cli PRIVATE qwen3_tts)
 qwen3_tts_finalize_binary(qwen3-tts-cli)
 
+include(CTest)
+if(BUILD_TESTING)
+    add_test(NAME cli_help_smoke COMMAND qwen3-tts-cli --help)
+endif()
+
 install(TARGETS
     text_tokenizer
     onnx_audio_runtime

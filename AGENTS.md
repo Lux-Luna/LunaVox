@@ -23,12 +23,12 @@ Legacy two-file model layout and transformer fallback are removed.
 
 - CMake consumes prebuilt runtime from `lib/`.
 - CMake consumes ONNX Runtime SDK from `lib/onnxruntime`.
-- No project dependency on `third_party/ggml/include`.
+- No project dependency on `third_party/ggml` (removed).
 
 ## Commands
 
 ```bash
-python manage.py setup
-python manage.py build --backend cpu
-ctest --test-dir build-cpu --output-on-failure
+python manage.py bootstrap --backend cpu
+python manage.py preflight
+ctest --test-dir build-cpu -R cli_help_smoke --output-on-failure
 ```

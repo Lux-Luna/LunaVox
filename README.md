@@ -9,20 +9,79 @@ Current runtime architecture:
 
 ## Requirements
 
-- CMake 3.14+
+- CMake 3.16+
 - Python 3.10+
-- A C++ toolchain (on Windows, `m2w64-toolchain` in conda is supported)
-- Prebuilt runtime files in `./lib` (already expected by this repo)
+- A C++ toolchain (on Windows, conda toolchains are supported)
+- Prebuilt llama runtime files in `./lib`
+- ONNX Runtime SDK in `./lib/onnxruntime` (`include/` + `lib/`)
 - Python dependencies:
   - `pip install -r requirements.txt`
+  - `pip install -r requirements-convert-onnx.txt` (needed for local ONNX export)
 
-## Model Setup
+## Important Constraints
+
+- Inference has no Python dependency.
+- ONNX artifacts are exported locally only.
+- Online prebuilt ONNX download is intentionally disabled.
+
+## One-Command Bootstrap (recommended)
 
 ```bash
-python manage.py setup
+conda run -n lunavox python manage.py bootstrap --backend cpu
 ```
 
-Generated model layout (`models/base_small/`):
+Optional:
+
+```bash
+conda run -n lunavox python manage.py bootstrap --backend cpu --timeout-sec 170 --skip-quant
+```
+
+This command runs:
+1. preflight checks (`git safe.directory`, conda env, conversion deps, ORT SDK)
+2. local model conversion/export
+3. CMake configure + build
+4. built CLI verification (`--help`)
+
+## Manual Steps
+
+Run preflight only:
+
+```bash
+conda run -n lunavox python manage.py preflight
+```
+
+Run setup (download + conversion):
+
+```bash
+conda run -n lunavox python manage.py setup
+```
+
+Convert only (reuse local model assets):
+
+```bash
+conda run -n lunavox python manage.py convert --force
+```
+
+Build only:
+
+```bash
+conda run -n lunavox python manage.py build --backend cpu
+```
+
+## ONNX Export Diagnostics
+
+- ONNX export runs by stage: `codec_encoder`, `speaker_encoder`, `decoder` (+ optional `quantize`)
+- ONNX export completion is followed by a local ORT validation stage.
+- Per-stage timeout default: `170s` (configurable by `--timeout-sec`)
+- Stage logs:
+  - `logs/convert_onnx/codec_encoder.log`
+  - `logs/convert_onnx/speaker_encoder.log`
+  - `logs/convert_onnx/decoder.log`
+  - `logs/convert_onnx/quantize.log` (if enabled)
+  - `logs/convert_onnx/validate.log`
+
+## Runtime Model Layout (`models/base_small/`)
+
 - `qwen3_tts_talker.q5_k.gguf`
 - `qwen3_tts_predictor.q8_0.gguf`
 - `qwen3_tts_speaker_encoder.fp16.onnx`
@@ -32,29 +91,6 @@ Generated model layout (`models/base_small/`):
 - `embeddings/codec_embedding_0.npy` ... `embeddings/codec_embedding_15.npy`
 - optional `embeddings/proj_weight.npy`, `embeddings/proj_bias.npy`
 - `tokenizer.json`
-
-Convert only (reuse already-downloaded model assets):
-
-```bash
-python manage.py convert --force
-```
-
-If local ONNX export is unavailable in your environment, you can download prebuilt ONNX files:
-
-```bash
-python manage.py setup --skip-download --onnx-prebuilt-repo cgisky/qwen3-tts-custom-gguf --onnx-prebuilt-only
-```
-
-## Build
-
-```bash
-python manage.py build --backend cpu
-```
-
-`tools/build_manager.py` will:
-- configure CMake to use prebuilt llama runtime in `./lib`
-- configure CMake to use ONNX Runtime SDK in `./lib/onnxruntime`
-- build into `build-cpu/`
 
 ## Run
 
@@ -71,5 +107,5 @@ Voice cloning:
 ## Tests
 
 ```bash
-ctest --test-dir build-cpu -R "cli_.*smoke.*" --output-on-failure
+ctest --test-dir build-cpu -R cli_help_smoke --output-on-failure
 ```
