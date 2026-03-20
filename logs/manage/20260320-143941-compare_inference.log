@@ -1,0 +1,9 @@
+[failed] 2026-03-20 14:40:02
+stage: compare_inference
+cmd: C:\Users\kwong\miniconda3\envs\lunavox\python.exe D:\TTS\lunavox\tools\compare_inference.py --mode clone --timeout-sec 170 --report-out logs\compare\clone_vivian_anchor_matrix.json --lunavox-model-dir D:\TTS\lunavox\models\base_small --lunavox-build-dir D:\TTS\lunavox\build-cpu --text 你好，我是千问，你今天过得好吗？ --max-steps 180 --temperature 0.6 --top-k 50 --top-p 1.0 --predictor-temperature 0.6 --predictor-top-k 50 --predictor-top-p 1.0 --seed 123 --predictor-seed 456 --lunavox-reference-audio D:\TTS\Qwen3-TTS-GGUF\output\elaborate\Vivian.wav --qwen-reference-audio D:\TTS\Qwen3-TTS-GGUF\output\elaborate\Vivian.wav --qwen-reference-text 你好，我是千问，你今天过得好吗？ --qwen-clone-anchor-seconds 0.0 --qwen-repo D:\TTS\Qwen3-TTS-GGUF --qwen-model-dir D:\TTS\lunavox\models\base_small --strict-qwen-model
+cwd: D:\TTS\lunavox
+timeout_sec: 170
+elapsed_sec: 21.044
+returncode: 1
+
+[compare] report saved: D:\TTS\lunavox\logs\compare\clone_vivian_anchor_matrix.json

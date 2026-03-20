@@ -2,8 +2,14 @@
   "ok": false,
   "mode": "clone",
   "framework": "qwen3-tts-gguf",
-  "timestamp": "2026-03-20 12:18:38",
-  "init_sec": 2.7382662296295166,
+  "timestamp": "2026-03-20 13:58:35",
+  "resolved_model_dir": "D:\\TTS\\lunavox\\models\\base_small",
+  "model_dir_arg": "..\\lunavox\\models\\base_small",
+  "missing_core_files": [],
+  "init_sec": 2.71250057220459,
+  "reference_audio_input": "D:\\TTS\\Qwen3-TTS-GGUF\\output\\elaborate\\Vivian.wav",
+  "reference_audio_used": "D:\\TTS\\Qwen3-TTS-GGUF\\output\\elaborate\\Vivian.wav",
+  "clone_anchor_status": "disabled",
   "error": "set_voice(reference_audio) failed",
-  "traceback": "Traceback (most recent call last):\n  File \"D:\\TTS\\lunavox\\tools\\qwen_local_benchmark.py\", line 230, in main\n    raise RuntimeError(\"set_voice(reference_audio) failed\")\nRuntimeError: set_voice(reference_audio) failed\n"
+  "traceback": "Traceback (most recent call last):\n  File \"D:\\TTS\\lunavox\\tools\\qwen_local_benchmark.py\", line 302, in main\n    raise RuntimeError(\"set_voice(reference_audio) failed\")\nRuntimeError: set_voice(reference_audio) failed\n"
 }

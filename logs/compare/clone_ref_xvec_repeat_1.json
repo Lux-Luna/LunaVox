@@ -1,0 +1,42 @@
+{
+  "success": true,
+  "sample_rate": 24000,
+  "audio_samples": 72960,
+  "audio_sec": 3.040000,
+  "timing_ms": {
+    "tokenize": 0,
+    "encode": 1279,
+    "generate": 3398,
+    "decode": 1013,
+    "total": 4411
+  },
+  "rtf": 1.450987,
+  "mem": {
+    "rss_start": 2387456000,
+    "rss_end": 2502754304,
+    "rss_peak": 2502754304,
+    "phys_start": 2387456000,
+    "phys_end": 2502754304,
+    "phys_peak": 2502754304
+  },
+  "diagnostics": {
+    "spk_emb_dim": 1024,
+    "spk_emb_l2": 10.011577606,
+    "spk_emb_nan_count": 0,
+    "spk_emb_inf_count": 0,
+    "ref_code_frames": 72,
+    "ref_codebooks": 16,
+    "ref_code_min": 1,
+    "ref_code_max": 2042,
+    "gen_code_frames": 38,
+    "gen_codebooks": 16,
+    "gen_code_min": 1,
+    "gen_code_max": 2044,
+    "gen_codes_hash_hex": "3ed246041c5a7dbc",
+    "eos_step": 38,
+    "trailing_count": 11,
+    "trailing_consumed": 11,
+    "pcm_peak": 0.784667969,
+    "pcm_rms": 0.151057273
+  }
+}

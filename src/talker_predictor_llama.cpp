@@ -92,6 +92,9 @@ bool TalkerPredictorLlama::load(
     cur_pos_ = 0;
     step_idx_ = 0;
     trailing_count_ = 0;
+    last_eos_step_ = -1;
+    last_trailing_count_ = 0;
+    last_trailing_consumed_ = 0;
     return true;
 }
 
@@ -101,6 +104,9 @@ void TalkerPredictorLlama::unload() {
     cur_pos_ = 0;
     step_idx_ = 0;
     trailing_count_ = 0;
+    last_eos_step_ = -1;
+    last_trailing_count_ = 0;
+    last_trailing_consumed_ = 0;
     trailing_text_pool_.clear();
     predictor_batch_.free();
     talker_batch_.free();
@@ -361,6 +367,7 @@ bool TalkerPredictorLlama::run_prefill(
         trailing_text_pool_.insert(trailing_text_pool_.end(), tts_eos, tts_eos + hidden_dim_);
     }
     trailing_count_ = (int32_t) (trailing_text_pool_.size() / (size_t) hidden_dim_);
+    last_trailing_count_ = trailing_count_;
     step_idx_ = 0;
     return true;
 }
@@ -552,6 +559,9 @@ bool TalkerPredictorLlama::generate(
     cur_pos_ = 0;
     step_idx_ = 0;
     trailing_count_ = 0;
+    last_eos_step_ = -1;
+    last_trailing_count_ = 0;
+    last_trailing_consumed_ = 0;
 
     std::vector<float> master_hidden;
     if (!run_prefill(
@@ -601,9 +611,16 @@ bool TalkerPredictorLlama::generate(
         return false;
     }
 
-    const int32_t allow_tokens[3] = {kCodecEos, kCodecPad, kCodecBos};
+    // Align with Qwen reference generation behavior:
+    // - stop only on codec EOS token
+    // - enforce a small minimum frame count before allowing EOS
+    static constexpr int32_t kMinNewFramesBeforeEos = 2;
+    const int32_t allow_eos[1] = {kCodecEos};
+    int32_t generated_frames = 0;
     for (int32_t step = 0; step < max_frames; ++step) {
         int32_t code0_token = -1;
+        const int32_t * allow_tokens = (generated_frames >= kMinNewFramesBeforeEos) ? allow_eos : nullptr;
+        const int32_t n_allow = (generated_frames >= kMinNewFramesBeforeEos) ? 1 : 0;
         if (!sample_with_mask(
                 talker_ctx_,
                 talker_model_,
@@ -611,14 +628,20 @@ bool TalkerPredictorLlama::generate(
                 0,
                 2048,
                 allow_tokens,
-                3,
+                n_allow,
                 code0_token)) {
             return false;
         }
         talker_sampler.accept(code0_token);
 
-        if (code0_token == kCodecEos || code0_token == talker_model_.eos_id()) {
+        const bool hit_codec_eos = (code0_token == kCodecEos);
+        const bool hit_model_eos = (code0_token == talker_model_.eos_id());
+        if ((hit_codec_eos || hit_model_eos) && generated_frames >= kMinNewFramesBeforeEos) {
+            last_eos_step_ = step;
             break;
+        }
+        if (hit_codec_eos || hit_model_eos) {
+            continue;
         }
         if (code0_token < 0 || code0_token >= 2048) {
             error_msg_ = "Talker sampled invalid code_0 token";
@@ -641,10 +664,13 @@ bool TalkerPredictorLlama::generate(
         }
 
         output_codes.insert(output_codes.end(), frame_codes.begin(), frame_codes.end());
+        ++generated_frames;
         if (!run_decode_step(audio_sum, master_hidden)) {
             return false;
         }
     }
+
+    last_trailing_consumed_ = std::min(step_idx_, trailing_count_);
 
     if (output_codes.empty()) {
         error_msg_ = "No speech codes generated";

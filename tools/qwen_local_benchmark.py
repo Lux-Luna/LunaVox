@@ -87,7 +87,12 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--speaker", default="Vivian")
     ap.add_argument("--reference-audio", default="")
     ap.add_argument("--reference-text", default="")
-    ap.add_argument("--clone-anchor-seconds", type=float, default=1.0)
+    ap.add_argument(
+        "--clone-anchor-seconds",
+        type=float,
+        default=0.0,
+        help="Optional clone reference clip length in seconds (0 disables clipping; default: 0)",
+    )
     ap.add_argument("--max-steps", type=int, default=220)
     ap.add_argument("--temperature", type=float, default=0.6)
     ap.add_argument("--top-p", type=float, default=1.0)

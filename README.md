@@ -77,11 +77,12 @@ conda run -n lunavox python manage.py compare --mode both --timeout-sec 170 --re
 Notes:
 - `compare` writes per-stage command logs under `logs/manage/` and detailed artifacts under `logs/compare/_artifacts/`.
 - `--qwen-model-dir` now defaults to `models/base_small` to avoid stale external paths.
+- `--strict-qwen-model` defaults to `true`: if Qwen model artifacts are incomplete, compare fails immediately (no fallback).
+- `--qwen-clone-anchor-seconds` controls **Qwen side only** (default `0.0`); clone compare also writes a fixed anchor matrix (`0.0` and `1.0`) for long-WAV root-cause isolation.
 - For clone compare, you can pass separate references:
   - `--reference-audio` for lunavox (WAV)
   - `--qwen-reference-audio` for Qwen side (WAV or JSON)
 - Compare defaults now include fixed seeds (`--seed`, `--predictor-seed`) for reproducibility.
-- If Qwen side model dir is incomplete, compare falls back to `--models-dir` automatically and records the decision in report `notes`.
 
 ## ONNX Export Diagnostics
 
@@ -118,6 +119,12 @@ Voice cloning:
 ```bash
 ./build-cpu/qwen3-tts-cli -m models/base_small -t "Hello" -r output.wav -o cloned.wav
 ```
+
+Runtime notes:
+- Clone reference audio is full-length by default (no forced 1-second truncation).
+- Optional manual cap is supported via env var `QWEN3_TTS_CLONE_MAX_REF_SAMPLES`.
+- Clone synthesis defaults to x-vector-only prompting for stability. Enable ICL fusion (`ref_codes + spk_emb`) explicitly with `QWEN3_TTS_CLONE_USE_ICL=1`.
+- ORT logs are error-only by default; pass `--ort-debug-log` to surface warning logs during debugging.
 
 Export timing/memory JSON:
 

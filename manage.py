@@ -429,10 +429,16 @@ def command_compare(args: argparse.Namespace) -> int:
         compare_args += ["--qwen-reference-audio", args.qwen_reference_audio]
     if args.qwen_reference_text:
         compare_args += ["--qwen-reference-text", args.qwen_reference_text]
+    if args.qwen_clone_anchor_seconds is not None:
+        compare_args += ["--qwen-clone-anchor-seconds", str(args.qwen_clone_anchor_seconds)]
     if args.qwen_repo:
         compare_args += ["--qwen-repo", args.qwen_repo]
     if args.qwen_model_dir:
         compare_args += ["--qwen-model-dir", args.qwen_model_dir]
+    if args.strict_qwen_model:
+        compare_args.append("--strict-qwen-model")
+    else:
+        compare_args.append("--no-strict-qwen-model")
     if args.qwen_python:
         compare_args += ["--qwen-python", args.qwen_python]
     if args.keep_artifacts:
@@ -530,10 +536,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_compare.add_argument("--reference-audio", default=str(ROOT / "ref" / "ref.wav"))
     p_compare.add_argument("--qwen-reference-audio", default="")
     p_compare.add_argument("--qwen-reference-text", default="")
+    p_compare.add_argument(
+        "--qwen-clone-anchor-seconds",
+        type=float,
+        default=0.0,
+        help="Qwen-side clone-only reference clipping seconds for root-cause isolation (default: 0.0)",
+    )
     p_compare.add_argument("--models-dir", default=str(ROOT / "models" / "base_small"))
     p_compare.add_argument("--build-dir", default=str(ROOT / "build-cpu"))
     p_compare.add_argument("--qwen-repo", default=str(ROOT.parent / "Qwen3-TTS-GGUF"))
     p_compare.add_argument("--qwen-model-dir", default=str(ROOT / "models" / "base_small"))
+    p_compare.add_argument(
+        "--strict-qwen-model",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Fail compare immediately when --qwen-model-dir misses required core artifacts (default: true)",
+    )
     p_compare.add_argument("--qwen-python", default="")
     p_compare.add_argument("--report-out", default=str(ROOT / "logs" / "compare" / "latest_compare_report.json"))
     p_compare.add_argument("--max-steps", type=int, default=220)

@@ -3,11 +3,13 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <climits>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 
 #ifdef __APPLE__
 #include <mach/mach.h>
@@ -182,6 +184,89 @@ static bool file_exists_readable(const std::string & path) {
     return true;
 }
 
+static bool env_flag_true(const char * name, bool default_value = false) {
+    const char * v = std::getenv(name);
+    if (!v || !v[0]) {
+        return default_value;
+    }
+    if (v[0] == '1' || v[0] == 'y' || v[0] == 'Y' || v[0] == 't' || v[0] == 'T') {
+        return true;
+    }
+    if (v[0] == '0' || v[0] == 'n' || v[0] == 'N' || v[0] == 'f' || v[0] == 'F') {
+        return false;
+    }
+    return default_value;
+}
+
+static uint64_t fnv1a_u64(const int32_t * data, size_t n) {
+    static constexpr uint64_t kOffset = 1469598103934665603ULL;
+    static constexpr uint64_t kPrime = 1099511628211ULL;
+    uint64_t h = kOffset;
+    for (size_t i = 0; i < n; ++i) {
+        uint32_t v = (uint32_t) data[i];
+        for (int b = 0; b < 4; ++b) {
+            h ^= (uint64_t) ((v >> (8 * b)) & 0xFFu);
+            h *= kPrime;
+        }
+    }
+    return h;
+}
+
+static void count_nonfinite(const float * data, int32_t n, int32_t & n_nan, int32_t & n_inf) {
+    n_nan = 0;
+    n_inf = 0;
+    if (!data || n <= 0) {
+        return;
+    }
+    for (int32_t i = 0; i < n; ++i) {
+        const float v = data[i];
+        if (std::isnan(v)) {
+            ++n_nan;
+        } else if (!std::isfinite(v)) {
+            ++n_inf;
+        }
+    }
+}
+
+static float l2_norm(const float * data, int32_t n) {
+    if (!data || n <= 0) {
+        return 0.0f;
+    }
+    long double acc = 0.0;
+    for (int32_t i = 0; i < n; ++i) {
+        const long double v = (long double) data[i];
+        acc += v * v;
+    }
+    return (float) std::sqrt((double) acc);
+}
+
+static void minmax_i32(const int32_t * data, int32_t n, int32_t & out_min, int32_t & out_max) {
+    out_min = std::numeric_limits<int32_t>::max();
+    out_max = std::numeric_limits<int32_t>::min();
+    if (!data || n <= 0) {
+        return;
+    }
+    for (int32_t i = 0; i < n; ++i) {
+        out_min = std::min(out_min, data[i]);
+        out_max = std::max(out_max, data[i]);
+    }
+}
+
+static void pcm_peak_rms(const std::vector<float> & audio, float & peak, float & rms) {
+    peak = 0.0f;
+    rms = 0.0f;
+    if (audio.empty()) {
+        return;
+    }
+    long double sum_sq = 0.0;
+    for (float v : audio) {
+        const float av = std::fabs(v);
+        peak = std::max(peak, av);
+        sum_sq += (long double) v * (long double) v;
+    }
+    rms = (float) std::sqrt((double) (sum_sq / (long double) audio.size()));
+}
+
 } // namespace
 
 Qwen3TTS::Qwen3TTS() = default;
@@ -255,7 +340,7 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
     return true;
 }
 
-bool Qwen3TTS::load_models(const std::string & model_dir) {
+bool Qwen3TTS::load_models(const std::string & model_dir, int32_t n_threads) {
     int64_t t_start = get_time_ms();
 
     models_loaded_ = false;
@@ -286,8 +371,8 @@ bool Qwen3TTS::load_models(const std::string & model_dir) {
         fprintf(stderr, "  Low-memory mode enabled (lazy decoder + deferred encoders)\n");
     }
 
-    const int32_t n_threads = 4;
-    if (!load_models_new_layout(model_dir, n_threads)) {
+    const int32_t effective_threads = std::max(1, n_threads);
+    if (!load_models_new_layout(model_dir, effective_threads)) {
         return false;
     }
 
@@ -357,33 +442,76 @@ tts_result Qwen3TTS::synthesize_with_voice(
         codec_encoder_loaded_ = true;
     }
 
-    // Keep clone anchor length stable to avoid shape-sensitive ONNX exports and
-    // long-reference drift (noisy prompt / runaway generation).
-    const int32_t clone_anchor_samples = 24000; // 1 second @ 24k
+    // Default behavior aligns with Qwen3-TTS-GGUF: keep full reference audio.
+    // Optional cap can be enabled via env QWEN3_TTS_CLONE_MAX_REF_SAMPLES (>0).
     std::vector<float> clone_ref_buffer;
     const float * clone_ref_ptr = ref_samples;
     int32_t clone_ref_samples = n_ref_samples;
-    if (clone_ref_samples != clone_anchor_samples) {
-        clone_ref_buffer.assign((size_t) clone_anchor_samples, 0.0f);
-        const int32_t copy_n = std::min(clone_ref_samples, clone_anchor_samples);
-        if (copy_n > 0) {
-            std::memcpy(clone_ref_buffer.data(), ref_samples, (size_t) copy_n * sizeof(float));
+    const char * clone_cap_env = std::getenv("QWEN3_TTS_CLONE_MAX_REF_SAMPLES");
+    if (clone_cap_env && clone_cap_env[0] != '\0') {
+        char * end_ptr = nullptr;
+        const long parsed = std::strtol(clone_cap_env, &end_ptr, 10);
+        if (end_ptr != clone_cap_env && parsed > 0 && parsed < INT32_MAX) {
+            const int32_t cap_samples = (int32_t) parsed;
+            if (clone_ref_samples > cap_samples) {
+                clone_ref_buffer.assign(ref_samples, ref_samples + (size_t) cap_samples);
+                clone_ref_ptr = clone_ref_buffer.data();
+                clone_ref_samples = cap_samples;
+                if (params.print_progress || params.print_timing) {
+                    fprintf(stderr,
+                            "Clone reference capped by QWEN3_TTS_CLONE_MAX_REF_SAMPLES=%d (original=%d)\n",
+                            cap_samples,
+                            n_ref_samples);
+                }
+            }
         }
-        clone_ref_ptr = clone_ref_buffer.data();
-        clone_ref_samples = clone_anchor_samples;
     }
 
     std::vector<float> speaker_embedding;
     if (!speaker_encoder_.encode(clone_ref_ptr, clone_ref_samples, speaker_embedding)) {
-        result.error_msg = "Failed to extract speaker embedding: " + speaker_encoder_.get_error();
+        result.error_msg = "[clone/speaker] Failed to extract speaker embedding: " + speaker_encoder_.get_error();
+        return result;
+    }
+    result.spk_emb_dim = (int32_t) speaker_embedding.size();
+    result.spk_emb_l2 = l2_norm(speaker_embedding.data(), (int32_t) speaker_embedding.size());
+    count_nonfinite(
+        speaker_embedding.data(),
+        (int32_t) speaker_embedding.size(),
+        result.spk_emb_nan_count,
+        result.spk_emb_inf_count);
+    if (result.spk_emb_nan_count > 0 || result.spk_emb_inf_count > 0) {
+        result.error_msg = "[clone/speaker] Invalid speaker embedding: non-finite values detected";
+        return result;
+    }
+    if (talker_predictor_.hidden_dim() > 0 && (int32_t) speaker_embedding.size() != talker_predictor_.hidden_dim()) {
+        char buf[256];
+        std::snprintf(
+            buf,
+            sizeof(buf),
+            "[clone/speaker] Speaker embedding dim mismatch: got=%d expected=%d",
+            (int) speaker_embedding.size(),
+            (int) talker_predictor_.hidden_dim());
+        result.error_msg = buf;
         return result;
     }
 
     std::vector<int32_t> ref_codes;
     int32_t n_ref_frames = 0;
     if (!codec_encoder_.encode(clone_ref_ptr, clone_ref_samples, ref_codes, n_ref_frames)) {
-        result.error_msg = "Failed to encode reference audio codes: " + codec_encoder_.get_error();
+        result.error_msg = "[clone/codec_encoder] Failed to encode reference audio codes: " + codec_encoder_.get_error();
         return result;
+    }
+    result.ref_code_frames = n_ref_frames;
+    minmax_i32(ref_codes.data(), (int32_t) ref_codes.size(), result.ref_code_min, result.ref_code_max);
+    if (n_ref_frames <= 0 || ref_codes.empty() || (int32_t) ref_codes.size() != n_ref_frames * 16) {
+        result.error_msg = "[clone/codec_encoder] Invalid ref_codes shape; expected T x 16";
+        return result;
+    }
+    for (int32_t c : ref_codes) {
+        if (c < 0 || c >= 2048) {
+            result.error_msg = "[clone/codec_encoder] Invalid ref code id out of [0, 2047]";
+            return result;
+        }
     }
     result.t_encode_ms = get_time_ms() - t_encode;
 
@@ -394,11 +522,22 @@ tts_result Qwen3TTS::synthesize_with_voice(
                 n_ref_frames);
     }
 
+    // Keep clone stable when no reference transcript is available:
+    // by default, use x-vector-only cloning (speaker embedding only).
+    // Enable ICL ref-code fusion explicitly via env:
+    //   QWEN3_TTS_CLONE_USE_ICL=1
+    const bool use_clone_icl = env_flag_true("QWEN3_TTS_CLONE_USE_ICL", false);
+    const int32_t * ref_codes_ptr = (use_clone_icl && !ref_codes.empty()) ? ref_codes.data() : nullptr;
+    const int32_t ref_frames_for_gen = (ref_codes_ptr != nullptr) ? n_ref_frames : 0;
+    if (params.print_progress && !use_clone_icl) {
+        fprintf(stderr, "Clone mode: using x-vector-only prompt (set QWEN3_TTS_CLONE_USE_ICL=1 to enable ICL)\n");
+    }
+
     return synthesize_internal(
         text,
         speaker_embedding.data(),
-        ref_codes.empty() ? nullptr : ref_codes.data(),
-        n_ref_frames,
+        ref_codes_ptr,
+        ref_frames_for_gen,
         params,
         result);
 }
@@ -442,6 +581,17 @@ tts_result Qwen3TTS::synthesize_with_embedding(
     }
     if (!embedding || embedding_size <= 0) {
         result.error_msg = "Invalid speaker embedding";
+        return result;
+    }
+    if (talker_predictor_.hidden_dim() > 0 && embedding_size != talker_predictor_.hidden_dim()) {
+        char buf[256];
+        std::snprintf(
+            buf,
+            sizeof(buf),
+            "Speaker embedding dim mismatch: got=%d expected=%d",
+            embedding_size,
+            talker_predictor_.hidden_dim());
+        result.error_msg = buf;
         return result;
     }
     return synthesize_internal(text, embedding, nullptr, 0, params, result);
@@ -536,6 +686,12 @@ tts_result Qwen3TTS::synthesize_internal(
         result.error_msg = "Failed to generate speech codes: " + talker_predictor_.get_error();
         return result;
     }
+    result.eos_step = talker_predictor_.last_eos_step();
+    result.trailing_count = talker_predictor_.last_trailing_count();
+    result.trailing_consumed = talker_predictor_.last_trailing_consumed();
+    result.gen_code_frames = (int32_t) speech_codes.size() / 16;
+    minmax_i32(speech_codes.data(), (int32_t) speech_codes.size(), result.gen_code_min, result.gen_code_max);
+    result.gen_codes_hash = fnv1a_u64(speech_codes.data(), speech_codes.size());
     result.t_generate_ms = get_time_ms() - t_generate;
     sample_memory("synth/after-generate");
 
@@ -544,6 +700,16 @@ tts_result Qwen3TTS::synthesize_internal(
     if (n_frames <= 0) {
         result.error_msg = "No speech codes generated";
         return result;
+    }
+    if ((int32_t) speech_codes.size() != n_frames * n_codebooks) {
+        result.error_msg = "[generate] Invalid generated codes shape; expected T x 16";
+        return result;
+    }
+    for (int32_t c : speech_codes) {
+        if (c < 0 || c >= 2048) {
+            result.error_msg = "[generate] Invalid generated code id out of [0, 2047]";
+            return result;
+        }
     }
     if (params.print_progress) {
         fprintf(stderr, "Speech codes generated: %d frames x %d codebooks\n", n_frames, n_codebooks);
@@ -562,6 +728,7 @@ tts_result Qwen3TTS::synthesize_internal(
         return result;
     }
     result.t_decode_ms = get_time_ms() - t_decode;
+    pcm_peak_rms(result.audio, result.pcm_peak, result.pcm_rms);
     sample_memory("synth/after-decode");
 
     if (low_mem_mode_) {

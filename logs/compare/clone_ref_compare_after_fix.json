@@ -1,0 +1,145 @@
+{
+  "ok": false,
+  "timestamp": "2026-03-20 14:53:08",
+  "timeout_sec": 170,
+  "sampling": {
+    "max_steps": 220,
+    "temperature": 0.6,
+    "top_k": 50,
+    "top_p": 1.0,
+    "predictor_temperature": 0.6,
+    "predictor_top_k": 50,
+    "predictor_top_p": 1.0,
+    "seed": 12345,
+    "predictor_seed": 12345,
+    "qwen_clone_anchor_seconds": 0.0
+  },
+  "notes": [],
+  "modes": {
+    "clone": {
+      "lunavox": {
+        "success": true,
+        "sample_rate": 24000,
+        "audio_samples": 78720,
+        "audio_sec": 3.28,
+        "timing_ms": {
+          "tokenize": 0,
+          "encode": 1230,
+          "generate": 3316,
+          "decode": 1056,
+          "total": 4372
+        },
+        "rtf": 1.332927,
+        "mem": {
+          "rss_start": 2393964544,
+          "rss_end": 2510712832,
+          "rss_peak": 2510712832,
+          "phys_start": 2393964544,
+          "phys_end": 2510712832,
+          "phys_peak": 2510712832
+        },
+        "diagnostics": {
+          "spk_emb_dim": 1024,
+          "spk_emb_l2": 10.011577606,
+          "spk_emb_nan_count": 0,
+          "spk_emb_inf_count": 0,
+          "ref_code_frames": 72,
+          "ref_codebooks": 16,
+          "ref_code_min": 1,
+          "ref_code_max": 2042,
+          "gen_code_frames": 41,
+          "gen_codebooks": 16,
+          "gen_code_min": 2,
+          "gen_code_max": 2045,
+          "gen_codes_hash_hex": "ce4edaa6c0d6e583",
+          "eos_step": 41,
+          "trailing_count": 11,
+          "trailing_consumed": 11,
+          "pcm_peak": 0.813476562,
+          "pcm_rms": 0.179912403
+        },
+        "framework": "lunavox",
+        "mode": "clone",
+        "ok": true
+      },
+      "qwen": {
+        "ok": false,
+        "mode": "clone",
+        "framework": "qwen3-tts-gguf",
+        "timestamp": "2026-03-20 14:53:16",
+        "resolved_model_dir": "D:\\TTS\\lunavox\\models\\base_small",
+        "model_dir_arg": "..\\lunavox\\models\\base_small",
+        "missing_core_files": [],
+        "init_sec": 2.7540085315704346,
+        "reference_audio_input": "D:\\TTS\\lunavox\\ref\\ref.wav",
+        "reference_audio_used": "D:\\TTS\\lunavox\\ref\\ref.wav",
+        "clone_anchor_status": "disabled",
+        "error": "set_voice(reference_audio) failed",
+        "traceback": "Traceback (most recent call last):\n  File \"D:\\TTS\\lunavox\\tools\\qwen_local_benchmark.py\", line 302, in main\n    raise RuntimeError(\"set_voice(reference_audio) failed\")\nRuntimeError: set_voice(reference_audio) failed\n",
+        "returncode": 1,
+        "qwen_clone_anchor_seconds": 0.0
+      },
+      "qwen_anchor_matrix": {
+        "0.000": {
+          "ok": false,
+          "mode": "clone",
+          "framework": "qwen3-tts-gguf",
+          "timestamp": "2026-03-20 14:53:16",
+          "resolved_model_dir": "D:\\TTS\\lunavox\\models\\base_small",
+          "model_dir_arg": "..\\lunavox\\models\\base_small",
+          "missing_core_files": [],
+          "init_sec": 2.7540085315704346,
+          "reference_audio_input": "D:\\TTS\\lunavox\\ref\\ref.wav",
+          "reference_audio_used": "D:\\TTS\\lunavox\\ref\\ref.wav",
+          "clone_anchor_status": "disabled",
+          "error": "set_voice(reference_audio) failed",
+          "traceback": "Traceback (most recent call last):\n  File \"D:\\TTS\\lunavox\\tools\\qwen_local_benchmark.py\", line 302, in main\n    raise RuntimeError(\"set_voice(reference_audio) failed\")\nRuntimeError: set_voice(reference_audio) failed\n",
+          "returncode": 1,
+          "qwen_clone_anchor_seconds": 0.0
+        },
+        "1.000": {
+          "ok": true,
+          "mode": "clone",
+          "framework": "qwen3-tts-gguf",
+          "timestamp": "2026-03-20 14:53:20",
+          "resolved_model_dir": "D:\\TTS\\lunavox\\models\\base_small",
+          "model_dir_arg": "..\\lunavox\\models\\base_small",
+          "missing_core_files": [],
+          "init_sec": 2.738304376602173,
+          "reference_audio_input": "D:\\TTS\\lunavox\\ref\\ref.wav",
+          "reference_audio_used": "D:\\TTS\\lunavox\\logs\\compare\\_artifacts\\clone\\ref.anchor_48000f.wav",
+          "clone_anchor_status": "clipped",
+          "sample_rate": 24000,
+          "audio_samples": 97920,
+          "audio_sec": 4.08,
+          "wall_sec": 4.753809452056885,
+          "rtf": 1.1651493755041384,
+          "codes_frames": 51,
+          "timing_sec": {
+            "prompt": 0.0020110607147216797,
+            "prefill": 2.147264003753662,
+            "talker": 0.24985003471374512,
+            "predictor": 0.9347803592681885,
+            "decoder": 1.0379574298858643,
+            "inference_only": 3.3339054584503174,
+            "total_inference": 4.371862888336182
+          },
+          "returncode": 0,
+          "qwen_clone_anchor_seconds": 1.0
+        }
+      },
+      "summary": {
+        "lunavox_ok": true,
+        "qwen_ok": false
+      },
+      "qwen_primary_anchor": "0.000",
+      "qwen_anchor_matrix_all_ok": false
+    }
+  },
+  "resolved_dirs": {
+    "lunavox_model_dir": "D:\\TTS\\lunavox\\models\\base_small",
+    "lunavox_build_dir": "D:\\TTS\\lunavox\\build-cpu",
+    "qwen_repo": "D:\\TTS\\Qwen3-TTS-GGUF",
+    "qwen_model_dir": "D:\\TTS\\lunavox\\models\\base_small"
+  }
+}

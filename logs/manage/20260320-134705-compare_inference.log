@@ -1,0 +1,9 @@
+[failed] 2026-03-20 13:47:05
+stage: compare_inference
+cmd: C:\Users\kwong\miniconda3\envs\lunavox\python.exe D:\TTS\lunavox\tools\compare_inference.py --mode base --timeout-sec 170 --report-out D:\TTS\lunavox\logs\compare\strict_gate_test.json --lunavox-model-dir D:\TTS\lunavox\models\base_small --lunavox-build-dir D:\TTS\lunavox\build-cpu --text strict gate test --max-steps 220 --temperature 0.6 --top-k 50 --top-p 1.0 --predictor-temperature 0.6 --predictor-top-k 50 --predictor-top-p 1.0 --seed 12345 --predictor-seed 12345 --lunavox-reference-audio D:\TTS\lunavox\ref\ref.wav --qwen-repo D:\TTS\Qwen3-TTS-GGUF --qwen-model-dir D:\TTS\lunavox\models\__missing__ --strict-qwen-model
+cwd: D:\TTS\lunavox
+timeout_sec: 170
+elapsed_sec: 0.065
+returncode: 2
+
+[compare] report saved: D:\TTS\lunavox\logs\compare\strict_gate_test.json

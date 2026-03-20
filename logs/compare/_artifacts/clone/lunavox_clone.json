@@ -1,22 +1,42 @@
 {
   "success": true,
   "sample_rate": 24000,
-  "audio_samples": 422400,
-  "audio_sec": 17.600000,
+  "audio_samples": 78720,
+  "audio_sec": 3.280000,
   "timing_ms": {
     "tokenize": 0,
-    "encode": 1030,
-    "generate": 5217,
-    "decode": 5950,
-    "total": 11167
+    "encode": 1224,
+    "generate": 3233,
+    "decode": 1063,
+    "total": 4296
   },
-  "rtf": 0.634489,
+  "rtf": 1.309756,
   "mem": {
-    "rss_start": 2181406720,
-    "rss_end": 2297868288,
-    "rss_peak": 2297868288,
-    "phys_start": 2181406720,
-    "phys_end": 2297868288,
-    "phys_peak": 2297868288
+    "rss_start": 2378420224,
+    "rss_end": 2438057984,
+    "rss_peak": 2438057984,
+    "phys_start": 2378420224,
+    "phys_end": 2438057984,
+    "phys_peak": 2438057984
+  },
+  "diagnostics": {
+    "spk_emb_dim": 1024,
+    "spk_emb_l2": 10.011577606,
+    "spk_emb_nan_count": 0,
+    "spk_emb_inf_count": 0,
+    "ref_code_frames": 72,
+    "ref_codebooks": 16,
+    "ref_code_min": 1,
+    "ref_code_max": 2042,
+    "gen_code_frames": 41,
+    "gen_codebooks": 16,
+    "gen_code_min": 2,
+    "gen_code_max": 2045,
+    "gen_codes_hash_hex": "ce4edaa6c0d6e583",
+    "eos_step": 41,
+    "trailing_count": 11,
+    "trailing_consumed": 11,
+    "pcm_peak": 0.813476562,
+    "pcm_rms": 0.179912403
   }
 }

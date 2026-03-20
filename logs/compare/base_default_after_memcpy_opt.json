@@ -1,0 +1,127 @@
+{
+  "ok": true,
+  "timestamp": "2026-03-20 14:55:56",
+  "timeout_sec": 170,
+  "sampling": {
+    "max_steps": 220,
+    "temperature": 0.6,
+    "top_k": 50,
+    "top_p": 1.0,
+    "predictor_temperature": 0.6,
+    "predictor_top_k": 50,
+    "predictor_top_p": 1.0,
+    "seed": 12345,
+    "predictor_seed": 12345,
+    "qwen_clone_anchor_seconds": 0.0
+  },
+  "notes": [],
+  "modes": {
+    "base": {
+      "lunavox": {
+        "success": true,
+        "sample_rate": 24000,
+        "audio_samples": 42240,
+        "audio_sec": 1.76,
+        "timing_ms": {
+          "tokenize": 0,
+          "encode": 0,
+          "generate": 2981,
+          "decode": 503,
+          "total": 3485
+        },
+        "rtf": 1.980114,
+        "mem": {
+          "rss_start": 1711230976,
+          "rss_end": 1758822400,
+          "rss_peak": 1758822400,
+          "phys_start": 1711230976,
+          "phys_end": 1758822400,
+          "phys_peak": 1758822400
+        },
+        "diagnostics": {
+          "spk_emb_dim": 0,
+          "spk_emb_l2": 0.0,
+          "spk_emb_nan_count": 0,
+          "spk_emb_inf_count": 0,
+          "ref_code_frames": 0,
+          "ref_codebooks": 16,
+          "ref_code_min": -1,
+          "ref_code_max": -1,
+          "gen_code_frames": 22,
+          "gen_codebooks": 16,
+          "gen_code_min": 5,
+          "gen_code_max": 2040,
+          "gen_codes_hash_hex": "b0b8de41cfebab1f",
+          "eos_step": 22,
+          "trailing_count": 9,
+          "trailing_consumed": 9,
+          "pcm_peak": 0.198120117,
+          "pcm_rms": 0.026458912
+        },
+        "framework": "lunavox",
+        "mode": "base",
+        "ok": true
+      },
+      "qwen": {
+        "ok": true,
+        "mode": "base",
+        "framework": "qwen3-tts-gguf",
+        "timestamp": "2026-03-20 14:56:02",
+        "resolved_model_dir": "D:\\TTS\\lunavox\\models\\base_small",
+        "model_dir_arg": "..\\lunavox\\models\\base_small",
+        "missing_core_files": [],
+        "init_sec": 2.719177007675171,
+        "sample_rate": 24000,
+        "audio_samples": 49920,
+        "audio_sec": 2.08,
+        "wall_sec": 3.5277292728424072,
+        "rtf": 1.6960236888665419,
+        "codes_frames": 26,
+        "timing_sec": {
+          "prompt": 0.0010018348693847656,
+          "prefill": 2.1725387573242188,
+          "talker": 0.2066359519958496,
+          "predictor": 0.658449649810791,
+          "decoder": 0.4810662269592285,
+          "inference_only": 3.038626194000244,
+          "total_inference": 3.5196924209594727
+        },
+        "returncode": 0
+      },
+      "summary": {
+        "lunavox_ok": true,
+        "qwen_ok": true,
+        "latency_ratio_vs_qwen": -0.00985666268816057,
+        "rtf_ratio_vs_qwen": 0.16750374007058624,
+        "breakdown": {
+          "lunavox_sec": {
+            "tokenize": 0.0,
+            "encode": 0.0,
+            "generate": 2.981,
+            "decode": 0.503,
+            "total": 3.485
+          },
+          "qwen_sec": {
+            "prefill": 2.1725387573242188,
+            "talker": 0.2066359519958496,
+            "predictor": 0.658449649810791,
+            "decoder": 0.4810662269592285,
+            "total": 3.5196924209594727
+          }
+        },
+        "delta_sec": {
+          "total_lunavox_minus_qwen": -0.03469242095947278,
+          "decode_lunavox_minus_qwen": 0.021933773040771487,
+          "gen_lunavox_minus_qwen_talker_predictor": 2.1159143981933592,
+          "gen_lunavox_minus_qwen_prefill_talker_predictor": -0.0566243591308595
+        }
+      }
+    }
+  },
+  "resolved_dirs": {
+    "lunavox_model_dir": "D:\\TTS\\lunavox\\models\\base_small",
+    "lunavox_build_dir": "D:\\TTS\\lunavox\\build-cpu",
+    "qwen_repo": "D:\\TTS\\Qwen3-TTS-GGUF",
+    "qwen_model_dir": "D:\\TTS\\lunavox\\models\\base_small"
+  }
+}

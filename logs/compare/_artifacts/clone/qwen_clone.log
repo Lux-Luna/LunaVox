@@ -1,7 +1,7 @@
-[rc=0] 2026-03-20 13:20:27
-cmd: C:\Users\kwong\miniconda3\envs\lunavox\python.exe D:\TTS\lunavox\tools\qwen_local_benchmark.py --qwen-repo D:\TTS\Qwen3-TTS-GGUF --model-dir D:\TTS\lunavox\models\base_small --mode clone --text 基础推理与克隆推理联合对齐验证。 --language chinese --max-steps 220 --temperature 0.6 --top-k 50 --top-p 1.0 --sub-temperature 0.6 --sub-top-k 50 --sub-top-p 1.0 --seed 12345 --sub-seed 12345 --out-json D:\TTS\lunavox\logs\compare\_artifacts\clone\qwen_clone.json --reference-audio D:\TTS\lunavox\ref\ref.wav
+[rc=0] 2026-03-20 14:01:50
+cmd: C:\Users\kwong\miniconda3\envs\lunavox\python.exe D:\TTS\lunavox\tools\qwen_local_benchmark.py --qwen-repo D:\TTS\Qwen3-TTS-GGUF --model-dir D:\TTS\lunavox\models\base_small --mode clone --text alignment clone after patch --language chinese --max-steps 220 --temperature 0.6 --top-k 50 --top-p 1.0 --sub-temperature 0.6 --sub-top-k 50 --sub-top-p 1.0 --seed 12345 --sub-seed 12345 --out-json D:\TTS\lunavox\logs\compare\_artifacts\clone\qwen_clone.json --reference-audio D:\TTS\Qwen3-TTS-GGUF\output\elaborate\Vivian.json
 cwd: D:\TTS\lunavox
 timeout_sec: 170
-elapsed_sec: 11.133
+elapsed_sec: 9.761
 
-🚀 [Engine] 引擎全链路初始化完成! 总耗时: 2.69s
+🚀 [Engine] 引擎全链路初始化完成! 总耗时: 2.66s

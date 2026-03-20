@@ -43,6 +43,10 @@ public:
         int32_t predictor_seed,
         std::vector<int32_t> & output_codes);
 
+    int32_t last_eos_step() const { return last_eos_step_; } // -1 means reached max_frames without EOS
+    int32_t last_trailing_count() const { return last_trailing_count_; }
+    int32_t last_trailing_consumed() const { return last_trailing_consumed_; }
+
 private:
     bool run_prefill(
         const std::vector<int32_t> & text_tokens,
@@ -78,6 +82,9 @@ private:
     int32_t cur_pos_ = 0;
     int32_t step_idx_ = 0;
     int32_t trailing_count_ = 0;
+    int32_t last_eos_step_ = -1;
+    int32_t last_trailing_count_ = 0;
+    int32_t last_trailing_consumed_ = 0;
 
     const AssetsManager * assets_ = nullptr;
     std::vector<float> trailing_text_pool_;

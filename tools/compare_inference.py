@@ -167,10 +167,15 @@ def run_qwen_case(
     predictor_top_p: float,
     seed: int,
     predictor_seed: int,
+    qwen_clone_anchor_seconds: float,
     timeout_sec: int,
     out_dir: Path,
+    artifact_tag: str = "",
 ) -> dict[str, Any]:
-    stats_json = out_dir / f"qwen_{mode}.json"
+    tag = artifact_tag.strip()
+    if tag and not tag.startswith("_"):
+        tag = "_" + tag
+    stats_json = out_dir / f"qwen_{mode}{tag}.json"
     script = ROOT / "tools" / "qwen_local_benchmark.py"
     python_exec = qwen_python.strip() or sys.executable
     cmd = [
@@ -209,9 +214,10 @@ def run_qwen_case(
     ]
     if mode == "clone":
         cmd += ["--reference-audio", reference_audio]
+        cmd += ["--clone-anchor-seconds", str(float(qwen_clone_anchor_seconds))]
         if reference_text:
             cmd += ["--reference-text", reference_text]
-    rc, _ = run_cmd(cmd, cwd=ROOT, timeout_sec=timeout_sec, log_path=out_dir / f"qwen_{mode}.log")
+    rc, _ = run_cmd(cmd, cwd=ROOT, timeout_sec=timeout_sec, log_path=out_dir / f"qwen_{mode}{tag}.log")
     if not stats_json.exists():
         return {"ok": False, "returncode": rc, "error": "qwen benchmark did not write json"}
     data = load_json(stats_json)
@@ -264,6 +270,15 @@ def summarize_pair(lv: dict[str, Any], qw: dict[str, Any]) -> dict[str, Any]:
             float(qw.get("timing_sec", {}).get("talker", 0.0))
             + float(qw.get("timing_sec", {}).get("predictor", 0.0))
         ),
+        "gen_lunavox_minus_qwen_prefill_talker_predictor": float(
+            lv.get("timing_ms", {}).get("generate", 0.0)
+        )
+        / 1000.0
+        - (
+            float(qw.get("timing_sec", {}).get("prefill", 0.0))
+            + float(qw.get("timing_sec", {}).get("talker", 0.0))
+            + float(qw.get("timing_sec", {}).get("predictor", 0.0))
+        ),
     }
     return out
 
@@ -280,8 +295,20 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--reference-audio", dest="lunavox_reference_audio", help="Alias of --lunavox-reference-audio")
     ap.add_argument("--qwen-reference-audio", default="")
     ap.add_argument("--qwen-reference-text", default="")
+    ap.add_argument(
+        "--qwen-clone-anchor-seconds",
+        type=float,
+        default=0.0,
+        help="Qwen-side clone-only reference clipping seconds (default: 0.0)",
+    )
     ap.add_argument("--qwen-repo", default=str(ROOT.parent / "Qwen3-TTS-GGUF"))
     ap.add_argument("--qwen-model-dir", default=str(ROOT / "models" / "base_small"))
+    ap.add_argument(
+        "--strict-qwen-model",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Fail immediately when qwen-model-dir is incomplete (default: true)",
+    )
     ap.add_argument("--qwen-python", default="")
     ap.add_argument("--max-steps", type=int, default=220)
     ap.add_argument("--temperature", type=float, default=0.6)
@@ -318,6 +345,7 @@ def main() -> int:
             "predictor_top_p": float(args.predictor_top_p),
             "seed": int(args.seed),
             "predictor_seed": int(args.predictor_seed),
+            "qwen_clone_anchor_seconds": float(args.qwen_clone_anchor_seconds),
         },
         "notes": [],
         "modes": {},
@@ -329,6 +357,27 @@ def main() -> int:
     qwen_model_dir_resolved = Path(args.qwen_model_dir).resolve()
     qwen_model_missing = missing_qwen_core_files(qwen_model_dir_resolved)
     if qwen_model_missing:
+        if args.strict_qwen_model:
+            report["notes"].append(
+                {
+                    "type": "qwen_model_missing",
+                    "message": "qwen-model-dir missing required files (strict mode enabled)",
+                    "requested": str(qwen_model_dir_resolved),
+                    "missing": qwen_model_missing,
+                }
+            )
+            report["ok"] = False
+            report["resolved_dirs"] = {
+                "lunavox_model_dir": str(model_dir),
+                "lunavox_build_dir": str(build_dir),
+                "qwen_repo": str(qwen_repo),
+                "qwen_model_dir": str(qwen_model_dir_resolved),
+            }
+            report_out.parent.mkdir(parents=True, exist_ok=True)
+            report_out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"[compare] report saved: {report_out}")
+            return 2
+
         fallback_missing = missing_qwen_core_files(model_dir)
         if not fallback_missing:
             report["notes"].append(
@@ -381,29 +430,81 @@ def main() -> int:
             timeout_sec=timeout_sec,
             out_dir=mode_dir,
         )
-        qw = run_qwen_case(
-            mode,
-            qwen_repo=qwen_repo,
-            qwen_model_dir=str(qwen_model_dir_resolved),
-            qwen_python=args.qwen_python,
-            text=args.text,
-            reference_audio=qwen_reference_audio,
-            reference_text=args.qwen_reference_text,
-            max_steps=int(args.max_steps),
-            temperature=float(args.temperature),
-            top_k=int(args.top_k),
-            top_p=float(args.top_p),
-            predictor_temperature=float(args.predictor_temperature),
-            predictor_top_k=int(args.predictor_top_k),
-            predictor_top_p=float(args.predictor_top_p),
-            seed=int(args.seed),
-            predictor_seed=int(args.predictor_seed),
-            timeout_sec=timeout_sec,
-            out_dir=mode_dir,
-        )
-        summary = summarize_pair(lv, qw)
-        report["modes"][mode] = {"lunavox": lv, "qwen": qw, "summary": summary}
-        if not (lv.get("ok") and qw.get("ok")):
+        if mode == "clone":
+            anchors_raw = [float(args.qwen_clone_anchor_seconds), 0.0, 1.0]
+            anchors: list[float] = []
+            for a in anchors_raw:
+                if not any(abs(a - x) < 1e-9 for x in anchors):
+                    anchors.append(a)
+
+            qwen_matrix: dict[str, Any] = {}
+            matrix_all_ok = True
+            for anchor in anchors:
+                key = f"{anchor:.3f}"
+                qwen_matrix[key] = run_qwen_case(
+                    mode,
+                    qwen_repo=qwen_repo,
+                    qwen_model_dir=str(qwen_model_dir_resolved),
+                    qwen_python=args.qwen_python,
+                    text=args.text,
+                    reference_audio=qwen_reference_audio,
+                    reference_text=args.qwen_reference_text,
+                    max_steps=int(args.max_steps),
+                    temperature=float(args.temperature),
+                    top_k=int(args.top_k),
+                    top_p=float(args.top_p),
+                    predictor_temperature=float(args.predictor_temperature),
+                    predictor_top_k=int(args.predictor_top_k),
+                    predictor_top_p=float(args.predictor_top_p),
+                    seed=int(args.seed),
+                    predictor_seed=int(args.predictor_seed),
+                    qwen_clone_anchor_seconds=anchor,
+                    timeout_sec=timeout_sec,
+                    out_dir=mode_dir,
+                    artifact_tag=f"anchor_{key}",
+                )
+                qwen_matrix[key]["qwen_clone_anchor_seconds"] = anchor
+                matrix_all_ok = matrix_all_ok and bool(qwen_matrix[key].get("ok"))
+
+            primary_key = f"{float(args.qwen_clone_anchor_seconds):.3f}"
+            qw = qwen_matrix.get(primary_key, next(iter(qwen_matrix.values())))
+            summary = summarize_pair(lv, qw)
+            report["modes"][mode] = {
+                "lunavox": lv,
+                "qwen": qw,
+                "qwen_anchor_matrix": qwen_matrix,
+                "summary": summary,
+            }
+            report["modes"][mode]["qwen_primary_anchor"] = primary_key
+            report["modes"][mode]["qwen_anchor_matrix_all_ok"] = matrix_all_ok
+        else:
+            qw = run_qwen_case(
+                mode,
+                qwen_repo=qwen_repo,
+                qwen_model_dir=str(qwen_model_dir_resolved),
+                qwen_python=args.qwen_python,
+                text=args.text,
+                reference_audio=qwen_reference_audio,
+                reference_text=args.qwen_reference_text,
+                max_steps=int(args.max_steps),
+                temperature=float(args.temperature),
+                top_k=int(args.top_k),
+                top_p=float(args.top_p),
+                predictor_temperature=float(args.predictor_temperature),
+                predictor_top_k=int(args.predictor_top_k),
+                predictor_top_p=float(args.predictor_top_p),
+                seed=int(args.seed),
+                predictor_seed=int(args.predictor_seed),
+                qwen_clone_anchor_seconds=float(args.qwen_clone_anchor_seconds),
+                timeout_sec=timeout_sec,
+                out_dir=mode_dir,
+            )
+            summary = summarize_pair(lv, qw)
+            report["modes"][mode] = {"lunavox": lv, "qwen": qw, "summary": summary}
+        if mode == "clone":
+            if not (lv.get("ok") and report["modes"][mode].get("qwen_anchor_matrix_all_ok", False)):
+                report["ok"] = False
+        elif not (lv.get("ok") and qw.get("ok")):
             report["ok"] = False
 
     report_out.parent.mkdir(parents=True, exist_ok=True)

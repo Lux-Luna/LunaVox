@@ -38,6 +38,10 @@ struct tts_params {
     
     // Number of threads
     int32_t n_threads = 4;
+
+    // Enable verbose ORT runtime logs (warning+) for ONNX debugging.
+    // Default false keeps runtime output quiet at error level.
+    bool ort_debug_log = false;
     
     // Print progress during generation
     bool print_progress = false;
@@ -90,6 +94,29 @@ struct tts_result {
     uint64_t mem_phys_start_bytes = 0;
     uint64_t mem_phys_end_bytes = 0;
     uint64_t mem_phys_peak_bytes = 0;
+
+    // Clone/generation diagnostics for alignment & noisy-audio triage.
+    int32_t spk_emb_dim = 0;
+    float spk_emb_l2 = 0.0f;
+    int32_t spk_emb_nan_count = 0;
+    int32_t spk_emb_inf_count = 0;
+
+    int32_t ref_code_frames = 0;
+    int32_t ref_codebooks = 16;
+    int32_t ref_code_min = -1;
+    int32_t ref_code_max = -1;
+
+    int32_t gen_code_frames = 0;
+    int32_t gen_codebooks = 16;
+    int32_t gen_code_min = -1;
+    int32_t gen_code_max = -1;
+    uint64_t gen_codes_hash = 0;
+    int32_t eos_step = -1;
+    int32_t trailing_count = 0;
+    int32_t trailing_consumed = 0;
+
+    float pcm_peak = 0.0f;
+    float pcm_rms = 0.0f;
     
 };
 
@@ -111,7 +138,7 @@ public:
     //   qwen3_tts_decoder.fp16.onnx
     //   embeddings/
     //   tokenizer.json
-    bool load_models(const std::string & model_dir);
+    bool load_models(const std::string & model_dir, int32_t n_threads = 4);
     
     // Generate speech from text
     // text: input text to synthesize

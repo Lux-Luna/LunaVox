@@ -6,6 +6,11 @@
 
 namespace qwen3_tts {
 
+// Configure ORT runtime logging before creating any ONNX session.
+// false (default): ERROR only; true: WARNING and above.
+void set_ort_debug_log(bool enabled);
+bool ort_debug_log_enabled();
+
 struct mel_config {
     int32_t sample_rate = 24000;
     int32_t n_mels = 128;
@@ -75,16 +80,18 @@ public:
 
 private:
     struct state_buffer {
-        std::vector<float> pre_conv_history;
-        int64_t pre_conv_seq = 0;
-        std::vector<float> latent_buffer;
-        int64_t latent_seq = 0;
-        std::vector<float> conv_history;
-        int64_t conv_seq = 0;
-        std::vector<std::vector<float>> past_keys;
-        std::vector<int64_t> past_key_seq;
-        std::vector<std::vector<float>> past_values;
-        std::vector<int64_t> past_value_seq;
+        struct tensor_state {
+            int32_t elem_type = 1; // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT
+            std::vector<float> f32;
+            std::vector<uint16_t> f16;
+            int64_t seq = 0;
+        };
+
+        tensor_state pre_conv_history;
+        tensor_state latent_buffer;
+        tensor_state conv_history;
+        std::vector<tensor_state> past_keys;
+        std::vector<tensor_state> past_values;
     };
 
     std::string error_msg_;
@@ -97,6 +104,8 @@ private:
     int32_t pre_conv_channels_ = 512;
     int32_t latent_channels_ = 1024;
     int32_t conv_channels_ = 1024;
+    int32_t state_elem_type_ = 1; // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT
+    int32_t kv_elem_type_ = 1;    // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT
 
     void * session_impl_ = nullptr;
     std::vector<std::string> input_names_;

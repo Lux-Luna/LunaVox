@@ -94,6 +94,7 @@ void print_usage(const char * program) {
     fprintf(stderr, "  --predictor-seed <n>  Predictor sampler seed (default: random)\n");
     fprintf(stderr, "  --max-tokens <n>       Maximum audio tokens (default: 4096)\n");
     fprintf(stderr, "  --repetition-penalty <val> Repetition penalty (default: 1.05)\n");
+    fprintf(stderr, "  --ort-debug-log        Enable ORT warning logs (default: error-only)\n");
     fprintf(stderr, "  --stats-json <file>    Write timing/runtime stats JSON report\n");
     fprintf(stderr, "  -l, --language <lang>  Force language: en,ru,zh,ja,ko,de,fr,es,it,pt\n");
     fprintf(stderr, "  --no-auto-language     Disable language auto-detection (uses --language or en)\n");
@@ -220,6 +221,8 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             params.repetition_penalty = std::stof(args[i]);
+        } else if (arg == "--ort-debug-log") {
+            params.ort_debug_log = true;
         } else if (arg == "--stats-json") {
             if (++i >= (int)args.size()) {
                 fprintf(stderr, "Error: missing stats-json file path\n");
@@ -269,9 +272,11 @@ int main(int argc, char ** argv) {
     
     // Initialize TTS
     qwen3_tts::Qwen3TTS tts;
+
+    qwen3_tts::set_ort_debug_log(params.ort_debug_log);
     
     fprintf(stderr, "Loading models from: %s\n", model_dir.c_str());
-    if (!tts.load_models(model_dir)) {
+    if (!tts.load_models(model_dir, params.n_threads)) {
         fprintf(stderr, "Error: %s\n", tts.get_error().c_str());
         return 1;
     }
@@ -341,6 +346,26 @@ int main(int argc, char ** argv) {
                 "    \"phys_start\": %llu,\n"
                 "    \"phys_end\": %llu,\n"
                 "    \"phys_peak\": %llu\n"
+                "  },\n"
+                "  \"diagnostics\": {\n"
+                "    \"spk_emb_dim\": %d,\n"
+                "    \"spk_emb_l2\": %.9f,\n"
+                "    \"spk_emb_nan_count\": %d,\n"
+                "    \"spk_emb_inf_count\": %d,\n"
+                "    \"ref_code_frames\": %d,\n"
+                "    \"ref_codebooks\": %d,\n"
+                "    \"ref_code_min\": %d,\n"
+                "    \"ref_code_max\": %d,\n"
+                "    \"gen_code_frames\": %d,\n"
+                "    \"gen_codebooks\": %d,\n"
+                "    \"gen_code_min\": %d,\n"
+                "    \"gen_code_max\": %d,\n"
+                "    \"gen_codes_hash_hex\": \"%016llx\",\n"
+                "    \"eos_step\": %d,\n"
+                "    \"trailing_count\": %d,\n"
+                "    \"trailing_consumed\": %d,\n"
+                "    \"pcm_peak\": %.9f,\n"
+                "    \"pcm_rms\": %.9f\n"
                 "  }\n"
                 "}\n",
                 result.sample_rate,
@@ -357,7 +382,25 @@ int main(int argc, char ** argv) {
                 (unsigned long long) result.mem_rss_peak_bytes,
                 (unsigned long long) result.mem_phys_start_bytes,
                 (unsigned long long) result.mem_phys_end_bytes,
-                (unsigned long long) result.mem_phys_peak_bytes);
+                (unsigned long long) result.mem_phys_peak_bytes,
+                (int) result.spk_emb_dim,
+                (double) result.spk_emb_l2,
+                (int) result.spk_emb_nan_count,
+                (int) result.spk_emb_inf_count,
+                (int) result.ref_code_frames,
+                (int) result.ref_codebooks,
+                (int) result.ref_code_min,
+                (int) result.ref_code_max,
+                (int) result.gen_code_frames,
+                (int) result.gen_codebooks,
+                (int) result.gen_code_min,
+                (int) result.gen_code_max,
+                (unsigned long long) result.gen_codes_hash,
+                (int) result.eos_step,
+                (int) result.trailing_count,
+                (int) result.trailing_consumed,
+                (double) result.pcm_peak,
+                (double) result.pcm_rms);
             fclose(jf);
         }
     }
