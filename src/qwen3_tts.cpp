@@ -1,6 +1,7 @@
 #include "qwen3_tts.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <climits>
@@ -267,6 +268,86 @@ static void pcm_peak_rms(const std::vector<float> & audio, float & peak, float &
     rms = (float) std::sqrt((double) (sum_sq / (long double) audio.size()));
 }
 
+// --- JSON Parsing and Base64 Utils for Vivian.json style references ---
+
+static std::vector<uint8_t> base64_decode(const std::string &in) {
+    std::vector<uint8_t> out;
+    std::vector<int> T(256, -1);
+    for (int i = 0; i < 64; i++) T["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"[i]] = i;
+
+    int val = 0, valb = -8;
+    for (unsigned char c : in) {
+        if (T[c] == -1) break;
+        val = (val << 6) + T[c];
+        valb += 6;
+        if (valb >= 0) {
+            out.push_back(uint8_t((val >> valb) & 0xFF));
+            valb -= 8;
+        }
+    }
+    return out;
+}
+
+static bool simple_extract_json_string(const std::string &json, const std::string &key, std::string &out) {
+    std::string qkey = "\"" + key + "\"";
+    size_t pos = json.find(qkey);
+    if (pos == std::string::npos) return false;
+    pos = json.find(":", pos + qkey.length());
+    if (pos == std::string::npos) return false;
+    pos = json.find("\"", pos);
+    if (pos == std::string::npos) return false;
+    size_t end = json.find("\"", pos + 1);
+    while (end != std::string::npos && json[end - 1] == '\\') {
+        end = json.find("\"", end + 1);
+    }
+    if (end == std::string::npos) return false;
+    out = json.substr(pos + 1, end - pos - 1);
+    return true;
+}
+
+static bool simple_extract_json_codes(const std::string &json, std::vector<int32_t> &codes, int32_t &n_frames) {
+    codes.clear();
+    n_frames = 0;
+    std::string key = "\"codes\"";
+    size_t pos = json.find(key);
+    if (pos == std::string::npos) return false;
+    pos = json.find(":", pos + key.length());
+    if (pos == std::string::npos) return false;
+    pos = json.find("[", pos);
+    if (pos == std::string::npos) return false;
+    
+    size_t i = pos + 1;
+    bool in_inner = false;
+    std::string current_num;
+    while (i < json.size()) {
+        char c = json[i];
+        if (c == '[') {
+            if (in_inner) return false;
+            in_inner = true;
+            n_frames++;
+        } else if (c == ']') {
+            if (in_inner) {
+                if (!current_num.empty()) {
+                    codes.push_back(std::stoi(current_num));
+                    current_num.clear();
+                }
+                in_inner = false;
+            } else {
+                break;
+            }
+        } else if (std::isdigit((unsigned char)c) || c == '-') {
+            current_num += c;
+        } else if (c == ',' || std::isspace((unsigned char)c)) {
+            if (!current_num.empty()) {
+                codes.push_back(std::stoi(current_num));
+                current_num.clear();
+            }
+        }
+        i++;
+    }
+    return true;
+}
+
 } // namespace
 
 Qwen3TTS::Qwen3TTS() = default;
@@ -394,6 +475,96 @@ tts_result Qwen3TTS::synthesize_with_voice(
     const std::string & reference_audio,
     const tts_params & params) {
     tts_result result;
+    
+    // Check if reference_audio is a .json file
+    if (reference_audio.length() >= 5 && 
+        reference_audio.substr(reference_audio.length() - 5) == ".json") {
+             
+        if (!models_loaded_) {
+            result.error_msg = "Models not loaded";
+            return result;
+        }
+        
+        std::ifstream fin(reference_audio, std::ios::binary);
+        if (!fin) {
+            result.error_msg = "Failed to load reference JSON: " + reference_audio;
+            return result;
+        }
+        std::string json_content((std::istreambuf_iterator<char>(fin)), std::istreambuf_iterator<char>());
+        
+        std::string spk_emb_b64;
+        if (!simple_extract_json_string(json_content, "spk_emb", spk_emb_b64)) {
+            result.error_msg = "Failed to find spk_emb in reference JSON";
+            return result;
+        }
+        
+        std::vector<uint8_t> emb_bytes = base64_decode(spk_emb_b64);
+        if (emb_bytes.empty() || emb_bytes.size() % sizeof(float) != 0) {
+            result.error_msg = "Invalid spk_emb base64 data";
+            return result;
+        }
+        std::vector<float> speaker_embedding(emb_bytes.size() / sizeof(float));
+        std::memcpy(speaker_embedding.data(), emb_bytes.data(), emb_bytes.size());
+
+        std::vector<int32_t> ref_codes;
+        int32_t n_ref_frames = 0;
+        if (!simple_extract_json_codes(json_content, ref_codes, n_ref_frames)) {
+            result.error_msg = "Failed to parse codes from reference JSON";
+            return result;
+        }
+        
+        result.spk_emb_dim = (int32_t) speaker_embedding.size();
+        result.spk_emb_l2 = l2_norm(speaker_embedding.data(), (int32_t) speaker_embedding.size());
+        count_nonfinite(
+            speaker_embedding.data(),
+            (int32_t) speaker_embedding.size(),
+            result.spk_emb_nan_count,
+            result.spk_emb_inf_count);
+            
+        if (result.spk_emb_nan_count > 0 || result.spk_emb_inf_count > 0) {
+            result.error_msg = "[clone/JSON] Invalid speaker embedding: non-finite values detected";
+            return result;
+        }
+        
+        if (talker_predictor_.hidden_dim() > 0 && (int32_t) speaker_embedding.size() != talker_predictor_.hidden_dim()) {
+            fprintf(stderr, "[clone/JSON] Speaker embedding dim mismatch: got=%d expected=%d. Truncating/Padding for cross-verification...\n",
+                          (int) speaker_embedding.size(), (int) talker_predictor_.hidden_dim());
+            speaker_embedding.resize(talker_predictor_.hidden_dim(), 0.0f);
+        }
+        
+        result.ref_code_frames = n_ref_frames;
+        minmax_i32(ref_codes.data(), (int32_t) ref_codes.size(), result.ref_code_min, result.ref_code_max);
+        if (n_ref_frames > 0 && (ref_codes.empty() || (int32_t) ref_codes.size() != n_ref_frames * 16)) {
+            result.error_msg = "[clone/JSON] Invalid ref_codes shape; expected T x 16";
+            return result;
+        }
+        
+        if (params.print_progress) {
+            fprintf(stderr,
+                    "Reference features extracted from JSON: spk_dim=%d, ref_codes=%d frames x 16\n",
+                    (int) speaker_embedding.size(),
+                    n_ref_frames);
+        }
+
+        const bool use_clone_icl = env_flag_true("QWEN3_TTS_CLONE_USE_ICL", false);
+        const int32_t * ref_codes_ptr = (use_clone_icl && !ref_codes.empty()) ? ref_codes.data() : nullptr;
+        const int32_t ref_frames_for_gen = (ref_codes_ptr != nullptr) ? n_ref_frames : 0;
+        if (params.print_progress && !use_clone_icl) {
+            fprintf(stderr, "Clone mode: using x-vector-only prompt from JSON (set QWEN3_TTS_CLONE_USE_ICL=1 to enable ICL)\n");
+        }
+
+        int64_t t_encode = get_time_ms();
+        result.t_encode_ms = get_time_ms() - t_encode; // 0 ms basically, keeping stats uniform
+        
+        return synthesize_internal(
+            text,
+            speaker_embedding.data(),
+            ref_codes_ptr,
+            ref_frames_for_gen,
+            params,
+            result);
+    }
+    
     std::vector<float> ref_samples;
     int ref_sr = 0;
     if (!load_audio_file(reference_audio, ref_samples, ref_sr)) {

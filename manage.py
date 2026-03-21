@@ -20,7 +20,7 @@ BUILD_SCRIPT = TOOLS / "build_manager.py"
 COMPARE_SCRIPT = TOOLS / "compare_inference.py"
 
 EXPECTED_CONDA_ENV = "lunavox"
-DEFAULT_TIMEOUT_SEC = 170
+DEFAULT_TIMEOUT_SEC = 300
 MANAGE_LOG_DIR = ROOT / "logs" / "manage"
 
 

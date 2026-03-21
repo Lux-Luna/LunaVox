@@ -1,8 +1,0 @@
-{
-  "ok": false,
-  "mode": "base",
-  "framework": "qwen3-tts-gguf",
-  "timestamp": "2026-03-20 12:51:27",
-  "error": "No module named 'gguf'",
-  "traceback": "Traceback (most recent call last):\n  File \"D:\\TTS\\lunavox\\tools\\qwen_local_benchmark.py\", line 183, in main\n    from qwen3_tts_gguf.inference import TTSConfig  # type: ignore\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\TTS\\Qwen3-TTS-GGUF\\qwen3_tts_gguf\\inference\\__init__.py\", line 4, in <module>\n    from .engine import TTSEngine\n  File \"D:\\TTS\\Qwen3-TTS-GGUF\\qwen3_tts_gguf\\inference\\engine.py\", line 10, in <module>\n    from . import llama, logger\n  File \"D:\\TTS\\Qwen3-TTS-GGUF\\qwen3_tts_gguf\\inference\\llama.py\", line 9, in <module>\n    import gguf\nModuleNotFoundError: No module named 'gguf'\n"
-}

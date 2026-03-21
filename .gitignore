@@ -14,7 +14,6 @@ _tmp_onnx_steps/
 # Generated models / runtime artifacts
 models/
 output/
-*.wav
 
 # Test/debug artifacts
 test_output/
@@ -40,4 +39,5 @@ Thumbs.db
 
 lib/
 docs/
-AGENTS.md
+代办.txt
+logs/

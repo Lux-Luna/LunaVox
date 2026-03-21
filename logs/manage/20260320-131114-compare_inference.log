@@ -1,9 +1,0 @@
-[ok] 2026-03-20 13:12:11
-stage: compare_inference
-cmd: C:\Users\kwong\miniconda3\envs\lunavox\python.exe D:\TTS\lunavox\tools\compare_inference.py --mode both --timeout-sec 170 --report-out D:\TTS\lunavox\logs\compare\latest_compare_report_v6.json --lunavox-model-dir D:\TTS\lunavox\models\base_small --lunavox-build-dir D:\TTS\lunavox\build-cpu --text 基础推理与克隆推理联合对齐验证。 --max-steps 220 --temperature 0.0 --top-k 0 --top-p 1.0 --predictor-temperature 0.0 --predictor-top-k 0 --predictor-top-p 1.0 --lunavox-reference-audio D:\TTS\lunavox\ref\ref.wav --qwen-repo D:\TTS\Qwen3-TTS-GGUF --qwen-model-dir D:\TTS\Qwen3-TTS-GGUF\model-base-small --qwen-python C:\Users\kwong\miniconda3\envs\lunavox\python.exe --keep-artifacts
-cwd: D:\TTS\lunavox
-timeout_sec: 170
-elapsed_sec: 56.662
-returncode: 0
-
-[compare] report saved: D:\TTS\lunavox\logs\compare\latest_compare_report_v6.json
