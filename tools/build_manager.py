@@ -15,8 +15,8 @@ class Builder:
     def __init__(self, root: Path, timeout_sec: int = 170):
         self.root = root
         self.env = os.environ.copy()
-        self.lib_dir = self.root / "lib"
-        self.ort_root = self.lib_dir / "onnxruntime"
+        self.lib_dir = self.root / "lib" / "llama"
+        self.ort_root = self.root / "lib" / "onnx"
         self.tmp_dir = self.root / "_tmp_build"
         self.timeout_sec = max(1, int(timeout_sec))
         self.log_dir = self.root / "logs" / "build"
@@ -449,6 +449,12 @@ class Builder:
             f"-DQWEN3_TTS_PREBUILT_LIB_DIR={self._cmake_path(str(self.lib_dir))}",
             f"-DQWEN3_TTS_ORT_ROOT={self._cmake_path(str(self.ort_root))}",
         ] + toolchain_args
+
+        # Run ORT provider generator
+        gen_script = self.root / "tools" / "gen_ort_providers.py"
+        if gen_script.exists():
+            self.run_cmd([sys.executable, str(gen_script)], self.root, stage="gen_ort_providers")
+
         self.run_cmake(cmake_args, self.root, stage="cmake_configure")
 
         build_cmd = ["--build", str(build_dir), "-j", str(parallel), "--config", "Release"]

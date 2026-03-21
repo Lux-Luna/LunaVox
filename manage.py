@@ -136,7 +136,7 @@ def check_preflight(
         require_modules(modules)
 
     if need_build_deps:
-        ort_root = ROOT / "lib" / "onnxruntime"
+        ort_root = ROOT / "lib" / "onnx"
         check_ort_sdk(ort_root)
 
 

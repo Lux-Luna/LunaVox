@@ -11,9 +11,9 @@ option(QWEN3_TTS_USE_OPENMP "Enable OpenMP when available" ON)
 option(QWEN3_TTS_NATIVE "Enable host-specific native optimizations for this project" OFF)
 option(QWEN3_TTS_COPY_RUNTIME "Copy runtime DLLs near built targets on Windows" ON)
 
-set(QWEN3_TTS_PREBUILT_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib" CACHE PATH
+set(QWEN3_TTS_PREBUILT_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/llama" CACHE PATH
     "Directory containing prebuilt llama runtime binaries")
-set(QWEN3_TTS_ORT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/lib/onnxruntime" CACHE PATH
+set(QWEN3_TTS_ORT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/lib/onnx" CACHE PATH
     "Directory containing ONNX Runtime C/C++ SDK (include/ + lib/)")
 
 if(NOT EXISTS "${QWEN3_TTS_PREBUILT_LIB_DIR}")
@@ -69,6 +69,7 @@ if(WIN32)
         "${QWEN3_TTS_PREBUILT_LIB_DIR}/ggml*.dll"
         "${QWEN3_TTS_PREBUILT_LIB_DIR}/llama*.dll"
         "${QWEN3_TTS_PREBUILT_LIB_DIR}/libomp*.dll"
+        "${QWEN3_TTS_PREBUILT_LIB_DIR}/mtmd*.dll"
         "${QWEN3_TTS_ORT_ROOT}/lib/onnxruntime*.dll")
     if(_qwen3_tts_runtime_dlls)
         list(APPEND QWEN3_TTS_RUNTIME_DLLS ${_qwen3_tts_runtime_dlls})
@@ -137,9 +138,10 @@ add_library(text_tokenizer STATIC src/text_tokenizer.cpp)
 target_include_directories(text_tokenizer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(text_tokenizer PUBLIC qwen3_tts_build_options)
 
-add_library(onnx_audio_runtime STATIC src/onnx_audio_runtime.cpp)
+add_library(onnx_audio_runtime STATIC src/onnx_audio_runtime.cpp src/generated/ort_provider_injector.cpp)
 target_include_directories(onnx_audio_runtime PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/generated
     ${QWEN3_TTS_ORT_ROOT}/include)
 target_link_libraries(onnx_audio_runtime PUBLIC
     qwen3_tts_build_options

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "onnxruntime_cxx_api.h"
+#include "ort_provider_injector.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -73,6 +74,7 @@ const ort_session_data * as_session_const(const void * ptr) {
 bool create_session_impl(
     const std::string & model_path,
     int32_t intra_threads,
+    bool apply_providers,
     std::string & error_msg,
     void *& out_ptr,
     std::vector<std::string> & input_names,
@@ -80,6 +82,14 @@ bool create_session_impl(
     try {
         Ort::SessionOptions opts;
         opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+        if (intra_threads > 0) {
+            opts.SetIntraOpNumThreads((int) intra_threads);
+        }
+        opts.SetInterOpNumThreads(1);
+
+        if (apply_providers) {
+            apply_decoder_providers(opts);
+        }
         if (intra_threads > 0) {
             opts.SetIntraOpNumThreads((int) intra_threads);
         }
@@ -443,7 +453,7 @@ bool resample_windowed_sinc(
 bool CodecEncoderOnnx::load_model(const std::string & model_path, int32_t intra_threads) {
     unload_model();
     error_msg_.clear();
-    return create_session_impl(model_path, intra_threads, error_msg_, session_impl_, input_names_, output_names_) && (loaded_ = true);
+    return create_session_impl(model_path, intra_threads, false, error_msg_, session_impl_, input_names_, output_names_) && (loaded_ = true);
 }
 
 void CodecEncoderOnnx::unload_model() {
@@ -591,7 +601,7 @@ bool CodecEncoderOnnx::encode(
 bool SpeakerEncoderOnnx::load_model(const std::string & model_path, int32_t intra_threads) {
     unload_model();
     error_msg_.clear();
-    return create_session_impl(model_path, intra_threads, error_msg_, session_impl_, input_names_, output_names_) && (loaded_ = true);
+    return create_session_impl(model_path, intra_threads, false, error_msg_, session_impl_, input_names_, output_names_) && (loaded_ = true);
 }
 
 void SpeakerEncoderOnnx::unload_model() {
@@ -751,7 +761,7 @@ bool SpeakerEncoderOnnx::encode(const float * samples, int32_t n_samples, std::v
 bool StatefulDecoderOnnx::load_model(const std::string & model_path, int32_t intra_threads) {
     unload_model();
     error_msg_.clear();
-    if (!create_session_impl(model_path, intra_threads, error_msg_, session_impl_, input_names_, output_names_)) {
+    if (!create_session_impl(model_path, intra_threads, true, error_msg_, session_impl_, input_names_, output_names_)) {
         return false;
     }
     if (input_names_.size() < 5 || output_names_.size() < 2) {
