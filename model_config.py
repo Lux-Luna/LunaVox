@@ -15,22 +15,30 @@ LunaVox 多模型配置中心
 
 from dataclasses import dataclass
 from pathlib import Path
+from huggingface_hub import snapshot_download
+from huggingface_hub.constants import HF_HUB_CACHE
 
 # HuggingFace hub 本地缓存根目录
-HF_HUB_ROOT = Path(r'C:\Users\kwong\.cache\huggingface\hub')
+HF_HUB_ROOT = Path(HF_HUB_CACHE)
 
 # 项目根目录
 REPO_ROOT = Path(__file__).resolve().parent
 
 
 def get_snapshot(repo_name: str) -> Path:
-    """定位 HuggingFace 缓存中模型的实际快照路径"""
-    snap_dir = HF_HUB_ROOT / f'models--Qwen--{repo_name}' / 'snapshots'
-    if snap_dir.exists():
-        snaps = list(snap_dir.iterdir())
-        if snaps:
-            return snaps[0]
-    return HF_HUB_ROOT / f'models--Qwen--{repo_name}'
+    """定位 HuggingFace 缓存中模型的实际快照路径 (优先使用官方库定位)"""
+    repo_id = f"Qwen/{repo_name}"
+    try:
+        # 优先尝试使用 snapshot_download 定位本地路径
+        return Path(snapshot_download(repo_id=repo_id, local_files_only=True))
+    except Exception:
+        # 如果官方库查找失败或未下载快照，回退到手动拼接逻辑
+        snap_dir = HF_HUB_ROOT / f'models--Qwen--{repo_name}' / 'snapshots'
+        if snap_dir.exists():
+            snaps = [s for s in snap_dir.iterdir() if s.is_dir()]
+            if snaps:
+                return snaps[0]
+        return HF_HUB_ROOT / f'models--Qwen--{repo_name}'
 
 
 @dataclass

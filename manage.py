@@ -396,6 +396,32 @@ def command_bootstrap(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_download(args: argparse.Namespace) -> int:
+    check_preflight(
+        need_convert_modules=False,
+        need_build_deps=False,
+        enable_quant=False,
+        fix_git_safe=args.fix_git_safe,
+    )
+    from tools.downloader import download_model
+
+    if args.all:
+        for model in VALID_MODELS:
+            try:
+                download_model(model)
+            except Exception as e:
+                eprint(f"Failed to download {model}: {e}")
+                return 1
+        return 0
+
+    try:
+        download_model(args.model)
+        return 0
+    except Exception as e:
+        eprint(f"Failed to download {args.model}: {e}")
+        return 1
+
+
 def command_compare(args: argparse.Namespace) -> int:
     check_preflight(
         need_convert_modules=False,
@@ -578,6 +604,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_compare.add_argument("--keep-artifacts", action="store_true")
     p_compare.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
     p_compare.set_defaults(func=command_compare)
+
+    p_download = sub.add_parser("download", help="Download model source from Hugging Face Hub")
+    p_download.add_argument("--model", choices=VALID_MODELS, default="base_small", help="Specific model to download")
+    p_download.add_argument("--all", action="store_true", help="Download All known models")
+    p_download.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
+    p_download.set_defaults(func=command_download)
 
     return parser
 

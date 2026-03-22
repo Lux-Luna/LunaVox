@@ -136,19 +136,25 @@ def require_modules(modules: Iterable[tuple[str, str]]) -> None:
 
 
 def ensure_source_exists(cfg: ModelConfig) -> None:
-    """Verify the HF source model exists on disk."""
+    """Verify the HF source model exists on disk, download if missing."""
     required = [
         cfg.source / "config.json",
         cfg.source / "model.safetensors",
     ]
     missing = [str(p) for p in required if not p.exists()]
     if missing:
-        raise RuntimeError(
-            f"Model source files not found for '{cfg.name}':\n"
-            + "\n".join(f"  - {p}" for p in missing)
-            + f"\n\nExpected location: {cfg.source}"
-            + "\nPlease ensure the model is downloaded to the HuggingFace cache."
-        )
+        eprint(f"[setup] Model source missing for '{cfg.name}' at {cfg.source}")
+        eprint(f"[setup] Attempting automatic download from Hugging Face...")
+        from tools.downloader import download_model
+        try:
+            download_model(cfg.name)
+            # Re-verify after download
+            missing_after = [str(p) for p in required if not p.exists()]
+            if missing_after:
+                 raise RuntimeError(f"Download completed but required files still missing: {missing_after}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to automatically download model '{cfg.name}': {e}")
+            
     eprint(f"[ok] source model '{cfg.name}' found: {cfg.source}")
 
 

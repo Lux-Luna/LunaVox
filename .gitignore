@@ -12,7 +12,11 @@ _tmp_onnx_steps/
 *.dylib
 
 # Generated models / runtime artifacts
-models/
+models/base/
+models/base_small/
+models/custom/
+models/custom_small/
+models/design/
 output/
 
 # Test/debug artifacts
