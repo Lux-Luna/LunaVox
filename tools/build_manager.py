@@ -392,7 +392,13 @@ class Builder:
         self.run_cmd([str(exe), "--help"], cwd=self.root, stage="verify_help", timeout_sec=60)
         print("[build] Verify passed: qwen3-tts-cli --help")
 
-    def build(self, backend: str = "cpu", clean: bool = False, parallel: int = 4, verify: bool = False) -> None:
+    def build(
+        self,
+        backend: str = "cpu",
+        clean: bool = False,
+        parallel: int = 4,
+        verify: bool = False,
+    ) -> None:
         if backend not in {"cpu", "auto"}:
             raise RuntimeError(
                 f"Backend '{backend}' is no longer supported. "
@@ -450,11 +456,6 @@ class Builder:
             f"-DQWEN3_TTS_ORT_ROOT={self._cmake_path(str(self.ort_root))}",
         ] + toolchain_args
 
-        # Run ORT provider generator
-        gen_script = self.root / "tools" / "gen_ort_providers.py"
-        if gen_script.exists():
-            self.run_cmd([sys.executable, str(gen_script)], self.root, stage="gen_ort_providers")
-
         self.run_cmake(cmake_args, self.root, stage="cmake_configure")
 
         build_cmd = ["--build", str(build_dir), "-j", str(parallel), "--config", "Release"]
@@ -478,7 +479,12 @@ def main() -> None:
 
     root = Path(__file__).resolve().parents[1]
     builder = Builder(root, timeout_sec=args.timeout_sec)
-    builder.build(backend=args.backend, clean=args.clean, parallel=args.j, verify=args.verify)
+    builder.build(
+        backend=args.backend,
+        clean=args.clean,
+        parallel=args.j,
+        verify=args.verify,
+    )
 
 
 if __name__ == "__main__":

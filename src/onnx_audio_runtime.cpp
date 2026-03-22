@@ -5,13 +5,13 @@
 #include <cmath>
 #include <complex>
 #include <cstring>
-#include <mutex>
 #include <memory>
+#include <mutex>
 #include <numeric>
 #include <vector>
 
 #include "onnxruntime_cxx_api.h"
-#include "ort_provider_injector.h"
+#include "ort_provider_policy.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -61,24 +61,22 @@ std::wstring utf8_to_wide(const std::string & s) {
 struct ort_session_data {
     Ort::Session session{nullptr};
     std::unique_ptr<std::wstring> wide_path; // keep lifetime for Windows constructor args
+    std::string provider_summary;
 };
 
 ort_session_data * as_session(void * ptr) {
     return reinterpret_cast<ort_session_data *>(ptr);
 }
 
-const ort_session_data * as_session_const(const void * ptr) {
-    return reinterpret_cast<const ort_session_data *>(ptr);
-}
-
 bool create_session_impl(
     const std::string & model_path,
     int32_t intra_threads,
-    bool apply_providers,
+    ort_session_role role,
     std::string & error_msg,
     void *& out_ptr,
     std::vector<std::string> & input_names,
-    std::vector<std::string> & output_names) {
+    std::vector<std::string> & output_names,
+    std::string & provider_summary) {
     try {
         Ort::SessionOptions opts;
         opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
@@ -87,13 +85,11 @@ bool create_session_impl(
         }
         opts.SetInterOpNumThreads(1);
 
-        if (apply_providers) {
-            apply_decoder_providers(opts);
+        std::string provider_policy_summary;
+        if (!apply_ort_provider_policy(opts, get_ort_env(), role, error_msg, provider_policy_summary)) {
+            out_ptr = nullptr;
+            return false;
         }
-        if (intra_threads > 0) {
-            opts.SetIntraOpNumThreads((int) intra_threads);
-        }
-        opts.SetInterOpNumThreads(1);
 
         auto * impl = new ort_session_data();
 #ifdef _WIN32
@@ -120,6 +116,11 @@ bool create_session_impl(
             auto name = impl->session.GetOutputNameAllocated(i, allocator);
             output_names.emplace_back(name.get() ? name.get() : "");
         }
+
+        impl->provider_summary = provider_policy_summary.empty()
+            ? std::string("unknown")
+            : provider_policy_summary;
+        provider_summary = impl->provider_summary;
 
         out_ptr = impl;
         return true;
@@ -453,13 +454,23 @@ bool resample_windowed_sinc(
 bool CodecEncoderOnnx::load_model(const std::string & model_path, int32_t intra_threads) {
     unload_model();
     error_msg_.clear();
-    return create_session_impl(model_path, intra_threads, false, error_msg_, session_impl_, input_names_, output_names_) && (loaded_ = true);
+    return create_session_impl(
+               model_path,
+               intra_threads,
+               ort_session_role::cpu_only,
+               error_msg_,
+               session_impl_,
+               input_names_,
+               output_names_,
+               provider_summary_) &&
+           (loaded_ = true);
 }
 
 void CodecEncoderOnnx::unload_model() {
     destroy_session_impl(session_impl_);
     input_names_.clear();
     output_names_.clear();
+    provider_summary_ = "not_loaded";
     loaded_ = false;
 }
 
@@ -601,13 +612,23 @@ bool CodecEncoderOnnx::encode(
 bool SpeakerEncoderOnnx::load_model(const std::string & model_path, int32_t intra_threads) {
     unload_model();
     error_msg_.clear();
-    return create_session_impl(model_path, intra_threads, false, error_msg_, session_impl_, input_names_, output_names_) && (loaded_ = true);
+    return create_session_impl(
+               model_path,
+               intra_threads,
+               ort_session_role::cpu_only,
+               error_msg_,
+               session_impl_,
+               input_names_,
+               output_names_,
+               provider_summary_) &&
+           (loaded_ = true);
 }
 
 void SpeakerEncoderOnnx::unload_model() {
     destroy_session_impl(session_impl_);
     input_names_.clear();
     output_names_.clear();
+    provider_summary_ = "not_loaded";
     loaded_ = false;
 }
 
@@ -761,7 +782,15 @@ bool SpeakerEncoderOnnx::encode(const float * samples, int32_t n_samples, std::v
 bool StatefulDecoderOnnx::load_model(const std::string & model_path, int32_t intra_threads) {
     unload_model();
     error_msg_.clear();
-    if (!create_session_impl(model_path, intra_threads, true, error_msg_, session_impl_, input_names_, output_names_)) {
+    if (!create_session_impl(
+            model_path,
+            intra_threads,
+            ort_session_role::decoder,
+            error_msg_,
+            session_impl_,
+            input_names_,
+            output_names_,
+            provider_summary_)) {
         return false;
     }
     if (input_names_.size() < 5 || output_names_.size() < 2) {
@@ -847,6 +876,7 @@ void StatefulDecoderOnnx::unload_model() {
     destroy_session_impl(session_impl_);
     input_names_.clear();
     output_names_.clear();
+    provider_summary_ = "not_loaded";
     loaded_ = false;
     num_layers_ = 0;
     num_heads_ = 0;

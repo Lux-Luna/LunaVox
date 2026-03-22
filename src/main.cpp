@@ -38,6 +38,32 @@ static bool parse_language_id(const std::string & language, int32_t & language_i
     return true;
 }
 
+static std::string json_escape(const std::string & s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (unsigned char c : s) {
+        switch (c) {
+            case '\"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (c < 0x20) {
+                    char buf[7];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", (unsigned int) c);
+                    out += buf;
+                } else {
+                    out.push_back((char) c);
+                }
+                break;
+        }
+    }
+    return out;
+}
+
 #ifdef _WIN32
 static std::string wide_to_utf8(const std::wstring & ws) {
     if (ws.empty()) {
@@ -324,6 +350,9 @@ int main(int argc, char ** argv) {
                 result.sample_rate > 0 ? (double) result.audio.size() / (double) result.sample_rate : 0.0;
             const double wall_sec = (double) result.t_total_ms / 1000.0;
             const double rtf = audio_sec > 0.0 ? wall_sec / audio_sec : 0.0;
+            const std::string spk_ep_json = json_escape(result.ort_provider_speaker_encoder);
+            const std::string codec_ep_json = json_escape(result.ort_provider_codec_encoder);
+            const std::string decoder_ep_json = json_escape(result.ort_provider_decoder);
             fprintf(
                 jf,
                 "{\n"
@@ -366,6 +395,11 @@ int main(int argc, char ** argv) {
                 "    \"trailing_consumed\": %d,\n"
                 "    \"pcm_peak\": %.9f,\n"
                 "    \"pcm_rms\": %.9f\n"
+                "  },\n"
+                "  \"ort_providers\": {\n"
+                "    \"speaker_encoder\": \"%s\",\n"
+                "    \"codec_encoder\": \"%s\",\n"
+                "    \"decoder\": \"%s\"\n"
                 "  }\n"
                 "}\n",
                 result.sample_rate,
@@ -400,7 +434,10 @@ int main(int argc, char ** argv) {
                 (int) result.trailing_count,
                 (int) result.trailing_consumed,
                 (double) result.pcm_peak,
-                (double) result.pcm_rms);
+                (double) result.pcm_rms,
+                spk_ep_json.c_str(),
+                codec_ep_json.c_str(),
+                decoder_ep_json.c_str());
             fclose(jf);
         }
     }

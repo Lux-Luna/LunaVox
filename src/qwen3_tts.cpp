@@ -412,6 +412,7 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
             return false;
         }
         decoder_loaded_ = true;
+        fprintf(stderr, "  Decoder providers: %s\n", decoder_.provider_summary().c_str());
     } else {
         decoder_loaded_ = false;
         fprintf(stderr, "  Decoder ONNX: deferred (lazy load)\n");
@@ -555,6 +556,10 @@ tts_result Qwen3TTS::synthesize_with_voice(
 
         int64_t t_encode = get_time_ms();
         result.t_encode_ms = get_time_ms() - t_encode; // 0 ms basically, keeping stats uniform
+
+        result.ort_provider_speaker_encoder = speaker_encoder_loaded_ ? speaker_encoder_.provider_summary() : "not_loaded";
+        result.ort_provider_codec_encoder = codec_encoder_loaded_ ? codec_encoder_.provider_summary() : "not_loaded";
+        result.ort_provider_decoder = decoder_loaded_ ? decoder_.provider_summary() : "not_loaded";
         
         return synthesize_internal(
             text,
@@ -604,6 +609,7 @@ tts_result Qwen3TTS::synthesize_with_voice(
             return result;
         }
         speaker_encoder_loaded_ = true;
+        fprintf(stderr, "  Speaker encoder providers: %s\n", speaker_encoder_.provider_summary().c_str());
     }
     if (!codec_encoder_loaded_) {
         if (!codec_encoder_.load_model(codec_encoder_onnx_path_, params.n_threads)) {
@@ -611,6 +617,7 @@ tts_result Qwen3TTS::synthesize_with_voice(
             return result;
         }
         codec_encoder_loaded_ = true;
+        fprintf(stderr, "  Codec encoder providers: %s\n", codec_encoder_.provider_summary().c_str());
     }
 
     // Default behavior aligns with Qwen3-TTS-GGUF: keep full reference audio.
@@ -776,6 +783,9 @@ tts_result Qwen3TTS::synthesize_internal(
     const tts_params & params,
     tts_result & result) {
     int64_t t_total_start = get_time_ms();
+    result.ort_provider_speaker_encoder = speaker_encoder_loaded_ ? speaker_encoder_.provider_summary() : "not_loaded";
+    result.ort_provider_codec_encoder = codec_encoder_loaded_ ? codec_encoder_.provider_summary() : "not_loaded";
+    result.ort_provider_decoder = decoder_loaded_ ? decoder_.provider_summary() : "not_loaded";
 
     auto sample_memory = [&](const char * stage) {
         process_memory_snapshot mem;
@@ -893,7 +903,9 @@ tts_result Qwen3TTS::synthesize_internal(
             return result;
         }
         decoder_loaded_ = true;
+        fprintf(stderr, "  Decoder providers: %s\n", decoder_.provider_summary().c_str());
     }
+    result.ort_provider_decoder = decoder_.provider_summary();
     if (!decoder_.decode(speech_codes.data(), n_frames, result.audio)) {
         result.error_msg = "Failed to decode speech codes: " + decoder_.get_error();
         return result;

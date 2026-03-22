@@ -241,6 +241,13 @@ def run_build_verify(timeout_sec: int) -> int:
     return rc
 
 
+def make_build_args(args: argparse.Namespace) -> list[str]:
+    build_args = ["--backend", args.backend, "--j", str(args.j), "--timeout-sec", str(args.timeout_sec)]
+    if args.clean:
+        build_args.append("--clean")
+    return build_args
+
+
 def command_setup(args: argparse.Namespace) -> int:
     enable_quant = resolve_enable_quant(args)
     check_preflight(
@@ -309,9 +316,7 @@ def command_build(args: argparse.Namespace) -> int:
         enable_quant=False,
         fix_git_safe=args.fix_git_safe,
     )
-    build_args = ["--backend", args.backend, "--j", str(args.j), "--timeout-sec", str(args.timeout_sec)]
-    if args.clean:
-        build_args.append("--clean")
+    build_args = make_build_args(args)
     if args.verify:
         build_args.append("--verify")
     return run_python_script(
@@ -367,9 +372,7 @@ def command_bootstrap(args: argparse.Namespace) -> int:
     if rc != 0:
         return rc
 
-    build_args = ["--backend", args.backend, "--j", str(args.j), "--timeout-sec", str(args.timeout_sec)]
-    if args.clean:
-        build_args.append("--clean")
+    build_args = make_build_args(args)
     rc = run_python_script(
         BUILD_SCRIPT,
         build_args,

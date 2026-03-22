@@ -117,6 +117,11 @@ struct tts_result {
 
     float pcm_peak = 0.0f;
     float pcm_rms = 0.0f;
+
+    // ORT provider diagnostics
+    std::string ort_provider_speaker_encoder = "not_loaded";
+    std::string ort_provider_codec_encoder = "not_loaded";
+    std::string ort_provider_decoder = "not_loaded";
     
 };
 

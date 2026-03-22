@@ -4,7 +4,8 @@ LunaVox is a C++ inference runtime for Qwen3-TTS.
 
 Current runtime architecture:
 - Talker + Predictor: `llama.cpp` official runtime from `./lib`
-- Speaker encoder / codec encoder / decoder: ONNX Runtime (CPU)
+- Speaker encoder + codec encoder: ONNX Runtime (CPU only)
+- Decoder: ONNX Runtime with fixed provider policy (`CUDA > CoreML > CPU`, always CPU fallback)
 - Model layout: 2 GGUF + 3 ONNX + `embeddings/` + `tokenizer.json`
 
 ## Requirements
@@ -13,7 +14,7 @@ Current runtime architecture:
 - Python 3.10+
 - A C++ toolchain (on Windows, conda toolchains are supported)
 - Prebuilt llama runtime files in `./lib`
-- ONNX Runtime SDK in `./lib/onnxruntime` (`include/` + `lib/`)
+- ONNX Runtime SDK in `./lib/onnx` (`include/` + `lib/`)
 - Python dependencies:
   - `pip install -r requirements.txt`
   - `pip install -r requirements-convert-onnx.txt` (needed for local ONNX export)
@@ -125,6 +126,7 @@ Runtime notes:
 - Optional manual cap is supported via env var `QWEN3_TTS_CLONE_MAX_REF_SAMPLES`.
 - Clone synthesis defaults to x-vector-only prompting for stability. Enable ICL fusion (`ref_codes + spk_emb`) explicitly with `QWEN3_TTS_CLONE_USE_ICL=1`.
 - ORT logs are error-only by default; pass `--ort-debug-log` to surface warning logs during debugging.
+- ORT provider diagnostics are written to `--stats-json` as `ort_providers`.
 
 Export timing/memory JSON:
 

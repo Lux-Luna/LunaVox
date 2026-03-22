@@ -27,11 +27,13 @@ public:
     void unload_model();
     bool is_loaded() const { return loaded_; }
     const std::string & get_error() const { return error_msg_; }
+    const std::string & provider_summary() const { return provider_summary_; }
 
     bool encode(const float * samples, int32_t n_samples, std::vector<int32_t> & codes, int32_t & n_frames);
 
 private:
     std::string error_msg_;
+    std::string provider_summary_ = "not_loaded";
     bool loaded_ = false;
     void * session_impl_ = nullptr;
     std::vector<std::string> input_names_;
@@ -51,6 +53,7 @@ public:
     bool is_loaded() const { return loaded_; }
     const std::string & get_error() const { return error_msg_; }
     const mel_config & get_config() const { return cfg_; }
+    const std::string & provider_summary() const { return provider_summary_; }
 
     bool encode(const float * samples, int32_t n_samples, std::vector<float> & embedding);
 
@@ -60,6 +63,7 @@ private:
 
     mel_config cfg_;
     std::string error_msg_;
+    std::string provider_summary_ = "not_loaded";
     bool loaded_ = false;
     void * session_impl_ = nullptr;
     std::vector<std::string> input_names_;
@@ -74,6 +78,7 @@ public:
     void unload_model();
     bool is_loaded() const { return loaded_; }
     const std::string & get_error() const { return error_msg_; }
+    const std::string & provider_summary() const { return provider_summary_; }
 
     bool decode(const int32_t * codes, int32_t n_frames, std::vector<float> & audio);
     int32_t sample_rate() const { return sample_rate_; }
@@ -95,6 +100,7 @@ private:
     };
 
     std::string error_msg_;
+    std::string provider_summary_ = "not_loaded";
     bool loaded_ = false;
     int32_t sample_rate_ = 24000;
     int32_t num_layers_ = 0;

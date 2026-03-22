@@ -138,10 +138,11 @@ add_library(text_tokenizer STATIC src/text_tokenizer.cpp)
 target_include_directories(text_tokenizer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(text_tokenizer PUBLIC qwen3_tts_build_options)
 
-add_library(onnx_audio_runtime STATIC src/onnx_audio_runtime.cpp src/generated/ort_provider_injector.cpp)
+add_library(onnx_audio_runtime STATIC
+    src/onnx_audio_runtime.cpp
+    src/ort_provider_policy.cpp)
 target_include_directories(onnx_audio_runtime PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/generated
     ${QWEN3_TTS_ORT_ROOT}/include)
 target_link_libraries(onnx_audio_runtime PUBLIC
     qwen3_tts_build_options
