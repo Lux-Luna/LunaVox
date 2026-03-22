@@ -145,7 +145,7 @@ def ensure_source_exists(cfg: ModelConfig) -> None:
     if missing:
         eprint(f"[setup] Model source missing for '{cfg.name}' at {cfg.source}")
         eprint(f"[setup] Attempting automatic download from Hugging Face...")
-        from tools.downloader import download_model
+        from tools.download.models_downloader import download_model
         try:
             download_model(cfg.name)
             # Re-verify after download

@@ -403,7 +403,7 @@ def command_download(args: argparse.Namespace) -> int:
         enable_quant=False,
         fix_git_safe=args.fix_git_safe,
     )
-    from tools.downloader import download_model
+    from tools.download.models_downloader import download_model
 
     if args.all:
         for model in VALID_MODELS:

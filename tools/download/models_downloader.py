@@ -18,7 +18,7 @@ def download_model(model_name: str, force: bool = False) -> Path:
         raise ValueError(f"Unknown model '{model_name}'. Available: {valid}")
 
     repo_id = REPO_MAP[model_name]
-    print(f"[downloader] Starting download for {model_name} ({repo_id})...")
+    print(f"[models_downloader] Starting download for {model_name} ({repo_id})...")
     
     # snapshot_download will automatically handle caching and skip if already exists
     path = snapshot_download(
@@ -28,7 +28,7 @@ def download_model(model_name: str, force: bool = False) -> Path:
         # We don't force unless explicitly requested, HF hub handles mismatching blobs anyway
     )
     
-    print(f"[downloader] Download complete: {path}")
+    print(f"[models_downloader] Download complete: {path}")
     return Path(path)
 
 def download_all():
@@ -37,7 +37,7 @@ def download_all():
         try:
             download_model(name)
         except Exception as e:
-            print(f"[downloader] Failed to download {name}: {e}")
+            print(f"[models_downloader] Failed to download {name}: {e}")
 
 if __name__ == "__main__":
     # If run directly, default to downloading a specific model or all
