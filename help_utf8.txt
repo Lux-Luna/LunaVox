@@ -1,0 +1,128 @@
+﻿build\qwen3-tts-cli.ex
+e : Usage: D:\TTS\luna
+vox\build\qwen3-tts-cl
+i.exe [options] -m <mo
+del_dir> -t <text>
+所在位置 行:1 字符: 1
++ build\qwen3-tts-cli.
+exe --help > help.txt 
+2>&1; Get-Content help
+.txt
++ ~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~
+~~~~
+    + CategoryInfo    
+          : NotSpeci  
+  fied: (Usage: D:\   
+ TTS\l..._dir> -t     
+<text>:String) []    ,
+ RemoteException
+    + FullyQualifiedE 
+   rrorId : NativeCo  
+  mmandError
+ 
+
+Options:
+  -m, --model <dir>   
+   Model directory (re
+quired)
+  -t, --text <text>   
+   Text to synthesize 
+(required)
+  -o, --output <file> 
+   Output WAV file (de
+fault: output.wav)
+  -r, --reference <fil
+e> Reference audio for
+ voice cloning
+  --mode <mode>       
+   Synthesis mode: bas
+e(default), clone, cus
+tom, design
+  --instruct <text>   
+   Instruct text for c
+ustom/design mode
+  --speaker <name>    
+   Speaker name for cu
+stom mode (Vivian,Ryan
+,Aiden,...)
+  --temperature <val> 
+   Sampling temperatur
+e (default: 0.9, 0=gre
+edy)
+  --top-k <n>         
+   Top-k sampling (def
+ault: 50, 0=disabled)
+  --top-p <val>       
+   Top-p sampling (def
+ault: 1.0)
+  --predictor-greedy  
+   Use greedy decoding
+ for predictor stage
+  --predictor-temperat
+ure <val> Predictor st
+age temperature (defau
+lt: 0.9)
+  --predictor-top-k <n
+>  Predictor stage top
+-k (default: 50)
+  --predictor-top-p <v
+al> Predictor stage to
+p-p (default: 1.0)
+  --seed <n>          
+  Talker sampler seed 
+(default: random)
+  --predictor-seed <n>
+  Predictor sampler se
+ed (default: random)
+  --max-tokens <n>    
+   Maximum audio token
+s (default: 4096)
+  --repetition-penalty
+ <val> Repetition pena
+lty (default: 1.05)
+  --ort-debug-log     
+   Enable ORT warning 
+logs (default: error-o
+nly)
+  --stats-json <file> 
+   Write timing/runtim
+e stats JSON report
+  -l, --language <lang
+>  Force language: en,
+ru,zh,ja,ko,de,fr,es,i
+t,pt
+  --no-auto-language  
+   Disable language au
+to-detection (uses --l
+anguage or en)
+  -j, --threads <n>   
+   Number of threads (
+default: 4)
+  -h, --help          
+   Show this help
+
+Examples:
+  D:\TTS\lunavox\build
+\qwen3-tts-cli.exe -m 
+./models/base_small -t
+ "Hello, world!" -o he
+llo.wav
+  D:\TTS\lunavox\build
+\qwen3-tts-cli.exe -m 
+./models/base_small -t
+ "Hello!" -r reference
+.wav -o cloned.wav
+  D:\TTS\lunavox\build
+\qwen3-tts-cli.exe -m 
+./models/custom --mode
+ custom --speaker Vivi
+an --instruct "Speak g
+ently" -t "Hello" -o c
+ustom.wav
+  D:\TTS\lunavox\build
+\qwen3-tts-cli.exe -m 
+./models/design --mode
+ design --instruct "A 
+warm female voice" -t 
+"Hello" -o design.wav

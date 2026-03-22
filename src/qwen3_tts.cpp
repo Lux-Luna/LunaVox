@@ -897,8 +897,16 @@ tts_result Qwen3TTS::synthesize_internal(
     // Tokenize instruct block for Custom Voice / Voice Design modes
     std::vector<int32_t> instruct_tokens;
     if (!params.instruct.empty()) {
-        std::string instruct_block = "<|im_start|>user\n" + params.instruct + "<|im_end|>\n";
-        instruct_tokens = tokenizer_.encode(instruct_block);
+        instruct_tokens.push_back(151644); // <|im_start|>
+        instruct_tokens.push_back(872);    // user
+        instruct_tokens.push_back(198);    // \n
+        
+        std::vector<int32_t> inner = tokenizer_.encode(params.instruct);
+        instruct_tokens.insert(instruct_tokens.end(), inner.begin(), inner.end());
+        
+        instruct_tokens.push_back(151645); // <|im_end|>
+        instruct_tokens.push_back(198);    // \n
+        
         if (params.print_timing) {
             fprintf(stderr, "Instruct tokens: %d tokens for block: %s\n",
                     (int)instruct_tokens.size(), params.instruct.c_str());
