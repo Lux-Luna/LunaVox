@@ -162,6 +162,7 @@ bool TalkerPredictorLlama::sample_with_mask(
 bool TalkerPredictorLlama::run_prefill(
     const std::vector<int32_t> & text_tokens,
     const std::vector<int32_t> & role_prefix_tokens,
+    const std::vector<int32_t> & instruct_tokens,
     const float * speaker_embedding,
     const int32_t * ref_codes,
     int32_t n_ref_frames,
@@ -195,6 +196,19 @@ bool TalkerPredictorLlama::run_prefill(
     if (!think || !nothink || !think_bos || !think_eos) {
         error_msg_ = "Missing protocol embedding rows";
         return false;
+    }
+
+    // Inject instruct block BEFORE assistant role prefix (matches prompt_builder.py behavior)
+    // Format: <|im_start|>user\n{instruct}<|im_end|>\n
+    if (!instruct_tokens.empty()) {
+        for (int32_t tid : instruct_tokens) {
+            const float * row = assets_->text_row(tid);
+            if (!row) {
+                error_msg_ = "Instruct token embedding out of range";
+                return false;
+            }
+            prompt_flat.insert(prompt_flat.end(), row, row + hidden_dim_);
+        }
     }
 
     for (int32_t tid : role_prefix_tokens) {
@@ -524,6 +538,7 @@ bool TalkerPredictorLlama::run_decode_step(const std::vector<float> & audio_sum,
 bool TalkerPredictorLlama::generate(
     const std::vector<int32_t> & text_tokens,
     const std::vector<int32_t> & role_prefix_tokens,
+    const std::vector<int32_t> & instruct_tokens,
     const float * speaker_embedding,
     const int32_t * ref_codes,
     int32_t n_ref_frames,
@@ -567,6 +582,7 @@ bool TalkerPredictorLlama::generate(
     if (!run_prefill(
             text_tokens,
             role_prefix_tokens,
+            instruct_tokens,
             speaker_embedding,
             ref_codes,
             n_ref_frames,

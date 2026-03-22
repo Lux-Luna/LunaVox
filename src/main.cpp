@@ -109,6 +109,9 @@ void print_usage(const char * program) {
     fprintf(stderr, "  -t, --text <text>      Text to synthesize (required)\n");
     fprintf(stderr, "  -o, --output <file>    Output WAV file (default: output.wav)\n");
     fprintf(stderr, "  -r, --reference <file> Reference audio for voice cloning\n");
+    fprintf(stderr, "  --mode <mode>          Synthesis mode: base(default), clone, custom, design\n");
+    fprintf(stderr, "  --instruct <text>      Instruct text for custom/design mode\n");
+    fprintf(stderr, "  --speaker <name>       Speaker name for custom mode (Vivian,Ryan,Aiden,...)\n");
     fprintf(stderr, "  --temperature <val>    Sampling temperature (default: 0.9, 0=greedy)\n");
     fprintf(stderr, "  --top-k <n>            Top-k sampling (default: 50, 0=disabled)\n");
     fprintf(stderr, "  --top-p <val>          Top-p sampling (default: 1.0)\n");
@@ -127,9 +130,11 @@ void print_usage(const char * program) {
     fprintf(stderr, "  -j, --threads <n>      Number of threads (default: 4)\n");
     fprintf(stderr, "  -h, --help             Show this help\n");
     fprintf(stderr, "\n");
-    fprintf(stderr, "Example:\n");
+    fprintf(stderr, "Examples:\n");
     fprintf(stderr, "  %s -m ./models/base_small -t \"Hello, world!\" -o hello.wav\n", program);
     fprintf(stderr, "  %s -m ./models/base_small -t \"Hello!\" -r reference.wav -o cloned.wav\n", program);
+    fprintf(stderr, "  %s -m ./models/custom --mode custom --speaker Vivian --instruct \"Speak gently\" -t \"Hello\" -o custom.wav\n", program);
+    fprintf(stderr, "  %s -m ./models/design --mode design --instruct \"A warm female voice\" -t \"Hello\" -o design.wav\n", program);
 }
 
 int main(int argc, char ** argv) {
@@ -149,6 +154,9 @@ int main(int argc, char ** argv) {
     std::string output_file = "output.wav";
     std::string reference_audio;
     std::string stats_json_file;
+    std::string mode = "base";
+    std::string instruct_text;
+    std::string speaker_name;
     
     qwen3_tts::tts_params params;
     params.auto_language = true;
@@ -276,6 +284,28 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             params.n_threads = std::stoi(args[i]);
+        } else if (arg == "--mode") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing mode value\n");
+                return 1;
+            }
+            mode = to_lower_ascii(args[i]);
+            if (mode != "base" && mode != "clone" && mode != "custom" && mode != "design") {
+                fprintf(stderr, "Error: unknown mode '%s'. Use: base, clone, custom, design\n", mode.c_str());
+                return 1;
+            }
+        } else if (arg == "--instruct") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing instruct text\n");
+                return 1;
+            }
+            instruct_text = args[i];
+        } else if (arg == "--speaker") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing speaker name\n");
+                return 1;
+            }
+            speaker_name = args[i];
         } else {
             fprintf(stderr, "Error: unknown argument: %s\n", arg.c_str());
             print_usage(program);
@@ -312,16 +342,44 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "\rGenerating: %d/%d tokens", tokens, max_tokens);
     });
     
+    // Infer mode from --reference if provided and mode is still "base"
+    if (!reference_audio.empty() && mode == "base") {
+        mode = "clone";
+    }
+
     // Generate speech
     qwen3_tts::tts_result result;
     
-    if (reference_audio.empty()) {
-        fprintf(stderr, "Synthesizing: \"%s\"\n", text.c_str());
-        result = tts.synthesize(text, params);
-    } else {
+    if (mode == "clone") {
+        if (reference_audio.empty()) {
+            fprintf(stderr, "Error: clone mode requires --reference\n");
+            return 1;
+        }
         fprintf(stderr, "Synthesizing with voice cloning: \"%s\"\n", text.c_str());
         fprintf(stderr, "Reference audio: %s\n", reference_audio.c_str());
         result = tts.synthesize_with_voice(text, reference_audio, params);
+    } else if (mode == "custom") {
+        if (speaker_name.empty()) {
+            fprintf(stderr, "Error: custom mode requires --speaker\n");
+            return 1;
+        }
+        fprintf(stderr, "Synthesizing with custom voice: \"%s\" (speaker: %s)\n", text.c_str(), speaker_name.c_str());
+        if (!instruct_text.empty()) {
+            fprintf(stderr, "Instruct: %s\n", instruct_text.c_str());
+        }
+        result = tts.synthesize_custom(text, speaker_name, instruct_text, params);
+    } else if (mode == "design") {
+        if (instruct_text.empty()) {
+            fprintf(stderr, "Error: design mode requires --instruct\n");
+            return 1;
+        }
+        fprintf(stderr, "Synthesizing with voice design: \"%s\"\n", text.c_str());
+        fprintf(stderr, "Design instruct: %s\n", instruct_text.c_str());
+        result = tts.synthesize_design(text, instruct_text, params);
+    } else {
+        // base mode
+        fprintf(stderr, "Synthesizing: \"%s\"\n", text.c_str());
+        result = tts.synthesize(text, params);
     }
     
     if (!result.success) {

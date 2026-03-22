@@ -775,6 +775,83 @@ tts_result Qwen3TTS::synthesize_with_embedding(
     return synthesize_internal(text, embedding, nullptr, 0, params, result);
 }
 
+// Speaker name -> ID mapping (matches SPEAKER_MAP in Qwen3-TTS-GGUF constants.py)
+int32_t Qwen3TTS::speaker_id_from_name(const std::string & name) {
+    // Build lowercase name
+    std::string lower;
+    lower.reserve(name.size());
+    for (char c : name) {
+        lower.push_back((char)std::tolower((unsigned char)c));
+    }
+    // Official speaker map
+    if (lower == "vivian")    return 3065;
+    if (lower == "serena")    return 3066;
+    if (lower == "uncle_fu")  return 3010;
+    if (lower == "ryan")      return 3061;
+    if (lower == "aiden")     return 2861;
+    if (lower == "ono_anna")  return 2873;
+    if (lower == "sohee")     return 2864;
+    if (lower == "eric")      return 2875;
+    if (lower == "dylan")     return 2878;
+    return -1;
+}
+
+tts_result Qwen3TTS::synthesize_custom(
+    const std::string & text,
+    const std::string & speaker,
+    const std::string & instruct,
+    const tts_params & params_in) {
+    tts_result result;
+    if (!models_loaded_) {
+        result.error_msg = "Models not loaded";
+        return result;
+    }
+
+    // Map speaker name to ID
+    int32_t spk_id = speaker_id_from_name(speaker);
+    if (spk_id < 0) {
+        result.error_msg = "Unknown speaker name: " + speaker +
+            ". Available: Vivian, Serena, Uncle_Fu, Ryan, Aiden, Ono_Anna, Sohee, Eric, Dylan";
+        return result;
+    }
+
+    // Get speaker embedding from codec embedding row
+    const float * emb = assets_.codec_row(0, spk_id);
+    if (!emb) {
+        result.error_msg = "Failed to get codec embedding for speaker ID ";
+        result.error_msg += std::to_string(spk_id);
+        return result;
+    }
+
+    // Build params with instruct
+    tts_params p = params_in;
+    p.instruct = instruct;
+
+    return synthesize_internal(text, emb, nullptr, 0, p, result);
+}
+
+tts_result Qwen3TTS::synthesize_design(
+    const std::string & text,
+    const std::string & instruct,
+    const tts_params & params_in) {
+    tts_result result;
+    if (!models_loaded_) {
+        result.error_msg = "Models not loaded";
+        return result;
+    }
+
+    if (instruct.empty()) {
+        result.error_msg = "Voice Design mode requires non-empty instruct text";
+        return result;
+    }
+
+    // Design mode: no speaker embedding, only instruct
+    tts_params p = params_in;
+    p.instruct = instruct;
+
+    return synthesize_internal(text, nullptr, nullptr, 0, p, result);
+}
+
 tts_result Qwen3TTS::synthesize_internal(
     const std::string & text,
     const float * speaker_embedding,
@@ -816,6 +893,18 @@ tts_result Qwen3TTS::synthesize_internal(
         role_prefix_tokens[2] != 198) {
         role_prefix_tokens = {151644, 77091, 198};
     }
+
+    // Tokenize instruct block for Custom Voice / Voice Design modes
+    std::vector<int32_t> instruct_tokens;
+    if (!params.instruct.empty()) {
+        std::string instruct_block = "<|im_start|>user\n" + params.instruct + "<|im_end|>\n";
+        instruct_tokens = tokenizer_.encode(instruct_block);
+        if (params.print_timing) {
+            fprintf(stderr, "Instruct tokens: %d tokens for block: %s\n",
+                    (int)instruct_tokens.size(), params.instruct.c_str());
+        }
+    }
+
     result.t_tokenize_ms = get_time_ms() - t_tok;
     sample_memory("synth/after-tokenize");
 
@@ -848,6 +937,7 @@ tts_result Qwen3TTS::synthesize_internal(
     if (!talker_predictor_.generate(
             text_tokens,
             role_prefix_tokens,
+            instruct_tokens,
             speaker_embedding,
             ref_codes,
             n_ref_frames,

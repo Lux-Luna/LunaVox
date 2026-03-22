@@ -59,6 +59,14 @@ struct tts_params {
     // Language ID for codec (2050=en, 2069=ru, 2055=zh, 2058=ja, 2064=ko, 2053=de, 2061=fr, 2054=es)
     int32_t language_id = 2050;
 
+    // Instruct text for Custom Voice / Voice Design modes.
+    // For Custom: emotion/style instructions (e.g. "用温柔的语气说")
+    // For Design: full voice design description
+    std::string instruct;
+
+    // Speaker name for Custom Voice mode (e.g. "Vivian", "Ryan")
+    std::string speaker_name;
+
 };
 
 // TTS generation result
@@ -183,6 +191,20 @@ public:
                                           const float * embedding, int32_t embedding_size,
                                           const tts_params & params = tts_params());
 
+    // Custom Voice synthesis (uses built-in speaker + optional instruct)
+    // speaker: speaker name (e.g. "Vivian", "Ryan", "Aiden")
+    // instruct: optional style/emotion instruction
+    tts_result synthesize_custom(const std::string & text,
+                                  const std::string & speaker,
+                                  const std::string & instruct,
+                                  const tts_params & params = tts_params());
+
+    // Voice Design synthesis (instruct-only, no speaker embedding)
+    // instruct: full voice design description
+    tts_result synthesize_design(const std::string & text,
+                                  const std::string & instruct,
+                                  const tts_params & params = tts_params());
+
     // Set progress callback
     void set_progress_callback(tts_progress_callback_t callback);
     
@@ -199,6 +221,9 @@ private:
                                    int32_t n_ref_frames,
                                    const tts_params & params,
                                    tts_result & result);
+
+    // Map speaker name to codec embedding ID, returns -1 if not found
+    static int32_t speaker_id_from_name(const std::string & name);
 
     bool load_models_new_layout(const std::string & model_dir, int32_t n_threads);
     

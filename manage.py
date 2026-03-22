@@ -24,6 +24,9 @@ DEFAULT_TIMEOUT_SEC = 300
 LOG_DIR = ROOT / "logs"
 LATEST_LOG = LOG_DIR / "latest.log"
 
+# Valid model variants for --model argument
+VALID_MODELS = ["base", "custom", "design", "base_small", "custom_small"]
+
 
 def eprint(msg: str) -> None:
     print(msg, file=sys.stderr)
@@ -266,15 +269,13 @@ def command_setup(args: argparse.Namespace) -> int:
         fix_git_safe=args.fix_git_safe,
     )
     setup_args = [
-        "--models-dir",
-        args.models_dir,
+        "--model",
+        args.model,
         "--timeout-sec",
         str(args.timeout_sec),
     ]
-    if args.hf_token:
-        setup_args += ["--hf-token", args.hf_token]
-    if args.skip_download:
-        setup_args.append("--skip-download")
+    if args.models_dir:
+        setup_args += ["--models-dir", args.models_dir]
     if args.skip_convert:
         setup_args.append("--skip-convert")
     if args.force:
@@ -298,14 +299,13 @@ def command_convert(args: argparse.Namespace) -> int:
         fix_git_safe=args.fix_git_safe,
     )
     setup_args = [
-        "--models-dir",
-        args.models_dir,
+        "--model",
+        args.model,
         "--timeout-sec",
         str(args.timeout_sec),
-        "--skip-download",
     ]
-    if args.hf_token:
-        setup_args += ["--hf-token", args.hf_token]
+    if args.models_dir:
+        setup_args += ["--models-dir", args.models_dir]
     if args.force:
         setup_args.append("--force")
     if enable_quant:
@@ -358,13 +358,13 @@ def command_bootstrap(args: argparse.Namespace) -> int:
     )
 
     setup_args = [
-        "--models-dir",
-        args.models_dir,
+        "--model",
+        args.model,
         "--timeout-sec",
         str(args.timeout_sec),
     ]
-    if args.skip_download:
-        setup_args.append("--skip-download")
+    if args.models_dir:
+        setup_args += ["--models-dir", args.models_dir]
     if args.skip_convert:
         setup_args.append("--skip-convert")
     if args.force:
@@ -468,11 +468,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="LunaVox management tool")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_setup = sub.add_parser("setup", help="Download/convert all runtime artifacts")
-    p_setup.add_argument("--models-dir", default=str(ROOT / "models" / "base_small"))
-    p_setup.add_argument("--hf-token", default="")
+    p_setup = sub.add_parser("setup", help="Convert pre-downloaded models into runtime artifacts")
+    p_setup.add_argument("--model", choices=VALID_MODELS, default="base_small", help="Model variant to convert")
+    p_setup.add_argument("--models-dir", default="", help="Override output directory (default: from model_config)")
     p_setup.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
-    p_setup.add_argument("--skip-download", action="store_true")
     p_setup.add_argument("--skip-convert", action="store_true")
     p_setup.add_argument("--force", action="store_true")
     p_setup.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
@@ -485,9 +484,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_setup.add_argument("--enable-quant", action="store_true", help="Alias of --no-skip-quant")
     p_setup.set_defaults(func=command_setup)
 
-    p_convert = sub.add_parser("convert", help="Convert artifacts only (implies --skip-download)")
-    p_convert.add_argument("--models-dir", default=str(ROOT / "models" / "base_small"))
-    p_convert.add_argument("--hf-token", default="")
+    p_convert = sub.add_parser("convert", help="Convert model into runtime artifacts")
+    p_convert.add_argument("--model", choices=VALID_MODELS, default="base_small", help="Model variant to convert")
+    p_convert.add_argument("--models-dir", default="", help="Override output directory (default: from model_config)")
     p_convert.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
     p_convert.add_argument("--force", action="store_true")
     p_convert.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
@@ -523,9 +522,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_preflight.set_defaults(func=command_preflight)
 
     p_bootstrap = sub.add_parser("bootstrap", help="One-command setup + build + verify")
+    p_bootstrap.add_argument("--model", choices=VALID_MODELS, default="base_small", help="Model variant to convert")
     p_bootstrap.add_argument("--backend", choices=["cpu"], default="cpu")
-    p_bootstrap.add_argument("--models-dir", default=str(ROOT / "models" / "base_small"))
-    p_bootstrap.add_argument("--skip-download", action="store_true")
+    p_bootstrap.add_argument("--models-dir", default="", help="Override output directory (default: from model_config)")
     p_bootstrap.add_argument("--skip-convert", action="store_true")
     p_bootstrap.add_argument("--force", action="store_true")
     p_bootstrap.add_argument(

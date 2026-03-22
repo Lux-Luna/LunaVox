@@ -251,12 +251,17 @@ bool AssetsManager::load_npy_f32_2d(const std::string & path, npy_matrix & out) 
     if (!parse_npy_header(path, descr, shape, data_offset)) {
         return false;
     }
-    if (shape.size() != 2 || shape[0] <= 0 || shape[1] <= 0) {
-        error_msg_ = "Only 2D npy arrays are supported";
+    if (shape.size() == 1 && shape[0] > 0) {
+        // Treat 1D arrays as (1, N) for compatibility (e.g. proj_bias.npy)
+        out.rows = 1;
+        out.cols = (int32_t) shape[0];
+    } else if (shape.size() == 2 && shape[0] > 0 && shape[1] > 0) {
+        out.rows = (int32_t) shape[0];
+        out.cols = (int32_t) shape[1];
+    } else {
+        error_msg_ = "Only 1D or 2D npy arrays are supported";
         return false;
     }
-    out.rows = (int32_t) shape[0];
-    out.cols = (int32_t) shape[1];
     const size_t elem_count = (size_t) out.rows * (size_t) out.cols;
     out.data.resize(elem_count);
 

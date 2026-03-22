@@ -23,7 +23,7 @@ from safetensors.torch import load_file, save_file
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HF_EXPORT_DIR = REPO_ROOT / "tools" / "conversion" / "hf_export"
-LLAMA_QUANT = REPO_ROOT / "lib" / "llama-quantize.exe"
+LLAMA_QUANT = REPO_ROOT / "lib" / "llama" / "llama-quantize.exe"
 
 
 def _ensure_hf_export_present() -> None:

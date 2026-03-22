@@ -26,6 +26,7 @@ public:
     bool generate(
         const std::vector<int32_t> & text_tokens,
         const std::vector<int32_t> & role_prefix_tokens,
+        const std::vector<int32_t> & instruct_tokens,
         const float * speaker_embedding,
         const int32_t * ref_codes,
         int32_t n_ref_frames,
@@ -51,6 +52,7 @@ private:
     bool run_prefill(
         const std::vector<int32_t> & text_tokens,
         const std::vector<int32_t> & role_prefix_tokens,
+        const std::vector<int32_t> & instruct_tokens,
         const float * speaker_embedding,
         const int32_t * ref_codes,
         int32_t n_ref_frames,
