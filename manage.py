@@ -21,7 +21,8 @@ COMPARE_SCRIPT = TOOLS / "compare_inference.py"
 
 EXPECTED_CONDA_ENV = "lunavox"
 DEFAULT_TIMEOUT_SEC = 300
-MANAGE_LOG_DIR = ROOT / "logs" / "manage"
+LOG_DIR = ROOT / "logs"
+LATEST_LOG = LOG_DIR / "latest.log"
 
 
 def eprint(msg: str) -> None:
@@ -157,12 +158,20 @@ def run_stage_process(
     timeout_sec: int,
     stage: str,
 ) -> int:
-    MANAGE_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     stage_name = _safe_stage_name(stage)
-    ts = time.strftime("%Y%m%d-%H%M%S")
-    log_file = MANAGE_LOG_DIR / f"{ts}-{stage_name}.log"
     start = time.time()
     eprint(f"[run:{stage_name}] {' '.join(cmd)}")
+    
+    header = (
+        f"\n{'='*80}\n"
+        f"STAGE: {stage_name}\n"
+        f"TIME: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"CMD: {' '.join(cmd)}\n"
+        f"CWD: {cwd}\n"
+        f"{'='*80}\n"
+    )
+    
     try:
         proc = subprocess.run(
             cmd,
@@ -178,19 +187,20 @@ def run_stage_process(
         output = proc.stdout or ""
         elapsed = time.time() - start
         status = "ok" if proc.returncode == 0 else "failed"
-        log_file.write_text(
-            f"[{status}] {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"stage: {stage_name}\n"
-            f"cmd: {' '.join(cmd)}\n"
-            f"cwd: {cwd}\n"
-            f"timeout_sec: {timeout_sec}\n"
-            f"elapsed_sec: {elapsed:.3f}\n"
-            f"returncode: {proc.returncode}\n\n"
-            f"{output}",
-            encoding="utf-8",
+        
+        log_entry = (
+            f"{header}"
+            f"STATUS: {status}\n"
+            f"ELAPSED: {elapsed:.3f}s\n"
+            f"RETURNCODE: {proc.returncode}\n\n"
+            f"{output}\n"
         )
+        
+        with open(LATEST_LOG, "a", encoding="utf-8") as f:
+            f.write(log_entry)
+            
         if proc.returncode != 0:
-            eprint(f"[run:{stage_name}] failed, log: {log_file}")
+            eprint(f"[run:{stage_name}] failed, log: {LATEST_LOG}")
         return int(proc.returncode)
     except subprocess.TimeoutExpired as err:
         output = ""
@@ -199,18 +209,17 @@ def run_stage_process(
         if err.stderr:
             output += err.stderr if isinstance(err.stderr, str) else err.stderr.decode("utf-8", errors="ignore")
         elapsed = time.time() - start
-        log_file.write_text(
-            f"[timeout] {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"stage: {stage_name}\n"
-            f"cmd: {' '.join(cmd)}\n"
-            f"cwd: {cwd}\n"
-            f"timeout_sec: {timeout_sec}\n"
-            f"elapsed_sec: {elapsed:.3f}\n\n"
-            f"{output}",
-            encoding="utf-8",
+        log_entry = (
+            f"{header}"
+            f"STATUS: timeout\n"
+            f"ELAPSED: {elapsed:.3f}s\n\n"
+            f"{output}\n"
         )
+        with open(LATEST_LOG, "a", encoding="utf-8") as f:
+            f.write(log_entry)
+            
         raise RuntimeError(
-            f"Stage '{stage_name}' timed out after {timeout_sec}s. See log: {log_file}"
+            f"Stage '{stage_name}' timed out after {timeout_sec}s. See log: {LATEST_LOG}"
         ) from err
 
 
@@ -222,7 +231,7 @@ def run_python_script(script: Path, extra_args: list[str], *, timeout_sec: int, 
 
 
 def run_build_verify(timeout_sec: int) -> int:
-    build_dir = ROOT / "build-cpu"
+    build_dir = ROOT / "build"
     if os.name == "nt":
         exe = build_dir / "qwen3-tts-cli.exe"
     else:
@@ -546,7 +555,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Qwen-side clone-only reference clipping seconds for root-cause isolation (default: 0.0)",
     )
     p_compare.add_argument("--models-dir", default=str(ROOT / "models" / "base_small"))
-    p_compare.add_argument("--build-dir", default=str(ROOT / "build-cpu"))
+    p_compare.add_argument("--build-dir", default=str(ROOT / "build"))
     p_compare.add_argument("--qwen-repo", default=str(ROOT.parent / "Qwen3-TTS-GGUF"))
     p_compare.add_argument("--qwen-model-dir", default=str(ROOT / "models" / "base_small"))
     p_compare.add_argument(
@@ -577,6 +586,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+    
+    # Truncate/Initialize latest.log
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(LATEST_LOG, "w", encoding="utf-8") as f:
+        f.write(f"LunaVox Manager - Session Start: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        
     try:
         return int(args.func(args))
     except KeyboardInterrupt:

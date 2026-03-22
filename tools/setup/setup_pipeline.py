@@ -50,7 +50,15 @@ def run_cmd(
 ) -> None:
     eprint(f"[run] {' '.join(cmd)}")
     start = time.time()
-    output_text = ""
+    latest_log = REPO_ROOT / "logs" / "latest.log"
+    header = (
+        f"\n{'='*80}\n"
+        f"TIME: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"CMD: {' '.join(cmd)}\n"
+        f"CWD: {cwd}\n"
+        f"{'='*80}\n"
+    )
+    
     try:
         proc = subprocess.run(
             cmd,
@@ -65,51 +73,52 @@ def run_cmd(
             timeout=timeout_sec if timeout_sec and timeout_sec > 0 else None,
         )
         output_text = proc.stdout or ""
+        if log_file or True: # Force logging to latest.log
+            latest_log.parent.mkdir(parents=True, exist_ok=True)
+            elapsed = time.time() - start
+            log_entry = (
+                f"{header}"
+                f"STATUS: ok\n"
+                f"ELAPSED: {elapsed:.3f}s\n\n"
+                f"{output_text}\n"
+            )
+            with open(latest_log, "a", encoding="utf-8") as f:
+                f.write(log_entry)
+                
     except subprocess.TimeoutExpired as err:
         output_text = ""
         if err.stdout:
             output_text += err.stdout if isinstance(err.stdout, str) else err.stdout.decode("utf-8", errors="ignore")
         if err.stderr:
             output_text += err.stderr if isinstance(err.stderr, str) else err.stderr.decode("utf-8", errors="ignore")
-        if log_file:
-            log_file.parent.mkdir(parents=True, exist_ok=True)
-            log_file.write_text(
-                f"[timeout] {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                f"cmd: {' '.join(cmd)}\n"
-                f"cwd: {cwd}\n"
-                f"timeout_sec: {timeout_sec}\n\n"
-                f"{output_text}",
-                encoding="utf-8",
-            )
-        msg = f"Command timed out after {timeout_sec}s: {' '.join(cmd)}"
-        if log_file:
-            msg += f"\nSee log: {log_file}"
+        
+        elapsed = time.time() - start
+        log_entry = (
+            f"{header}"
+            f"STATUS: timeout\n"
+            f"ELAPSED: {elapsed:.3f}s\n\n"
+            f"{output_text}\n"
+        )
+        latest_log.parent.mkdir(parents=True, exist_ok=True)
+        with open(latest_log, "a", encoding="utf-8") as f:
+            f.write(log_entry)
+            
+        msg = f"Command timed out after {timeout_sec}s: {' '.join(cmd)}\nSee log: {latest_log}"
         raise RuntimeError(msg) from err
     except subprocess.CalledProcessError as err:
         output_text = err.stdout or ""
-        if log_file:
-            log_file.parent.mkdir(parents=True, exist_ok=True)
-            log_file.write_text(
-                f"[failed] {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                f"cmd: {' '.join(cmd)}\n"
-                f"cwd: {cwd}\n"
-                f"returncode: {err.returncode}\n\n"
-                f"{output_text}",
-                encoding="utf-8",
-            )
-        raise
-
-    if log_file:
         elapsed = time.time() - start
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        log_file.write_text(
-            f"[ok] {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"cmd: {' '.join(cmd)}\n"
-            f"cwd: {cwd}\n"
-            f"elapsed_sec: {elapsed:.3f}\n\n"
-            f"{output_text}",
-            encoding="utf-8",
+        log_entry = (
+            f"{header}"
+            f"STATUS: failed\n"
+            f"RETURNCODE: {err.returncode}\n"
+            f"ELAPSED: {elapsed:.3f}s\n\n"
+            f"{output_text}\n"
         )
+        latest_log.parent.mkdir(parents=True, exist_ok=True)
+        with open(latest_log, "a", encoding="utf-8") as f:
+            f.write(log_entry)
+        raise
 
 
 def has_module(name: str) -> bool:
@@ -291,7 +300,7 @@ def run_onnx_stage(
     logs_dir: Path,
     enable_quant: bool,
 ) -> None:
-    log_file = logs_dir / f"{stage}.log"
+    # log_file = logs_dir / f"{stage}.log" # Deprecated
     env = os.environ.copy()
     env["PYTHONUTF8"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
@@ -471,7 +480,7 @@ def main() -> int:
     eprint(f"  - {out_embeddings_dir}")
     eprint(f"  - {out_tokenizer_json}")
     eprint("\nRun:")
-    eprint("  ./build-cpu/qwen3-tts-cli -m models/base_small -t \"Hello\" -o out.wav")
+    eprint("  ./build/qwen3-tts-cli -m models/base_small -t \"Hello\" -o out.wav")
     return 0
 
 

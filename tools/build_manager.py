@@ -19,7 +19,8 @@ class Builder:
         self.ort_root = self.root / "lib" / "onnx"
         self.tmp_dir = self.root / "_tmp_build"
         self.timeout_sec = max(1, int(timeout_sec))
-        self.log_dir = self.root / "logs" / "build"
+        self.log_dir = self.root / "logs"
+        self.latest_log = self.log_dir / "latest.log"
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         # Avoid writing temp files to user profile paths that may be inaccessible in sandboxed sessions.
@@ -32,9 +33,17 @@ class Builder:
     def _run_logged(self, cmd: list[str], cwd: Path, stage: str, timeout_sec: int | None = None) -> None:
         timeout = self.timeout_sec if timeout_sec is None else max(1, int(timeout_sec))
         safe_stage = re.sub(r"[^a-zA-Z0-9._-]+", "_", stage).strip("_") or "build"
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        log_file = self.log_dir / f"{stamp}-{safe_stage}.log"
         print(f"[build:{safe_stage}] {' '.join(cmd)}")
+        
+        header = (
+            f"\n{'='*80}\n"
+            f"BUILD STAGE: {safe_stage}\n"
+            f"TIME: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"CMD: {' '.join(cmd)}\n"
+            f"CWD: {cwd}\n"
+            f"{'='*80}\n"
+        )
+        
         start = time.time()
         try:
             proc = subprocess.run(
@@ -56,34 +65,35 @@ class Builder:
             if err.stderr:
                 output += err.stderr if isinstance(err.stderr, str) else err.stderr.decode("utf-8", errors="ignore")
             elapsed = time.time() - start
-            log_file.write_text(
-                f"[timeout] {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                f"stage: {safe_stage}\n"
-                f"cmd: {' '.join(cmd)}\n"
-                f"cwd: {cwd}\n"
-                f"timeout_sec: {timeout}\n"
-                f"elapsed_sec: {elapsed:.3f}\n\n"
-                f"{output}",
-                encoding="utf-8",
+            
+            log_entry = (
+                f"{header}"
+                f"STATUS: timeout\n"
+                f"ELAPSED: {elapsed:.3f}s\n\n"
+                f"{output}\n"
             )
-            raise RuntimeError(f"Build stage '{safe_stage}' timed out after {timeout}s. See {log_file}") from err
+            with open(self.latest_log, "a", encoding="utf-8") as f:
+                f.write(log_entry)
+                
+            raise RuntimeError(f"Build stage '{safe_stage}' timed out after {timeout}s. See {self.latest_log}") from err
 
         elapsed = time.time() - start
         output = proc.stdout or ""
         status = "ok" if proc.returncode == 0 else "failed"
-        log_file.write_text(
-            f"[{status}] {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"stage: {safe_stage}\n"
-            f"cmd: {' '.join(cmd)}\n"
-            f"cwd: {cwd}\n"
-            f"timeout_sec: {timeout}\n"
-            f"elapsed_sec: {elapsed:.3f}\n"
-            f"returncode: {proc.returncode}\n\n"
-            f"{output}",
-            encoding="utf-8",
+        
+        log_entry = (
+            f"{header}"
+            f"STATUS: {status}\n"
+            f"ELAPSED: {elapsed:.3f}s\n"
+            f"RETURNCODE: {proc.returncode}\n\n"
+            f"{output}\n"
         )
+        
+        with open(self.latest_log, "a", encoding="utf-8") as f:
+            f.write(log_entry)
+            
         if proc.returncode != 0:
-            raise RuntimeError(f"Build stage '{safe_stage}' failed (rc={proc.returncode}). See {log_file}")
+            raise RuntimeError(f"Build stage '{safe_stage}' failed (rc={proc.returncode}). See {self.latest_log}")
 
     def run_cmake(self, args: list[str], cwd: Path, stage: str) -> None:
         self._run_logged(["cmake"] + args, cwd, stage=stage)
@@ -418,7 +428,7 @@ class Builder:
         toolchain_args, toolchain_name = self._resolve_toolchain()
         print(f"[build] Toolchain: {toolchain_name}")
 
-        build_dir = self.root / "build-cpu"
+        build_dir = self.root / "build"
         if clean and build_dir.exists():
             print(f"[build] Cleaning {build_dir}")
             shutil.rmtree(build_dir)
