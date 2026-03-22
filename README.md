@@ -87,15 +87,10 @@ Notes:
 
 ## ONNX Export Diagnostics
 
-- ONNX export runs by stage: `codec_encoder`, `speaker_encoder`, `decoder` (+ optional `quantize`)
-- ONNX export completion is followed by a local ORT validation stage.
-- Per-stage timeout default: `170s` (configurable by `--timeout-sec`)
-- Stage logs:
-  - `logs/convert_onnx/codec_encoder.log`
-  - `logs/convert_onnx/speaker_encoder.log`
-  - `logs/convert_onnx/decoder.log`
-  - `logs/convert_onnx/quantize.log` (if enabled)
-  - `logs/convert_onnx/validate.log`
+-   ONNX export runs by stage: `codec_encoder`, `speaker_encoder`, `decoder` (+ optional `quantize`)
+-   ONNX export completion is followed by a local ORT validation stage.
+-   Per-stage timeout default: `170s` (configurable by `--timeout-sec`)
+-   Diagnostics and command output are consolidated into: `logs/latest.log`
 
 ## Runtime Model Layout (`models/base_small/`)
 

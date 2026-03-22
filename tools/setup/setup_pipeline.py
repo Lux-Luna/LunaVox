@@ -224,7 +224,6 @@ def run_onnx_stage(
     base_dir: Path,
     models_dir: Path,
     timeout_sec: int,
-    logs_dir: Path,
     enable_quant: bool,
 ) -> None:
     env = os.environ.copy()
@@ -258,7 +257,6 @@ def ensure_onnx_artifacts(
     out_speaker_encoder: Path,
     out_decoder: Path,
     timeout_sec: int,
-    logs_dir: Path,
     enable_quant: bool,
 ) -> None:
     stage_to_output = {
@@ -267,7 +265,6 @@ def ensure_onnx_artifacts(
         "decoder": out_decoder,
     }
 
-    logs_dir.mkdir(parents=True, exist_ok=True)
     for stage, artifact in stage_to_output.items():
         if artifact.exists():
             eprint(f"[skip] ONNX stage '{stage}' already done: {artifact}")
@@ -278,7 +275,6 @@ def ensure_onnx_artifacts(
             base_dir=base_dir,
             models_dir=models_dir,
             timeout_sec=timeout_sec,
-            logs_dir=logs_dir,
             enable_quant=enable_quant,
         )
 
@@ -289,7 +285,6 @@ def ensure_onnx_artifacts(
             base_dir=base_dir,
             models_dir=models_dir,
             timeout_sec=timeout_sec,
-            logs_dir=logs_dir,
             enable_quant=enable_quant,
         )
 
@@ -400,7 +395,6 @@ def main() -> int:
     out_decoder = models_dir / "qwen3_tts_decoder.fp16.onnx"
     out_embeddings_dir = models_dir / "embeddings"
     out_tokenizer_json = models_dir / "tokenizer.json"
-    logs_dir = REPO_ROOT / "logs" / "convert_onnx"
 
     models_dir.mkdir(parents=True, exist_ok=True)
 
@@ -447,7 +441,6 @@ def main() -> int:
                 out_speaker_encoder=out_speaker_encoder,
                 out_decoder=out_decoder,
                 timeout_sec=max(1, int(args.timeout_sec)),
-                logs_dir=logs_dir,
                 enable_quant=enable_quant,
             )
 
