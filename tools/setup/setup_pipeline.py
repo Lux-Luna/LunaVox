@@ -308,6 +308,24 @@ def ensure_onnx_artifacts(
         timeout_sec=timeout_sec,
     )
 
+    # Auto-cleanup: remove intermediate fp32 ONNX files after successful validation
+    fp32_patterns = [
+        "qwen3_tts_codec_encoder.fp32.onnx",
+        "qwen3_tts_codec_encoder.fp32.onnx.data",
+        "qwen3_tts_speaker_encoder.fp32.onnx",
+        "qwen3_tts_speaker_encoder.fp32.onnx.data",
+        "qwen3_tts_decoder.fp32.onnx",
+        "qwen3_tts_decoder.fp32.onnx.data",
+    ]
+    cleaned = []
+    for name in fp32_patterns:
+        fp32_file = models_dir / name
+        if fp32_file.exists():
+            fp32_file.unlink()
+            cleaned.append(name)
+    if cleaned:
+        eprint(f"[cleanup] Removed {len(cleaned)} intermediate fp32 file(s): {', '.join(cleaned)}")
+
 
 def parse_args() -> argparse.Namespace:
     valid_models = ", ".join(m.name for m in Models.ALL)
@@ -368,6 +386,13 @@ def main() -> int:
     # Verify source exists
     ensure_source_exists(cfg)
 
+    # Determine ONNX source: custom/design variants share ONNX with their base model
+    onnx_source_cfg = cfg
+    if cfg.name in ("custom", "design"):
+        onnx_source_cfg = Models.base
+    elif cfg.name == "custom_small":
+        onnx_source_cfg = Models.base_small
+
     out_talker = models_dir / "qwen3_tts_talker.q5_k.gguf"
     out_predictor = models_dir / "qwen3_tts_predictor.q8_0.gguf"
     out_codec_encoder = models_dir / "qwen3_tts_codec_encoder.fp16.onnx"
@@ -390,17 +415,41 @@ def main() -> int:
         ensure_talker_predictor(sys.executable, base_dir, out_talker, out_predictor, out_embeddings_dir)
         ensure_embeddings(sys.executable, base_dir, out_embeddings_dir)
         ensure_tokenizer_json(base_dir, out_tokenizer_json)
-        ensure_onnx_artifacts(
-            python_exe=sys.executable,
-            base_dir=base_dir,
-            models_dir=models_dir,
-            out_codec_encoder=out_codec_encoder,
-            out_speaker_encoder=out_speaker_encoder,
-            out_decoder=out_decoder,
-            timeout_sec=max(1, int(args.timeout_sec)),
-            logs_dir=logs_dir,
-            enable_quant=enable_quant,
-        )
+
+        if onnx_source_cfg.name != cfg.name:
+            # Copy ONNX artifacts from base variant instead of re-exporting
+            onnx_base_dir = onnx_source_cfg.dest.resolve()
+            onnx_files = [
+                "qwen3_tts_codec_encoder.fp16.onnx",
+                "qwen3_tts_speaker_encoder.fp16.onnx",
+                "qwen3_tts_decoder.fp16.onnx",
+            ]
+            for fname in onnx_files:
+                src = onnx_base_dir / fname
+                dst = models_dir / fname
+                if dst.exists():
+                    eprint(f"[skip] ONNX exists: {dst}")
+                    continue
+                if not src.exists():
+                    raise RuntimeError(
+                        f"ONNX source not found: {src}\n"
+                        f"Please convert the base model first:\n"
+                        f"  python manage.py convert --model {onnx_source_cfg.name}"
+                    )
+                shutil.copy2(src, dst)
+                eprint(f"[copy] {src} -> {dst}")
+        else:
+            ensure_onnx_artifacts(
+                python_exe=sys.executable,
+                base_dir=base_dir,
+                models_dir=models_dir,
+                out_codec_encoder=out_codec_encoder,
+                out_speaker_encoder=out_speaker_encoder,
+                out_decoder=out_decoder,
+                timeout_sec=max(1, int(args.timeout_sec)),
+                logs_dir=logs_dir,
+                enable_quant=enable_quant,
+            )
 
     eprint("\n[done] Model setup complete.")
     eprint(f"  Model: {cfg.name}")
