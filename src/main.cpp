@@ -38,6 +38,32 @@ static bool parse_language_id(const std::string & language, int32_t & language_i
     return true;
 }
 
+static std::string json_escape(const std::string & s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (unsigned char c : s) {
+        switch (c) {
+            case '\"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (c < 0x20) {
+                    char buf[7];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", (unsigned int) c);
+                    out += buf;
+                } else {
+                    out.push_back((char) c);
+                }
+                break;
+        }
+    }
+    return out;
+}
+
 #ifdef _WIN32
 static std::string wide_to_utf8(const std::wstring & ws) {
     if (ws.empty()) {
@@ -50,7 +76,7 @@ static std::string wide_to_utf8(const std::wstring & ws) {
     }
     std::string utf8((size_t)size, '\0');
     WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(),
-                        utf8.data(), size, nullptr, nullptr);
+                        &utf8[0], size, nullptr, nullptr);
     return utf8;
 }
 
@@ -86,16 +112,24 @@ void print_usage(const char * program) {
     fprintf(stderr, "  --temperature <val>    Sampling temperature (default: 0.9, 0=greedy)\n");
     fprintf(stderr, "  --top-k <n>            Top-k sampling (default: 50, 0=disabled)\n");
     fprintf(stderr, "  --top-p <val>          Top-p sampling (default: 1.0)\n");
+    fprintf(stderr, "  --predictor-greedy     Use greedy decoding for predictor stage\n");
+    fprintf(stderr, "  --predictor-temperature <val> Predictor stage temperature (default: 0.9)\n");
+    fprintf(stderr, "  --predictor-top-k <n>  Predictor stage top-k (default: 50)\n");
+    fprintf(stderr, "  --predictor-top-p <val> Predictor stage top-p (default: 1.0)\n");
+    fprintf(stderr, "  --seed <n>            Talker sampler seed (default: random)\n");
+    fprintf(stderr, "  --predictor-seed <n>  Predictor sampler seed (default: random)\n");
     fprintf(stderr, "  --max-tokens <n>       Maximum audio tokens (default: 4096)\n");
     fprintf(stderr, "  --repetition-penalty <val> Repetition penalty (default: 1.05)\n");
+    fprintf(stderr, "  --ort-debug-log        Enable ORT warning logs (default: error-only)\n");
+    fprintf(stderr, "  --stats-json <file>    Write timing/runtime stats JSON report\n");
     fprintf(stderr, "  -l, --language <lang>  Force language: en,ru,zh,ja,ko,de,fr,es,it,pt\n");
     fprintf(stderr, "  --no-auto-language     Disable language auto-detection (uses --language or en)\n");
     fprintf(stderr, "  -j, --threads <n>      Number of threads (default: 4)\n");
     fprintf(stderr, "  -h, --help             Show this help\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "Example:\n");
-    fprintf(stderr, "  %s -m ./models -t \"Hello, world!\" -o hello.wav\n", program);
-    fprintf(stderr, "  %s -m ./models -t \"Hello!\" -r reference.wav -o cloned.wav\n", program);
+    fprintf(stderr, "  %s -m ./models/base_small -t \"Hello, world!\" -o hello.wav\n", program);
+    fprintf(stderr, "  %s -m ./models/base_small -t \"Hello!\" -r reference.wav -o cloned.wav\n", program);
 }
 
 int main(int argc, char ** argv) {
@@ -114,6 +148,7 @@ int main(int argc, char ** argv) {
     std::string text;
     std::string output_file = "output.wav";
     std::string reference_audio;
+    std::string stats_json_file;
     
     qwen3_tts::tts_params params;
     params.auto_language = true;
@@ -167,6 +202,39 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             params.top_p = std::stof(args[i]);
+        } else if (arg == "--predictor-greedy") {
+            params.predictor_do_sample = false;
+        } else if (arg == "--predictor-temperature") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing predictor-temperature value\n");
+                return 1;
+            }
+            params.predictor_temperature = std::stof(args[i]);
+            params.predictor_do_sample = params.predictor_temperature > 0.0f;
+        } else if (arg == "--predictor-top-k") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing predictor-top-k value\n");
+                return 1;
+            }
+            params.predictor_top_k = std::stoi(args[i]);
+        } else if (arg == "--predictor-top-p") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing predictor-top-p value\n");
+                return 1;
+            }
+            params.predictor_top_p = std::stof(args[i]);
+        } else if (arg == "--seed") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing seed value\n");
+                return 1;
+            }
+            params.seed = std::stoi(args[i]);
+        } else if (arg == "--predictor-seed") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing predictor-seed value\n");
+                return 1;
+            }
+            params.predictor_seed = std::stoi(args[i]);
         } else if (arg == "--max-tokens") {
             if (++i >= (int)args.size()) {
                 fprintf(stderr, "Error: missing max-tokens value\n");
@@ -179,6 +247,14 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             params.repetition_penalty = std::stof(args[i]);
+        } else if (arg == "--ort-debug-log") {
+            params.ort_debug_log = true;
+        } else if (arg == "--stats-json") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing stats-json file path\n");
+                return 1;
+            }
+            stats_json_file = args[i];
         } else if (arg == "-l" || arg == "--language") {
             if (++i >= (int)args.size()) {
                 fprintf(stderr, "Error: missing language value\n");
@@ -222,9 +298,11 @@ int main(int argc, char ** argv) {
     
     // Initialize TTS
     qwen3_tts::Qwen3TTS tts;
+
+    qwen3_tts::set_ort_debug_log(params.ort_debug_log);
     
     fprintf(stderr, "Loading models from: %s\n", model_dir.c_str());
-    if (!tts.load_models(model_dir)) {
+    if (!tts.load_models(model_dir, params.n_threads)) {
         fprintf(stderr, "Error: %s\n", tts.get_error().c_str());
         return 1;
     }
@@ -262,6 +340,107 @@ int main(int argc, char ** argv) {
     fprintf(stderr, "Output saved to: %s\n", output_file.c_str());
     fprintf(stderr, "Audio duration: %.2f seconds\n", 
             (float)result.audio.size() / result.sample_rate);
+
+    if (!stats_json_file.empty()) {
+        FILE * jf = fopen(stats_json_file.c_str(), "wb");
+        if (!jf) {
+            fprintf(stderr, "Warning: failed to write stats JSON: %s\n", stats_json_file.c_str());
+        } else {
+            const double audio_sec =
+                result.sample_rate > 0 ? (double) result.audio.size() / (double) result.sample_rate : 0.0;
+            const double wall_sec = (double) result.t_total_ms / 1000.0;
+            const double rtf = audio_sec > 0.0 ? wall_sec / audio_sec : 0.0;
+            const std::string spk_ep_json = json_escape(result.ort_provider_speaker_encoder);
+            const std::string codec_ep_json = json_escape(result.ort_provider_codec_encoder);
+            const std::string decoder_ep_json = json_escape(result.ort_provider_decoder);
+            fprintf(
+                jf,
+                "{\n"
+                "  \"success\": true,\n"
+                "  \"sample_rate\": %d,\n"
+                "  \"audio_samples\": %d,\n"
+                "  \"audio_sec\": %.6f,\n"
+                "  \"timing_ms\": {\n"
+                "    \"tokenize\": %lld,\n"
+                "    \"encode\": %lld,\n"
+                "    \"generate\": %lld,\n"
+                "    \"decode\": %lld,\n"
+                "    \"total\": %lld\n"
+                "  },\n"
+                "  \"rtf\": %.6f,\n"
+                "  \"mem\": {\n"
+                "    \"rss_start\": %llu,\n"
+                "    \"rss_end\": %llu,\n"
+                "    \"rss_peak\": %llu,\n"
+                "    \"phys_start\": %llu,\n"
+                "    \"phys_end\": %llu,\n"
+                "    \"phys_peak\": %llu\n"
+                "  },\n"
+                "  \"diagnostics\": {\n"
+                "    \"spk_emb_dim\": %d,\n"
+                "    \"spk_emb_l2\": %.9f,\n"
+                "    \"spk_emb_nan_count\": %d,\n"
+                "    \"spk_emb_inf_count\": %d,\n"
+                "    \"ref_code_frames\": %d,\n"
+                "    \"ref_codebooks\": %d,\n"
+                "    \"ref_code_min\": %d,\n"
+                "    \"ref_code_max\": %d,\n"
+                "    \"gen_code_frames\": %d,\n"
+                "    \"gen_codebooks\": %d,\n"
+                "    \"gen_code_min\": %d,\n"
+                "    \"gen_code_max\": %d,\n"
+                "    \"gen_codes_hash_hex\": \"%016llx\",\n"
+                "    \"eos_step\": %d,\n"
+                "    \"trailing_count\": %d,\n"
+                "    \"trailing_consumed\": %d,\n"
+                "    \"pcm_peak\": %.9f,\n"
+                "    \"pcm_rms\": %.9f\n"
+                "  },\n"
+                "  \"ort_providers\": {\n"
+                "    \"speaker_encoder\": \"%s\",\n"
+                "    \"codec_encoder\": \"%s\",\n"
+                "    \"decoder\": \"%s\"\n"
+                "  }\n"
+                "}\n",
+                result.sample_rate,
+                (int) result.audio.size(),
+                audio_sec,
+                (long long) result.t_tokenize_ms,
+                (long long) result.t_encode_ms,
+                (long long) result.t_generate_ms,
+                (long long) result.t_decode_ms,
+                (long long) result.t_total_ms,
+                rtf,
+                (unsigned long long) result.mem_rss_start_bytes,
+                (unsigned long long) result.mem_rss_end_bytes,
+                (unsigned long long) result.mem_rss_peak_bytes,
+                (unsigned long long) result.mem_phys_start_bytes,
+                (unsigned long long) result.mem_phys_end_bytes,
+                (unsigned long long) result.mem_phys_peak_bytes,
+                (int) result.spk_emb_dim,
+                (double) result.spk_emb_l2,
+                (int) result.spk_emb_nan_count,
+                (int) result.spk_emb_inf_count,
+                (int) result.ref_code_frames,
+                (int) result.ref_codebooks,
+                (int) result.ref_code_min,
+                (int) result.ref_code_max,
+                (int) result.gen_code_frames,
+                (int) result.gen_codebooks,
+                (int) result.gen_code_min,
+                (int) result.gen_code_max,
+                (unsigned long long) result.gen_codes_hash,
+                (int) result.eos_step,
+                (int) result.trailing_count,
+                (int) result.trailing_consumed,
+                (double) result.pcm_peak,
+                (double) result.pcm_rms,
+                spk_ep_json.c_str(),
+                codec_ep_json.c_str(),
+                decoder_ep_json.c_str());
+            fclose(jf);
+        }
+    }
     
     // Print timing
     if (params.print_timing) {

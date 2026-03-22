@@ -1,9 +1,9 @@
 #pragma once
 
 #include "text_tokenizer.h"
-#include "tts_transformer.h"
-#include "audio_tokenizer_encoder.h"
-#include "audio_tokenizer_decoder.h"
+#include "onnx_audio_runtime.h"
+#include "assets_manager.h"
+#include "talker_predictor_llama.h"
 
 #include <string>
 #include <vector>
@@ -25,9 +25,23 @@ struct tts_params {
     
     // Top-k sampling (0 = disabled)
     int32_t top_k = 50;
+
+    // Predictor stage sampling controls (Q1..Q15 generation).
+    bool predictor_do_sample = true;
+    float predictor_temperature = 0.9f;
+    float predictor_top_p = 1.0f;
+    int32_t predictor_top_k = 50;
+
+    // Sampling seeds (-1 means random seed from clock).
+    int32_t seed = -1;
+    int32_t predictor_seed = -1;
     
     // Number of threads
     int32_t n_threads = 4;
+
+    // Enable verbose ORT runtime logs (warning+) for ONNX debugging.
+    // Default false keeps runtime output quiet at error level.
+    bool ort_debug_log = false;
     
     // Print progress during generation
     bool print_progress = false;
@@ -80,6 +94,34 @@ struct tts_result {
     uint64_t mem_phys_start_bytes = 0;
     uint64_t mem_phys_end_bytes = 0;
     uint64_t mem_phys_peak_bytes = 0;
+
+    // Clone/generation diagnostics for alignment & noisy-audio triage.
+    int32_t spk_emb_dim = 0;
+    float spk_emb_l2 = 0.0f;
+    int32_t spk_emb_nan_count = 0;
+    int32_t spk_emb_inf_count = 0;
+
+    int32_t ref_code_frames = 0;
+    int32_t ref_codebooks = 16;
+    int32_t ref_code_min = -1;
+    int32_t ref_code_max = -1;
+
+    int32_t gen_code_frames = 0;
+    int32_t gen_codebooks = 16;
+    int32_t gen_code_min = -1;
+    int32_t gen_code_max = -1;
+    uint64_t gen_codes_hash = 0;
+    int32_t eos_step = -1;
+    int32_t trailing_count = 0;
+    int32_t trailing_consumed = 0;
+
+    float pcm_peak = 0.0f;
+    float pcm_rms = 0.0f;
+
+    // ORT provider diagnostics
+    std::string ort_provider_speaker_encoder = "not_loaded";
+    std::string ort_provider_codec_encoder = "not_loaded";
+    std::string ort_provider_decoder = "not_loaded";
     
 };
 
@@ -92,9 +134,16 @@ public:
     Qwen3TTS();
     ~Qwen3TTS();
     
-    // Load all models from directory
-    // model_dir should contain: transformer.gguf, tokenizer.gguf, vocoder.gguf
-    bool load_models(const std::string & model_dir);
+    // Load all models from directory.
+    // Required layout:
+    //   qwen3_tts_talker.q5_k.gguf
+    //   qwen3_tts_predictor.q8_0.gguf
+    //   qwen3_tts_speaker_encoder.fp16.onnx
+    //   qwen3_tts_codec_encoder.fp16.onnx
+    //   qwen3_tts_decoder.fp16.onnx
+    //   embeddings/
+    //   tokenizer.json
+    bool load_models(const std::string & model_dir, int32_t n_threads = 4);
     
     // Generate speech from text
     // text: input text to synthesize
@@ -121,7 +170,7 @@ public:
     
     // Extract speaker embedding from raw audio samples (for caching)
     // ref_samples: 24kHz mono float32 normalized to [-1, 1]
-    // embedding: output vector (resized to hidden_size, typically 1024)
+    // embedding: output vector (typically 2048 for Qwen3-TTS)
     // Returns true on success
     bool extract_speaker_embedding(const float * ref_samples, int32_t n_ref_samples,
                                    std::vector<float> & embedding,
@@ -129,7 +178,7 @@ public:
 
     // Synthesize with pre-computed speaker embedding (skips encoder)
     // embedding: speaker embedding from extract_speaker_embedding()
-    // embedding_size: must match hidden_size (typically 1024)
+    // embedding_size: must match runtime hidden size (typically 2048)
     tts_result synthesize_with_embedding(const std::string & text,
                                           const float * embedding, int32_t embedding_size,
                                           const tts_params & params = tts_params());
@@ -146,22 +195,35 @@ public:
 private:
     tts_result synthesize_internal(const std::string & text,
                                    const float * speaker_embedding,
+                                   const int32_t * ref_codes,
+                                   int32_t n_ref_frames,
                                    const tts_params & params,
                                    tts_result & result);
+
+    bool load_models_new_layout(const std::string & model_dir, int32_t n_threads);
     
     TextTokenizer tokenizer_;
-    TTSTransformer transformer_;
-    AudioTokenizerEncoder audio_encoder_;
-    AudioTokenizerDecoder audio_decoder_;
+    TalkerPredictorLlama talker_predictor_;
+    AssetsManager assets_;
+    SpeakerEncoderOnnx speaker_encoder_;
+    CodecEncoderOnnx codec_encoder_;
+    StatefulDecoderOnnx decoder_;
     
     bool models_loaded_ = false;
-    bool encoder_loaded_ = false;
-    bool transformer_loaded_ = false;
+    bool speaker_encoder_loaded_ = false;
+    bool codec_encoder_loaded_ = false;
+    bool talker_predictor_loaded_ = false;
+    bool assets_loaded_ = false;
     bool decoder_loaded_ = false;
     bool low_mem_mode_ = false;
     std::string error_msg_;
-    std::string tts_model_path_;
-    std::string decoder_model_path_;
+    std::string speaker_onnx_path_;
+    std::string codec_encoder_onnx_path_;
+    std::string talker_model_path_;
+    std::string predictor_model_path_;
+    std::string embeddings_dir_path_;
+    std::string decoder_onnx_path_;
+    std::string tokenizer_json_path_;
     tts_progress_callback_t progress_callback_;
 };
 

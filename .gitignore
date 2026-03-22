@@ -1,30 +1,27 @@
-# Build
+# Build outputs
 build/
-build_cuda/
+build-*/
+cmake-build-*/
+_tmp_build/
+_tmp_onnx_export/
+_tmp_onnx_steps/
+.hf_home/
 *.o
 *.a
 *.so
 *.dylib
 
-# Models (too large for git)
-models/*.gguf
-models/Qwen3-TTS-*/
-models/coreml/
+# Generated models / runtime artifacts
+models/
+output/
 
-# Test outputs
+# Test/debug artifacts
 test_output/
 test_results.txt
-*.wav
-!examples/readme_clone_input.wav
-!examples/readme_example_clone.wav
-tmp*.mlpackage/
-third_party/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+debug_*.bin
+reference/debug/
+reference/decoder_debug/
+logs/convert_onnx/
 
 # Python
 __pycache__/
@@ -32,37 +29,15 @@ __pycache__/
 .venv/
 *.egg-info/
 
-# OS
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
 
-# Debug files
-debug_*.bin
-reference/decoder_debug/
-reference/debug/
+lib/
 docs/
-
-# Models
-models/
-
-# output
-output/
-
-
-reference/
-# Models
-models/
-
-# output
-output/
-
-# Temporary
-reference/
-*.txt
-tools/toolchains/
-ggml/
-build-cuda/
-build-cpu/
-ggml/build/
-ggml/build_cuda/
-ggml/build_cpu
+代办.txt
+logs/

@@ -191,22 +191,17 @@ int32_t qwen3_tts_extract_embedding_file(
         return -1;
     }
 
-    // Resample if needed (same logic as synthesize_with_voice)
+    // Resample if needed (same quality path as synthesize_with_voice)
     if (ref_sample_rate != 24000) {
-        // Simple linear resampling
-        double ratio = (double)ref_sample_rate / 24000;
-        int output_len = (int)((double)ref_samples.size() / ratio);
-        std::vector<float> resampled(output_len);
-        for (int i = 0; i < output_len; ++i) {
-            double src_idx = i * ratio;
-            int idx0 = (int)src_idx;
-            int idx1 = idx0 + 1;
-            double frac = src_idx - idx0;
-            if (idx1 >= (int)ref_samples.size()) {
-                resampled[i] = ref_samples.back();
-            } else {
-                resampled[i] = (float)((1.0 - frac) * ref_samples[idx0] + frac * ref_samples[idx1]);
-            }
+        std::vector<float> resampled;
+        if (!qwen3_tts::resample_windowed_sinc(
+                ref_samples.data(),
+                (int32_t) ref_samples.size(),
+                ref_sample_rate,
+                resampled,
+                24000)) {
+            tts->last_error = "Failed to resample reference audio to 24kHz";
+            return -1;
         }
         ref_samples = std::move(resampled);
     }

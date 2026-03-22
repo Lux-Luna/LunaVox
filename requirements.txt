@@ -1,0 +1,10 @@
+numpy
+tqdm
+safetensors
+gguf
+huggingface_hub
+torch
+transformers
+onnx
+onnxruntime
+onnxruntime-tools

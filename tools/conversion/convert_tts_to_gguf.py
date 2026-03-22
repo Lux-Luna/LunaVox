@@ -5,7 +5,7 @@ Convert HuggingFace Qwen3-TTS-12Hz-0.6B-Base model to GGUF format.
 Usage:
     python tools/conversion/convert_tts_to_gguf.py \
         --input models/Qwen3-TTS-12Hz-0.6B-Base \
-        --output models/qwen3-tts-0.6B-base.gguf \
+        --output models/qwen3_tts_talker.q5_k.gguf \
         --talker-type q5_k \
         --predictor-type q8_0 \
         --speaker-type f16
@@ -63,7 +63,7 @@ class Qwen3TTSConverter:
         "q5_k": gguf.LlamaFileType.MOSTLY_Q5_K_M,
     }
 
-    # Keep in sync with enum ggml_type in ggml/include/ggml.h.
+    # Keep in sync with GGML quant type ids used by llama.cpp / GGUF tooling.
     GGML_TYPE_MAP = {
         "f32": 0,
         "f16": 1,
@@ -164,6 +164,7 @@ class Qwen3TTSConverter:
         talker_type: str | None = None,
         predictor_type: str | None = None,
         speaker_type: str | None = None,
+        modules: set[str] | None = None,
     ):
         self.input_dir = input_dir
         self.output_path = output_path
@@ -173,6 +174,7 @@ class Qwen3TTSConverter:
             "code_pred": (predictor_type or self.output_type).lower(),
             "spk_enc": (speaker_type or self.output_type).lower(),
         }
+        self.modules = modules or {"talker", "code_pred", "spk_enc"}
         self._ggml_quant_lib: ctypes.CDLL | None = None
         self._ggml_quant_lib_path: Path | None = None
         self._validate_quant_policy()
@@ -255,17 +257,29 @@ class Qwen3TTSConverter:
 
         repo_root = Path(__file__).resolve().parents[2]
         env_path = os.environ.get("QWEN3_TTS_GGML_BASE_LIB", "").strip()
+        if not env_path:
+            lib_dir = os.environ.get("QWEN3_TTS_LIB_DIR", "").strip()
+            if lib_dir:
+                if sys.platform == "win32":
+                    env_path = str(Path(lib_dir) / "ggml-base.dll")
+                elif sys.platform == "darwin":
+                    env_path = str(Path(lib_dir) / "libggml-base.dylib")
+                else:
+                    env_path = str(Path(lib_dir) / "libggml-base.so")
         candidates: list[Path] = []
 
         if env_path:
             candidates.append(Path(env_path))
 
         if sys.platform == "win32":
+            candidates.append(repo_root / "lib" / "ggml-base.dll")
             candidates.append(repo_root / "ggml" / "build" / "bin" / "ggml-base.dll")
         elif sys.platform == "darwin":
+            candidates.append(repo_root / "lib" / "libggml-base.dylib")
             candidates.append(repo_root / "ggml" / "build" / "src" / "libggml-base.dylib")
             candidates.append(repo_root / "ggml" / "build" / "bin" / "libggml-base.dylib")
         else:
+            candidates.append(repo_root / "lib" / "libggml-base.so")
             candidates.append(repo_root / "ggml" / "build" / "src" / "libggml-base.so")
             candidates.append(repo_root / "ggml" / "build" / "bin" / "libggml-base.so")
 
@@ -301,7 +315,8 @@ class Qwen3TTSConverter:
         raise RuntimeError(
             "Q5_K quantization requires ggml-base runtime library, but it could not be loaded. "
             f"Tried: {[str(p) for p in candidates]}. "
-            "Build ggml first or set QWEN3_TTS_GGML_BASE_LIB to the library path."
+            "Place ggml-base runtime in ./lib, or set QWEN3_TTS_LIB_DIR (recommended), "
+            "or set QWEN3_TTS_GGML_BASE_LIB to an explicit ggml-base library file."
             + (f" Last error: {last_err}" if last_err else "")
         )
 
@@ -420,6 +435,10 @@ class Qwen3TTSConverter:
         """Get configured target type for a GGML tensor name."""
         module_name = self._module_from_tensor_name(tensor_name)
         return self.quant_policy[module_name]
+
+    def _is_tensor_selected(self, tensor_name: str) -> bool:
+        module_name = self._module_from_tensor_name(tensor_name)
+        return module_name in self.modules
 
     def _should_quantize(self, tensor_name: str, n_dims: int) -> bool:
         """Determine if a tensor should be quantized or kept in floating point."""
@@ -566,6 +585,9 @@ class Qwen3TTSConverter:
 
             if ggml_name is None:
                 logger.warning(f"Skipping unmapped tensor: {hf_name}")
+                skipped_count += 1
+                continue
+            if not self._is_tensor_selected(ggml_name):
                 skipped_count += 1
                 continue
 
@@ -740,11 +762,24 @@ def main():
         action="store_true",
         help="Enable verbose logging"
     )
+    parser.add_argument(
+        "--modules",
+        default="talker,code_pred,spk_enc",
+        help="Comma-separated module list to export: talker,code_pred,spk_enc"
+    )
 
     args = parser.parse_args()
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    modules = {m.strip() for m in args.modules.split(",") if m.strip()}
+    valid_modules = {"talker", "code_pred", "spk_enc"}
+    unknown_modules = sorted(modules - valid_modules)
+    if unknown_modules:
+        raise ValueError(f"Unknown modules: {unknown_modules}. Valid: {sorted(valid_modules)}")
+    if not modules:
+        raise ValueError("No modules selected for export")
 
     converter = Qwen3TTSConverter(
         input_dir=args.input,
@@ -753,6 +788,7 @@ def main():
         talker_type=args.talker_type,
         predictor_type=args.predictor_type,
         speaker_type=args.speaker_type,
+        modules=modules,
     )
     converter.convert()
 
