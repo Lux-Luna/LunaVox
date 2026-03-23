@@ -4,6 +4,10 @@ import zipfile
 import tarfile
 import urllib.request
 from pathlib import Path
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, DownloadColumn, TransferSpeedColumn, TimeRemainingColumn
+from rich.console import Console
+
+console = Console()
 
 # URLs
 LIB_URLS = {
@@ -22,25 +26,37 @@ LIB_URLS = {
 }
 
 def download_file(url, target_path):
-    print(f"Downloading {url} to {target_path}...")
-    def report(count, block_size, total_size):
-        if total_size > 0:
-            percent = int(count * block_size * 100 / total_size)
-            print(f"\rProgress: {percent}%", end="")
-    
-    urllib.request.urlretrieve(url, target_path, reporthook=report)
-    print("\nDownload complete.")
+    with Progress(
+        TextColumn("[bold blue]{task.fields[filename]}", justify="right"),
+        BarColumn(bar_width=None),
+        "[progress.percentage]{task.percentage:>3.1f}%",
+        "•",
+        DownloadColumn(),
+        "•",
+        TransferSpeedColumn(),
+        "•",
+        TimeRemainingColumn(),
+    ) as progress:
+        filename = url.split("/")[-1]
+        task_id = progress.add_task("download", filename=filename, total=None)
+        
+        def report(count, block_size, total_size):
+            if progress.tasks[task_id].total is None and total_size > 0:
+                progress.update(task_id, total=total_size)
+            progress.update(task_id, completed=count * block_size)
+            
+        urllib.request.urlretrieve(url, target_path, reporthook=report)
 
 def extract_archive(archive_path, extract_dir):
-    print(f"Extracting {archive_path} to {extract_dir}...")
-    if str(archive_path).endswith(".zip"):
-        with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_dir)
-    elif str(archive_path).endswith((".tar.gz", ".tgz")):
-        with tarfile.open(archive_path, 'r:gz') as tar_ref:
-            tar_ref.extractall(extract_dir)
-    else:
-        raise ValueError(f"Unsupported archive format: {archive_path}")
+    with console.status(f"[bold cyan]Extracting {archive_path.name}...") as status:
+        if str(archive_path).endswith(".zip"):
+            with zipfile.ZipFile(archive_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+        elif str(archive_path).endswith((".tar.gz", ".tgz")):
+            with tarfile.open(archive_path, 'r:gz') as tar_ref:
+                tar_ref.extractall(extract_dir)
+        else:
+            raise ValueError(f"Unsupported archive format: {archive_path}")
 
 def update_library(lib_name, backend, root_dir):
     if lib_name not in LIB_URLS:
@@ -77,7 +93,7 @@ def update_library(lib_name, backend, root_dir):
         else:
             source_dir = temp_dir
             
-        print(f"Installing {lib_name} from {source_dir} to {target_dir}...")
+        console.print(f"[bold green]Installing {lib_name} to {target_dir}...")
         
         # 4. Remove old files
         if target_dir.exists():
@@ -86,7 +102,7 @@ def update_library(lib_name, backend, root_dir):
         # 5. Move/Copy to target
         shutil.copytree(source_dir, target_dir)
         
-        print(f"Lib {lib_name} updated successfully at {target_dir}")
+        console.print(f"[bold green]✔[/] [white]Lib {lib_name} updated successfully at[/] [cyan]{target_dir}[/]")
         
     finally:
         # Cleanup
