@@ -45,7 +45,7 @@ console = Console(theme=THEME, force_terminal=True, safe_box=True)
 
 ROOT = Path(__file__).resolve().parent
 TOOLS = ROOT / "tools"
-SETUP_SCRIPT = TOOLS / "setup" / "setup_pipeline.py"
+SETUP_SCRIPT = TOOLS / "model_manager" / "main.py"
 BUILD_SCRIPT = TOOLS / "build_manager.py"
 EXPECTED_CONDA_ENV = "lunavox"
 DEFAULT_TIMEOUT_SEC = 300
@@ -325,7 +325,7 @@ def command_setup(args: argparse.Namespace) -> int:
         enable_quant=enable_quant,
         fix_git_safe=getattr(args, "fix_git_safe", True),
     )
-    setup_args = ["--model", args.model, "--timeout-sec", str(args.timeout_sec)]
+    setup_args = ["setup", "--model", args.model, "--timeout-sec", str(args.timeout_sec)]
     if getattr(args, "models_dir", None):
         setup_args += ["--models-dir", args.models_dir]
     if getattr(args, "skip_convert", False):
@@ -365,18 +365,43 @@ def command_bootstrap(args: argparse.Namespace) -> int:
 
 def command_download(args: argparse.Namespace) -> int:
     UI.banner("Stage: Download Models")
-    from tools.download.models_downloader import download_model
+    from tools.model_manager.downloader import ModelDownloader
 
     models = VALID_MODELS if args.all else [args.model]
     for m in models:
         UI.info(f"Downloading model: {m}...")
         try:
-            download_model(m)
+            ModelDownloader.download(m)
             UI.success(f"Downloaded {m}")
         except Exception as e:
             UI.error(f"Failed to download {m}: {e}")
             return 1
     return 0
+
+
+def command_download_libs(args: argparse.Namespace) -> int:
+    lib_name = "llama" if args.command == "download-llama" else "onnx"
+    backend = args.backend
+    UI.banner(f"Stage: Download {lib_name.upper()} Library")
+    try:
+        from tools.build_manager.lib_downloader import update_library, LIB_URLS
+        
+        if lib_name not in LIB_URLS:
+            UI.error(f"Unknown library: {lib_name}")
+            return 1
+            
+        url = LIB_URLS[lib_name][backend]
+        UI.info(f"Target: [bold cyan]{lib_name}[/] ([dim]{backend}[/])")
+        UI.info(f"URL: [dim]{url}[/]")
+        
+        with console.status(f"[bold cyan]Downloading and installing {lib_name}...", spinner="dots"):
+            update_library(lib_name, backend, str(ROOT))
+            
+        UI.success(f"Successfully installed {lib_name} ({backend}) to lib/{lib_name}")
+        return 0
+    except Exception as e:
+        UI.error(f"Failed to download {lib_name}: {e}")
+        return 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -427,6 +452,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_download.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
     p_download.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
     p_download.set_defaults(func=command_download)
+
+    p_download_llama = sub.add_parser("download-llama", help="Download prebuilt llama runtime binaries")
+    p_download_llama.add_argument("backend", choices=["win_cpu", "win_vulkan", "win_cuda", "macos", "ios"], default="win_cpu", nargs="?")
+    p_download_llama.set_defaults(func=command_download_libs)
+
+    p_download_ort = sub.add_parser("download-ort", help="Download prebuilt ONNX Runtime SDK")
+    p_download_ort.add_argument("backend", choices=["win_cpu", "win_cuda", "macos"], default="win_cpu", nargs="?")
+    p_download_ort.set_defaults(func=command_download_libs)
 
     return parser
 
