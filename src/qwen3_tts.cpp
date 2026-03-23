@@ -476,6 +476,7 @@ tts_result Qwen3TTS::synthesize_with_voice(
     const std::string & reference_audio,
     const tts_params & params) {
     tts_result result;
+    tts_params params_copy = params;
     
     // Check if reference_audio is a .json file
     if (reference_audio.length() >= 5 && 
@@ -497,6 +498,11 @@ tts_result Qwen3TTS::synthesize_with_voice(
         if (!simple_extract_json_string(json_content, "spk_emb", spk_emb_b64)) {
             result.error_msg = "Failed to find spk_emb in reference JSON";
             return result;
+        }
+        
+        std::string ref_text_json;
+        if (simple_extract_json_string(json_content, "text", ref_text_json)) {
+            params_copy.ref_text = ref_text_json;
         }
         
         std::vector<uint8_t> emb_bytes = base64_decode(spk_emb_b64);
@@ -566,7 +572,7 @@ tts_result Qwen3TTS::synthesize_with_voice(
             speaker_embedding.data(),
             ref_codes_ptr,
             ref_frames_for_gen,
-            params,
+            params_copy,
             result);
     }
     
@@ -887,7 +893,8 @@ tts_result Qwen3TTS::synthesize_internal(
     sample_memory("synth/start");
 
     int64_t t_tok = get_time_ms();
-    std::vector<int32_t> text_tokens = tokenizer_.encode(text);
+    std::string full_text = params.ref_text.empty() ? text : params.ref_text + text;
+    std::vector<int32_t> text_tokens = tokenizer_.encode(full_text);
     std::vector<int32_t> role_prefix_tokens = tokenizer_.encode("<|im_start|>assistant\n");
     if (role_prefix_tokens.size() != 3 || role_prefix_tokens[0] != 151644 || role_prefix_tokens[1] != 77091 ||
         role_prefix_tokens[2] != 198) {

@@ -1,16 +1,16 @@
 """
-LunaVox 多模型配置中心
+LunaVox Multi-Model Configuration Center
 
-支持的模型变体:
+Supported model variants:
   - base_small  : Qwen3-TTS-12Hz-0.6B-Base
   - custom_small: Qwen3-TTS-12Hz-0.6B-CustomVoice
   - base        : Qwen3-TTS-12Hz-1.7B-Base
   - custom      : Qwen3-TTS-12Hz-1.7B-CustomVoice
   - design      : Qwen3-TTS-12Hz-1.7B-VoiceDesign
 
-使用方式:
-  1. 直接修改本文件最底部的 `model = Models.xxx` 行来切换模型
-  2. 或通过命令行传入 --model <name> 参数
+Usage:
+  1. Directly modify the `model = Models.xxx` line at the bottom of this file to switch models
+  2. Or pass the --model <name> parameter via the command line
 """
 
 from dataclasses import dataclass
@@ -18,21 +18,21 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 from huggingface_hub.constants import HF_HUB_CACHE
 
-# HuggingFace hub 本地缓存根目录
+# Root directory for local HuggingFace hub cache
 HF_HUB_ROOT = Path(HF_HUB_CACHE)
 
-# 项目根目录
+# Project root directory
 REPO_ROOT = Path(__file__).resolve().parent
 
 
 def get_snapshot(repo_name: str) -> Path:
-    """定位 HuggingFace 缓存中模型的实际快照路径 (优先使用官方库定位)"""
+    """Locates the actual snapshot path of the model in the HuggingFace cache (preferring official library for localization)"""
     repo_id = f"Qwen/{repo_name}"
     try:
-        # 优先尝试使用 snapshot_download 定位本地路径
+        # Try to locate the local path using snapshot_download first
         return Path(snapshot_download(repo_id=repo_id, local_files_only=True))
     except Exception:
-        # 如果官方库查找失败或未下载快照，回退到手动拼接逻辑
+        # If the official library search fails or the snapshot is not downloaded, fall back to manual path joining logic
         snap_dir = HF_HUB_ROOT / f'models--Qwen--{repo_name}' / 'snapshots'
         if snap_dir.exists():
             snaps = [s for s in snap_dir.iterdir() if s.is_dir()]
@@ -43,14 +43,14 @@ def get_snapshot(repo_name: str) -> Path:
 
 @dataclass
 class ModelConfig:
-    """单个模型变体的路径配置"""
-    name: str       # 简称标识 (用于 CLI --model 参数)
-    source: Path    # 原始 HF 权重路径
-    dest: Path      # 转换产物输出目录
+    """Path configuration for a single model variant"""
+    name: str       # Short identifier (used for CLI --model parameter)
+    source: Path    # Original HF weight path
+    dest: Path      # Output directory for conversion artifacts
 
 
 class Models:
-    """全部可用模型变体"""
+    """All available model variants"""
     base = ModelConfig(
         "base",
         get_snapshot('Qwen3-TTS-12Hz-1.7B-Base'),
@@ -81,7 +81,7 @@ class Models:
 
     @classmethod
     def by_name(cls, name: str) -> ModelConfig:
-        """按名称查找模型配置，不存在则抛出异常"""
+        """Finds model configuration by name, raises an exception if it doesn't exist"""
         for m in cls.ALL:
             if m.name == name:
                 return m
@@ -90,7 +90,7 @@ class Models:
 
 
 # ============================================================
-# 当前选定模型（直接修改此行或通过 CLI --model 覆盖）
+# Currently selected model (modify this line directly or override via CLI --model)
 # ============================================================
 model = Models.base_small
 

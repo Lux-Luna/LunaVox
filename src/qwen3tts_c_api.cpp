@@ -38,6 +38,7 @@ struct Qwen3TtsParams {
     int32_t n_threads;
     float   repetition_penalty;
     int32_t language_id;
+    const char * ref_text;
 };
 
 struct Qwen3TtsAudio {
@@ -65,6 +66,9 @@ static qwen3_tts::tts_params to_cpp_params(const Qwen3TtsParams * p) {
         params.n_threads         = p->n_threads;
         params.repetition_penalty = p->repetition_penalty;
         params.language_id       = p->language_id;
+        if (p->ref_text) {
+            params.ref_text = p->ref_text;
+        }
     }
     return params;
 }
@@ -98,6 +102,7 @@ void qwen3_tts_default_params(Qwen3TtsParams * params) {
     params->n_threads         = 4;
     params->repetition_penalty = 1.05f;
     params->language_id       = 2050; // en
+    params->ref_text          = nullptr;
 }
 
 Qwen3Tts * qwen3_tts_create(const char * model_dir, int32_t n_threads) {

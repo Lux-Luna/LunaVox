@@ -66,6 +66,9 @@ struct tts_params {
 
     // Speaker name for Custom Voice mode (e.g. "Vivian", "Ryan")
     std::string speaker_name;
+    
+    // Reference text for Voice Clone mode (matches reference audio)
+    std::string ref_text;
 
 };
 

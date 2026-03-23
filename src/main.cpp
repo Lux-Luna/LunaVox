@@ -34,6 +34,7 @@ static bool parse_language_id(const std::string & language, int32_t & language_i
     else if (lang == "es" || lang == "spanish")  language_id_out = 2054;
     else if (lang == "it" || lang == "italian")  language_id_out = 2070;
     else if (lang == "pt" || lang == "portuguese") language_id_out = 2071;
+    else if (lang == "none" || lang == "unspecified") language_id_out = -1;
     else return false;
     return true;
 }
@@ -109,6 +110,7 @@ void print_usage(const char * program) {
     fprintf(stderr, "  -t, --text <text>      Text to synthesize (required)\n");
     fprintf(stderr, "  -o, --output <file>    Output WAV file (default: output.wav)\n");
     fprintf(stderr, "  -r, --reference <file> Reference audio for voice cloning\n");
+    fprintf(stderr, "  --ref-text <text>      Reference text for voice cloning\n");
     fprintf(stderr, "  --mode <mode>          Synthesis mode: base(default), clone, custom, design\n");
     fprintf(stderr, "  --instruct <text>      Instruct text for custom/design mode\n");
     fprintf(stderr, "  --speaker <name>       Speaker name for custom mode (Vivian,Ryan,Aiden,...)\n");
@@ -125,7 +127,7 @@ void print_usage(const char * program) {
     fprintf(stderr, "  --repetition-penalty <val> Repetition penalty (default: 1.05)\n");
     fprintf(stderr, "  --ort-debug-log        Enable ORT warning logs (default: error-only)\n");
     fprintf(stderr, "  --stats-json <file>    Write timing/runtime stats JSON report\n");
-    fprintf(stderr, "  -l, --language <lang>  Force language: en,ru,zh,ja,ko,de,fr,es,it,pt\n");
+    fprintf(stderr, "  -l, --language <lang>  Force language: en,ru,zh,ja,ko,de,fr,es,it,pt,none\n");
     fprintf(stderr, "  --no-auto-language     Disable language auto-detection (uses --language or en)\n");
     fprintf(stderr, "  -j, --threads <n>      Number of threads (default: 4)\n");
     fprintf(stderr, "  -h, --help             Show this help\n");
@@ -192,6 +194,12 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             reference_audio = args[i];
+        } else if (arg == "--ref-text") {
+            if (++i >= (int)args.size()) {
+                fprintf(stderr, "Error: missing reference text\n");
+                return 1;
+            }
+            params.ref_text = args[i];
         } else if (arg == "--temperature") {
             if (++i >= (int)args.size()) {
                 fprintf(stderr, "Error: missing temperature value\n");
@@ -271,7 +279,7 @@ int main(int argc, char ** argv) {
             std::string lang = args[i];
             int32_t parsed_language_id = 2050;
             if (!parse_language_id(lang, parsed_language_id)) {
-                fprintf(stderr, "Error: unknown language '%s'. Supported: en,ru,zh,ja,ko,de,fr,es,it,pt\n", lang.c_str());
+                fprintf(stderr, "Error: unknown language '%s'. Supported: en,ru,zh,ja,ko,de,fr,es,it,pt,none\n", lang.c_str());
                 return 1;
             }
             params.language_id = parsed_language_id;

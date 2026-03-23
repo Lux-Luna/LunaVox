@@ -20,6 +20,7 @@ typedef struct Qwen3TtsParams {
     int32_t n_threads;           /* default: 4 */
     float   repetition_penalty;  /* default: 1.05 */
     int32_t language_id;         /* 2050=en, 2058=ja, 2055=zh, etc. */
+    const char* ref_text;        /* Optional reference text for cloned voice */
 } Qwen3TtsParams;
 
 /* Generated audio result */
