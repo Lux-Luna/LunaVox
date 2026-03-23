@@ -11,7 +11,37 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
+
+# Force UTF-8 for Windows console
+os.environ["PYTHONUTF8"] = "1"
+os.environ["PYTHONIOENCODING"] = "utf-8"
+
+if os.name == "nt":
+    try:
+        import ctypes
+        # Set console code page to UTF-8
+        ctypes.windll.kernel32.SetConsoleCP(65001)
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+    except Exception: pass
+
+from rich.console import Console
+from rich.panel import Panel
+from rich.status import Status
+from rich.table import Table
+from rich.theme import Theme
+
+# Custom theme for professional look
+THEME = Theme({
+    "info": "cyan",
+    "warning": "yellow",
+    "error": "bold red",
+    "success": "bold green",
+    "stage": "bold magenta",
+})
+
+# Use force_terminal=True and legacy_windows=True for better character handling
+console = Console(theme=THEME, force_terminal=True, safe_box=True)
 
 ROOT = Path(__file__).resolve().parent
 TOOLS = ROOT / "tools"
@@ -26,8 +56,37 @@ LATEST_LOG = LOG_DIR / "latest.log"
 VALID_MODELS = ["base", "custom", "design", "base_small", "custom_small"]
 
 
-def eprint(msg: str) -> None:
-    print(msg, file=sys.stderr)
+class UI:
+    """Helper for consistent, premium CLI output."""
+    
+    @staticmethod
+    def banner(title: str):
+        console.print(Panel(title, style="stage", expand=False))
+
+    @staticmethod
+    def info(msg: str):
+        console.print(f"[info]ℹ[/info] {msg}")
+
+    @staticmethod
+    def success(msg: str):
+        console.print(f"[success]✔[/success] {msg}")
+
+    @staticmethod
+    def warn(msg: str):
+        console.print(f"[warning]⚠[/warning] {msg}")
+
+    @staticmethod
+    def error(msg: str):
+        console.print(f"[error]✘[/error] {msg}")
+
+    @staticmethod
+    def table(title: str, columns: list[str], rows: list[list[str]]):
+        table = Table(title=title, show_header=True, header_style="bold cyan")
+        for col in columns:
+            table.add_column(col)
+        for row in rows:
+            table.add_row(*row)
+        console.print(table)
 
 
 def has_module(name: str) -> bool:
@@ -51,11 +110,7 @@ def check_conda_env(expected: str) -> None:
     prefix_name = Path(sys.prefix).name
     if active_name == expected or prefix_name == expected:
         return
-    raise RuntimeError(
-        f"Expected conda environment '{expected}', but current env is "
-        f"CONDA_DEFAULT_ENV='{active_name or '<empty>'}', sys.prefix='{prefix_name}'.\n"
-        f"Use: conda run -n {expected} python manage.py <command> ..."
-    )
+    UI.warn(f"Conda environment mismatch. Expected '{expected}', got '{active_name or prefix_name}'")
 
 
 def ensure_git_safe_directory(repo_root: Path, auto_fix: bool) -> None:
@@ -83,11 +138,10 @@ def ensure_git_safe_directory(repo_root: Path, auto_fix: bool) -> None:
         return
 
     if not auto_fix:
-        raise RuntimeError(
-            f"git safe.directory missing for repo: {repo_norm}\n"
-            f"Run: git config --global --add safe.directory {repo_norm}"
-        )
+        UI.warn(f"git safe.directory missing for repo: {repo_norm}")
+        return
 
+    UI.info(f"Adding {repo_norm} to git safe.directory...")
     add = subprocess.run(
         ["git", "config", "--global", "--add", "safe.directory", repo_norm],
         cwd=str(repo_root),
@@ -97,10 +151,7 @@ def ensure_git_safe_directory(repo_root: Path, auto_fix: bool) -> None:
         text=True,
     )
     if add.returncode != 0:
-        raise RuntimeError(
-            f"Failed to add git safe.directory for {repo_norm}.\n"
-            f"stderr: {add.stderr.strip() or '<empty>'}"
-        )
+        raise RuntimeError(f"Failed to add git safe.directory for {repo_norm}.")
 
 
 def check_ort_sdk(root: Path) -> None:
@@ -119,6 +170,7 @@ def check_preflight(
     enable_quant: bool,
     fix_git_safe: bool,
 ) -> None:
+    UI.info("Running pre-flight checks...")
     check_conda_env(EXPECTED_CONDA_ENV)
     ensure_git_safe_directory(ROOT, auto_fix=fix_git_safe)
 
@@ -162,7 +214,6 @@ def run_stage_process(
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     stage_name = _safe_stage_name(stage)
     start = time.time()
-    eprint(f"[run:{stage_name}] {' '.join(cmd)}")
     
     header = (
         f"\n{'='*80}\n"
@@ -173,55 +224,47 @@ def run_stage_process(
         f"{'='*80}\n"
     )
     
-    try:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(cwd),
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=max(1, int(timeout_sec)),
-        )
-        output = proc.stdout or ""
-        elapsed = time.time() - start
-        status = "ok" if proc.returncode == 0 else "failed"
-        
-        log_entry = (
-            f"{header}"
-            f"STATUS: {status}\n"
-            f"ELAPSED: {elapsed:.3f}s\n"
-            f"RETURNCODE: {proc.returncode}\n\n"
-            f"{output}\n"
-        )
-        
-        with open(LATEST_LOG, "a", encoding="utf-8") as f:
-            f.write(log_entry)
+    with console.status(f"[bold cyan]Executing {stage_name}...", spinner="dots"):
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(cwd),
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=max(1, int(timeout_sec)),
+            )
+            output = proc.stdout or ""
+            elapsed = time.time() - start
+            status = "ok" if proc.returncode == 0 else "failed"
             
-        if proc.returncode != 0:
-            eprint(f"[run:{stage_name}] failed, log: {LATEST_LOG}")
-        return int(proc.returncode)
-    except subprocess.TimeoutExpired as err:
-        output = ""
-        if err.stdout:
-            output += err.stdout if isinstance(err.stdout, str) else err.stdout.decode("utf-8", errors="ignore")
-        if err.stderr:
-            output += err.stderr if isinstance(err.stderr, str) else err.stderr.decode("utf-8", errors="ignore")
-        elapsed = time.time() - start
-        log_entry = (
-            f"{header}"
-            f"STATUS: timeout\n"
-            f"ELAPSED: {elapsed:.3f}s\n\n"
-            f"{output}\n"
-        )
-        with open(LATEST_LOG, "a", encoding="utf-8") as f:
-            f.write(log_entry)
+            log_entry = (
+                f"{header}"
+                f"STATUS: {status}\n"
+                f"ELAPSED: {elapsed:.3f}s\n"
+                f"RETURNCODE: {proc.returncode}\n\n"
+                f"{output}\n"
+            )
             
-        raise RuntimeError(
-            f"Stage '{stage_name}' timed out after {timeout_sec}s. See log: {LATEST_LOG}"
-        ) from err
+            with open(LATEST_LOG, "a", encoding="utf-8") as f:
+                f.write(log_entry)
+                
+            if proc.returncode == 0:
+                UI.success(f"{stage_name} completed in {elapsed:.2f}s")
+            else:
+                UI.error(f"{stage_name} failed (rc={proc.returncode}). See log: {LATEST_LOG}")
+            return int(proc.returncode)
+
+        except subprocess.TimeoutExpired as err:
+            elapsed = time.time() - start
+            output = err.stdout.decode() if err.stdout and not isinstance(err.stdout, str) else (err.stdout or "")
+            log_entry = f"{header}STATUS: timeout\nELAPSED: {elapsed:.3f}s\n\n{output}\n"
+            with open(LATEST_LOG, "a", encoding="utf-8") as f: f.write(log_entry)
+            UI.error(f"{stage_name} timed out after {timeout_sec}s")
+            return 1
 
 
 def run_python_script(script: Path, extra_args: list[str], *, timeout_sec: int, stage: str) -> int:
@@ -234,23 +277,17 @@ def run_python_script(script: Path, extra_args: list[str], *, timeout_sec: int, 
 def run_build_verify(timeout_sec: int) -> int:
     build_dir = ROOT / "build"
     exe_name = "qwen3-tts-cli"
-    if os.name == "nt":
-        exe = build_dir / f"{exe_name}.exe"
-    else:
-        exe = build_dir / exe_name
+    exe = build_dir / (f"{exe_name}.exe" if os.name == "nt" else exe_name)
         
     if not exe.exists():
         raise RuntimeError(f"Built CLI not found for verify: {exe}")
 
-    rc = run_stage_process(
+    return run_stage_process(
         [str(exe), "--help"],
         cwd=ROOT,
         timeout_sec=timeout_sec,
-        stage="build_verify_help",
+        stage="verify_help",
     )
-    if rc == 0:
-        print(f"[ok] verify passed: {exe.name} --help")
-    return rc
 
 
 def make_build_args(args: argparse.Namespace) -> list[str]:
@@ -261,6 +298,7 @@ def make_build_args(args: argparse.Namespace) -> list[str]:
 
 
 def command_setup(args: argparse.Namespace) -> int:
+    UI.banner("Stage: Setup Pipeline")
     enable_quant = resolve_enable_quant(args)
     check_preflight(
         need_convert_modules=not getattr(args, "skip_convert", False),
@@ -268,10 +306,7 @@ def command_setup(args: argparse.Namespace) -> int:
         enable_quant=enable_quant,
         fix_git_safe=getattr(args, "fix_git_safe", True),
     )
-    setup_args = [
-        "--model", args.model,
-        "--timeout-sec", str(args.timeout_sec),
-    ]
+    setup_args = ["--model", args.model, "--timeout-sec", str(args.timeout_sec)]
     if getattr(args, "models_dir", None):
         setup_args += ["--models-dir", args.models_dir]
     if getattr(args, "skip_convert", False):
@@ -281,15 +316,11 @@ def command_setup(args: argparse.Namespace) -> int:
     if enable_quant:
         setup_args.append("--enable-quant")
         
-    return run_python_script(
-        SETUP_SCRIPT,
-        setup_args,
-        timeout_sec=max(1, int(args.timeout_sec)),
-        stage="setup_pipeline_setup",
-    )
+    return run_python_script(SETUP_SCRIPT, setup_args, timeout_sec=args.timeout_sec, stage="setup")
 
 
 def command_build(args: argparse.Namespace) -> int:
+    UI.banner("Stage: C++ Build")
     check_preflight(
         need_convert_modules=False,
         need_build_deps=True,
@@ -300,56 +331,39 @@ def command_build(args: argparse.Namespace) -> int:
     if getattr(args, "verify", False):
         build_args.append("--verify")
         
-    return run_python_script(
-        BUILD_SCRIPT,
-        build_args,
-        timeout_sec=max(1, int(args.timeout_sec)),
-        stage="build_manager_build",
-    )
+    return run_python_script(BUILD_SCRIPT, build_args, timeout_sec=args.timeout_sec, stage="build")
 
 
 def command_bootstrap(args: argparse.Namespace) -> int:
-    # 强制启用验证
-    args.verify = getattr(args, "verify", True)
+    UI.banner("LunaVox Bootstrap")
+    UI.info(f"Starting full setup & build for model: [bold]{args.model}[/bold]")
     
     rc = command_setup(args)
-    if rc != 0:
-        return rc
+    if rc != 0: return rc
         
     return command_build(args)
 
 
 def command_download(args: argparse.Namespace) -> int:
-    check_preflight(
-        need_convert_modules=False,
-        need_build_deps=False,
-        enable_quant=False,
-        fix_git_safe=getattr(args, "fix_git_safe", True),
-    )
+    UI.banner("Stage: Download Models")
     from tools.download.models_downloader import download_model
 
-    if args.all:
-        for m in VALID_MODELS:
-            try:
-                download_model(m)
-            except Exception as e:
-                eprint(f"Failed to download {m}: {e}")
-                return 1
-        return 0
-
-    try:
-        download_model(args.model)
-        return 0
-    except Exception as e:
-        eprint(f"Failed to download {args.model}: {e}")
-        return 1
+    models = VALID_MODELS if args.all else [args.model]
+    for m in models:
+        UI.info(f"Downloading model: {m}...")
+        try:
+            download_model(m)
+            UI.success(f"Downloaded {m}")
+        except Exception as e:
+            UI.error(f"Failed to download {m}: {e}")
+            return 1
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="LunaVox management tool")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    # Common arguments
     def add_common_setup(p):
         p.add_argument("--model", choices=VALID_MODELS, default="base_small", help="Model variant")
         p.add_argument("--models-dir", default="", help="Override output directory")
@@ -361,37 +375,32 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
 
     def add_common_build(p):
+        # Get existing argument strings to avoid duplication in bootstrap
+        existing = {a.option_strings[0] for a in p._actions if a.option_strings}
+        
         p.add_argument("--clean", action="store_true", help="Clean build directory")
         p.add_argument("--j", type=int, default=4, help="Parallel build jobs")
         p.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
-        # Check by actual option strings to avoid duplication in bootstrap
-        existing_options = set()
-        for action in p._actions:
-            existing_options.update(action.option_strings)
         
-        if "--timeout-sec" not in existing_options:
+        if "--timeout-sec" not in existing:
             p.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
-        if "--fix-git-safe" not in existing_options:
+        if "--fix-git-safe" not in existing:
             p.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
 
-    # Setup
-    p_setup = sub.add_parser("setup", help="Prepare model artifacts (download must be done separately or via bootstrap)")
+    p_setup = sub.add_parser("setup", help="Prepare model artifacts")
     add_common_setup(p_setup)
     p_setup.set_defaults(func=command_setup)
 
-    # Build
     p_build = sub.add_parser("build", help="Build C++ runtime")
     add_common_build(p_build)
     p_build.set_defaults(func=command_build)
 
-    # Bootstrap
     p_bootstrap = sub.add_parser("bootstrap", help="One-command: Setup + Build + Verify")
     add_common_setup(p_bootstrap)
     add_common_build(p_bootstrap)
     p_bootstrap.set_defaults(func=command_bootstrap)
 
-    # Download
-    p_download = sub.add_parser("download", help="Download model source from Hugging Face Hub")
+    p_download = sub.add_parser("download", help="Download model source")
     p_download.add_argument("--model", choices=VALID_MODELS, default="base_small")
     p_download.add_argument("--all", action="store_true")
     p_download.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
@@ -410,13 +419,17 @@ def main() -> int:
         f.write(f"LunaVox Manager - Session Start: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
         
     try:
-        return int(args.func(args))
+        rc = int(args.func(args))
+        if rc == 0:
+            console.print("\n[success]✨ All tasks completed successfully![/success]")
+        return rc
     except KeyboardInterrupt:
+        UI.warn("Interrupted by user.")
         return 1
-    except RuntimeError as err:
-        eprint(f"Error: {err}")
+    except Exception as err:
+        console.print(Panel(f"[bold red]Unexpected Error:[/bold red]\n{str(err)}", border_style="red"))
         return 1
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

@@ -51,13 +51,66 @@ class ToolchainResolver:
 
     def __init__(self, context: BuildContext):
         self.ctx = context
-        self._vs2022_available_cache: bool | None = None
+        self._vs_path_cache: str | None = None
 
     def _which(self, program: str) -> str | None:
         return shutil.which(program, path=self.ctx.env.get("PATH"))
 
     def _cmake_path(self, path: Path | str) -> str:
         return Path(path).as_posix()
+
+    def _get_vs_installation_path(self) -> str | None:
+        if platform.system() != "Windows": return None
+        if self._vs_path_cache is not None: return self._vs_path_cache
+        
+        vswhere = self._which("vswhere") or str(Path(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"))
+        if not Path(vswhere).exists(): return None
+
+        try:
+            # Search for VS 2022 and VS 2025+
+            cmd = [vswhere, "-nologo", "-latest", "-products", "*", "-version", "[17.0,19.0)", "-property", "installationPath"]
+            out = subprocess.check_output(cmd, text=True, timeout=5).strip()
+            if out and Path(out).exists():
+                self._vs_path_cache = out
+                return out
+        except Exception: pass
+        return None
+
+    def _activate_msvc_env(self, vs_path: str) -> bool:
+        """Sourcing vcvars64.bat to bring MSVC tools into the environment."""
+        vcvars = Path(vs_path) / "VC/Auxiliary/Build/vcvars64.bat"
+        if not vcvars.exists(): return False
+        
+        try:
+            # Silent execution: @echo off and nul redirection to suppress noisy echoes and path errors from internal VS scripts
+            cmd = f'@echo off && chcp 65001 >nul && "{vcvars}" >nul 2>&1 && set'
+            out = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.STDOUT)
+            for line in out.splitlines():
+                if "=" in line:
+                    key, val = line.split("=", 1)
+                    # Windows env vars are case-insensitive, harmonizing to uppercase for consistency in our dict
+                    ukey = key.upper()
+                    self.ctx.env[ukey] = val
+                    os.environ[ukey] = val
+            return True
+        except Exception:
+            # We fail silently and let resolve() log the fallback or handle the error
+            return False
+
+    def _get_msvc_compiler_path(self) -> str | None:
+        """After activation, find the absolute path to cl.exe."""
+        vctools = self.ctx.env.get("VCTOOLSINSTALLDIR")
+        if not vctools: return None
+        
+        # Standard layout: bin/HostX64/x64/cl.exe
+        cl_exe = Path(vctools) / "bin" / "HostX64" / "x64" / "cl.exe"
+        if cl_exe.exists(): return str(cl_exe)
+        
+        # Fallback to simple which if the above layout fails
+        return self._which("cl")
+
+    def _has_vs2022(self) -> bool:
+        return self._get_vs_installation_path() is not None
 
     def _get_compiler_major_version(self, compiler: str) -> int | None:
         for flag in ["-dumpversion", "--version"]:
@@ -68,21 +121,13 @@ class ToolchainResolver:
             except Exception: continue
         return None
 
-    def _has_vs2022(self) -> bool:
-        if platform.system() != "Windows": return False
-        if self._vs2022_available_cache is not None: return self._vs2022_available_cache
-        
-        vswhere = self._which("vswhere") or str(Path(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"))
-        if not Path(vswhere).exists(): return False
-
-        try:
-            out = subprocess.check_output([vswhere, "-nologo", "-products", "*", "-version", "[17.0,18.0)", "-property", "installationPath"], text=True, timeout=5).strip()
-            self._vs2022_available_cache = bool(out)
-        except Exception: self._vs2022_available_cache = False
-        return self._vs2022_available_cache
-
     def sanitize_env(self, toolchain: str) -> None:
         """Removes environment variables that might interfere with the selected toolchain."""
+        # Fix encoding and suppress echoing in Windows subshells
+        self.ctx.env["PYTHONUTF8"] = "1"
+        self.ctx.env["PYTHONIOENCODING"] = "utf-8"
+        self.ctx.env["PROMPT"] = "$P$G" 
+        
         for key in self.COMPILER_ENV_VARS:
             self.ctx.env.pop(key, None)
         if toolchain in {"clang", "mingw"}:
@@ -93,45 +138,62 @@ class ToolchainResolver:
         if platform.system() != "Windows":
             return "default", []
 
-        forced = self.ctx.env.get("QWEN3_TTS_TOOLCHAIN", "auto").lower()
+        forced = self.ctx.env.get("LUNAVOX_TOOLCHAIN", "auto").lower()
         order = ["msvc", "mingw", "clang"] if forced == "auto" else [forced]
         
         # Tools availability
         tools = {
             "cl": self._which("cl"),
+            "cmake": self._which("cmake"),
             "g++": self._which("g++"),
             "gcc": self._which("gcc"),
             "clang++": self._which("clang++"),
             "ninja": self._which("ninja"),
-            "make": self._which("mingw32-make"),
-            "windres": self._which("windres")
+            "make": self._which("mingw32-make") or self._which("make"),
         }
 
+        if not tools["cmake"]:
+            raise RuntimeError("cmake not found in PATH. Please install CMake.")
+
+        vs_path = self._get_vs_installation_path()
+
         for ts in order:
-            if ts == "msvc" and self._has_vs2022():
+            if ts == "msvc" and vs_path:
                 self.sanitize_env("msvc")
-                return "msvc", ["-G", "Visual Studio 17 2022", "-A", "x64"]
+                if self._activate_msvc_env(vs_path):
+                    cl_path = self._get_msvc_compiler_path()
+                    if not cl_path:
+                        self.ctx.env["_MSVC_ERROR"] = "cl.exe not found after activation"
+                        continue
+                        
+                    # We MUST explicitly tell CMake to use the absolute cl.exe path, 
+                    # otherwise a broken clang in PATH might hijack it or it might not be found.
+                    args = [f"-DCMAKE_CXX_COMPILER={self._cmake_path(cl_path)}", f"-DCMAKE_C_COMPILER={self._cmake_path(cl_path)}"]
+                    if tools["ninja"]:
+                        return "msvc", ["-G", "Ninja"] + args
+                    return "msvc", ["-G", "Visual Studio 17 2022", "-A", "x64"] + args
+                else:
+                    self.ctx.env["_MSVC_ERROR"] = "Activation failed"
             
-            if ts == "mingw" and tools["g++"] and tools["gcc"]:
+            if ts == "mingw" and tools["g++"]:
                 ver = self._get_compiler_major_version(tools["g++"])
                 if ver and ver < 7:
-                    print(f"[build] Skipping MinGW: g++ version {ver} is too old (need 7+ for C++17).")
+                    # Explicitly skip old MinGW that doesn't support C++17
                     continue
                 args = [f"-DCMAKE_CXX_COMPILER={self._cmake_path(tools['g++'])}"]
                 if tools["make"]: args += ["-G", "MinGW Makefiles", f"-DCMAKE_MAKE_PROGRAM={self._cmake_path(tools['make'])}"]
                 elif tools["ninja"]: args += ["-G", "Ninja"]
-                if tools["windres"]: args += [f"-DCMAKE_RC_COMPILER={self._cmake_path(tools['windres'])}"]
                 self.sanitize_env("mingw")
                 return "mingw", args
 
             if ts == "clang" and tools["clang++"]:
                 args = [f"-DCMAKE_CXX_COMPILER={self._cmake_path(tools['clang++'])}"]
-                if tools["make"]: args += ["-G", "MinGW Makefiles", f"-DCMAKE_MAKE_PROGRAM={self._cmake_path(tools['make'])}"]
-                elif tools["ninja"]: args += ["-G", "Ninja"]
+                if tools["ninja"]: args += ["-G", "Ninja"]
+                elif tools["make"]: args += ["-G", "MinGW Makefiles", f"-DCMAKE_MAKE_PROGRAM={self._cmake_path(tools['make'])}"]
                 self.sanitize_env("clang")
                 return "clang", args
 
-        raise RuntimeError(f"No supported C++ toolchain found (order: {order}). Install MSVC 2022 or MinGW/Clang.")
+        raise RuntimeError(f"No supported C++ toolchain found (order: {order}). Found VS Path: {vs_path or 'None'}")
 
 
 class Builder:

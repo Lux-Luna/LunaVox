@@ -15,3 +15,4 @@ librosa
 scipy
 soundfile
 einops
+rich
