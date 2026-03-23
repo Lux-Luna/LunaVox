@@ -29,6 +29,7 @@ def _load_all_tensors(model_dir: Path) -> dict[str, torch.Tensor]:
 
 
 def export_embeddings(input_dir: Path, output_dir: Path) -> None:
+    dtype = np.float16
     tensors = _load_all_tensors(input_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -52,26 +53,26 @@ def export_embeddings(input_dir: Path, output_dir: Path) -> None:
         x = torch.nn.functional.linear(text_table, fc1_w, fc1_b)
         x = torch.nn.functional.silu(x)
         x = torch.nn.functional.linear(x, fc2_w, fc2_b)
-    np.save(output_dir / "text_embedding_projected.npy", x.cpu().numpy().astype(np.float32))
+    np.save(output_dir / "text_embedding_projected.npy", x.cpu().numpy().astype(dtype))
 
     codec0_key = "talker.model.codec_embedding.weight"
     if codec0_key not in tensors:
         raise KeyError(f"Missing required tensor: {codec0_key}")
-    np.save(output_dir / "codec_embedding_0.npy", tensors[codec0_key].float().cpu().numpy().astype(np.float32))
+    np.save(output_dir / "codec_embedding_0.npy", tensors[codec0_key].float().cpu().numpy().astype(dtype))
 
     # Predictor codebook embeddings: 15 groups -> codec_embedding_1..15
     for i in range(15):
         k = f"talker.code_predictor.model.codec_embedding.{i}.weight"
         if k not in tensors:
             raise KeyError(f"Missing predictor embedding tensor: {k}")
-        np.save(output_dir / f"codec_embedding_{i + 1}.npy", tensors[k].float().cpu().numpy().astype(np.float32))
+        np.save(output_dir / f"codec_embedding_{i + 1}.npy", tensors[k].float().cpu().numpy().astype(dtype))
 
     # Optional projection export for compatibility with 1.7B style pipelines.
     proj_w_key = "talker.code_predictor.input_proj.weight"
     proj_b_key = "talker.code_predictor.input_proj.bias"
     if proj_w_key in tensors and proj_b_key in tensors:
-        np.save(output_dir / "proj_weight.npy", tensors[proj_w_key].float().cpu().numpy().astype(np.float32))
-        np.save(output_dir / "proj_bias.npy", tensors[proj_b_key].float().cpu().numpy().astype(np.float32))
+        np.save(output_dir / "proj_weight.npy", tensors[proj_w_key].float().cpu().numpy().astype(dtype))
+        np.save(output_dir / "proj_bias.npy", tensors[proj_b_key].float().cpu().numpy().astype(dtype))
 
 
 def main() -> None:

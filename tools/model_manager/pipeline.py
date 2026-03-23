@@ -164,11 +164,13 @@ class ModelSetupPipeline:
 
     def _ensure_talker_predictor(self, base_dir: Path, out_talker: Path, out_predictor: Path, out_embeddings_dir: Path) -> None:
         if out_talker.exists() and out_predictor.exists(): return
-        self.run_cmd([sys.executable, str(self.conversion_dir / "convert_talker_predictor_llama.py"), "--input", str(base_dir), "--out-talker", str(out_talker), "--out-predictor", str(out_predictor), "--embeddings-dir", str(out_embeddings_dir)], cwd=self.root)
+        cmd = [sys.executable, str(self.conversion_dir / "convert_talker_predictor_llama.py"), "--input", str(base_dir), "--out-talker", str(out_talker), "--out-predictor", str(out_predictor), "--embeddings-dir", str(out_embeddings_dir)]
+        self.run_cmd(cmd, cwd=self.root)
 
     def _ensure_embeddings(self, base_dir: Path, out_embeddings_dir: Path) -> None:
         if (out_embeddings_dir / "text_embedding_projected.npy").exists(): return
-        self.run_cmd([sys.executable, str(self.conversion_dir / "export_embeddings.py"), "--input", str(base_dir), "--output", str(out_embeddings_dir)], cwd=self.root)
+        cmd = [sys.executable, str(self.conversion_dir / "export_embeddings.py"), "--input", str(base_dir), "--output", str(out_embeddings_dir)]
+        self.run_cmd(cmd, cwd=self.root)
 
     def _ensure_tokenizer_json(self, base_dir: Path, out_tokenizer_json: Path) -> None:
         if out_tokenizer_json.exists(): return

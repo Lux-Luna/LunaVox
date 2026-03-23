@@ -21,8 +21,8 @@ import torch
 from safetensors.torch import load_file, save_file
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-HF_EXPORT_DIR = REPO_ROOT / "tools" / "conversion" / "hf_export"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+HF_EXPORT_DIR = REPO_ROOT / "tools" / "model_manager" / "conversion" / "hf_export"
 LLAMA_QUANT = REPO_ROOT / "lib" / "llama" / "llama-quantize.exe"
 
 
@@ -110,6 +110,7 @@ def _extract_talker_hf(base_dir: Path, out_dir: Path) -> None:
 
 
 def _extract_predictor_hf(base_dir: Path, out_dir: Path, embeddings_dir: Path) -> None:
+    dtype = "float16"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     weights = load_file(str(base_dir / "model.safetensors"))
@@ -200,8 +201,8 @@ def _extract_predictor_hf(base_dir: Path, out_dir: Path, embeddings_dir: Path) -
         import numpy as np
 
         embeddings_dir.mkdir(parents=True, exist_ok=True)
-        np.save(embeddings_dir / "proj_weight.npy", proj_w.float().numpy())
-        np.save(embeddings_dir / "proj_bias.npy", proj_b.float().numpy())
+        np.save(embeddings_dir / "proj_weight.npy", proj_w.float().cpu().numpy().astype(dtype))
+        np.save(embeddings_dir / "proj_bias.npy", proj_b.float().cpu().numpy().astype(dtype))
 
 
 def _convert_hf_to_gguf(hf_dir: Path, out_gguf: Path) -> None:
