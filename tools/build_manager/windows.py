@@ -128,17 +128,57 @@ class WindowsResolver(ToolchainResolver):
         raise RuntimeError(f"No supported Windows toolchain found (order: {order}).")
 
 class WindowsBuilder(Builder):
-    def post_build(self):
+    def post_build(self, portable: bool = False):
         """Windows-only runtime copying."""
+        # 1. Compiler runtimes (always needed for MinGW)
         if self.ctx.toolchain_name == "mingw":
             dlls = ["libstdc++-6.dll", "libgcc_s_seh-1.dll", "libwinpthread-1.dll"]
-            found_any = False
             for d in self.ctx.env.get("PATH", "").split(";"):
                 path = Path(d)
                 if not path.exists(): continue
                 for dll in dlls:
                     src = path / dll
-                    if src.exists():
+                    if src.exists() and not (self.ctx.build_dir / dll).exists():
                         shutil.copy2(src, self.ctx.build_dir / dll)
-                        found_any = True
-            if found_any: print("[build] Copied compiler runtime DLLs to build directory.")
+                        print(f"[build] Bundled compiler runtime: {dll}")
+
+        # 2. Portable system dependencies (CUDA, cuDNN)
+        if portable:
+            print("[build] Searching for system dependencies to bundle (--portable)...")
+            # Common patterns for CUDA and cuDNN
+            patterns = [
+                "cudart64_*.dll",
+                "cublas64_*.dll",
+                "cublasLt64_*.dll",
+                "cufft64_*.dll",
+                "curand64_*.dll",
+                "cusolver64_*.dll",
+                "cusparse64_*.dll",
+                "cudnn*.dll",
+                "zlibwapi.dll"
+            ]
+            bundle_count = 0
+            # Scan PATH for these files
+            paths = self.ctx.env.get("PATH", "").split(";")
+            # Filter unique existing paths to avoid redundant search
+            seen_dirs = set()
+            for d in paths:
+                p_dir = Path(d)
+                if not p_dir.exists() or p_dir in seen_dirs: continue
+                seen_dirs.add(p_dir)
+                
+                for pattern in patterns:
+                    for src in p_dir.glob(pattern):
+                        dest = self.ctx.build_dir / src.name
+                        if not dest.exists():
+                            try:
+                                shutil.copy2(src, dest)
+                                print(f"[build] Bundled system dependency: {src.name}")
+                                bundle_count += 1
+                            except Exception as e:
+                                print(f"[build] Warning: failed to copy {src.name}: {e}")
+
+            if bundle_count > 0:
+                print(f"[build] Successfully bundled {bundle_count} system dependencies.")
+            else:
+                print("[build] Warning: --portable was requested but no CUDA/cuDNN DLLs were found in PATH.")

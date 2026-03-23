@@ -318,6 +318,8 @@ def make_build_args(args: argparse.Namespace) -> list[str]:
         build_args.append("--clean")
     if getattr(args, "toolchain", "auto") != "auto":
         build_args += ["--toolchain", args.toolchain]
+    if getattr(args, "portable", False):
+        build_args.append("--portable")
     return build_args
 
 
@@ -432,6 +434,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--verbose", action="store_true", help="Show real-time build output")
         p.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
         p.add_argument("--toolchain", choices=["auto", "msvc", "mingw", "clang", "gcc"], default="auto")
+        p.add_argument("--portable", action="store_true", help="Bundle system dependencies (CUDA/cuDNN) into build directory")
         
         if "--timeout-sec" not in existing:
             p.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)

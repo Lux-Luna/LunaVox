@@ -27,6 +27,7 @@ def main():
     parser.add_argument("--timeout-sec", type=int, default=200, help="Stage timeout")
     parser.add_argument("--verify", action="store_true", help="Verify build with --help test")
     parser.add_argument("--toolchain", choices=["auto", "msvc", "mingw", "clang", "gcc"], default="auto", help="Force a toolchain")
+    parser.add_argument("--portable", action="store_true", help="Bundle system dependencies")
     args = parser.parse_args()
 
     # Environment setup
@@ -60,7 +61,7 @@ def main():
         if hasattr(console, "print"):
             console.print(Panel(f"LunaVox C++ Build Manager - [bold cyan]{platform.system()}[/bold cyan]", border_style="cyan"))
         
-        builder.build(resolver, clean=args.clean, parallel=args.j, verify=args.verify)
+        builder.build(resolver, clean=args.clean, parallel=args.j, verify=args.verify, portable=args.portable)
         
     except Exception as e:
         if hasattr(console, "print"):

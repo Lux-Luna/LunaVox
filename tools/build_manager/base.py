@@ -44,11 +44,11 @@ class Builder:
         with open(self.ctx.log_file, "a", encoding="utf-8") as f: f.write(log_entry)
         if rc != 0: raise RuntimeError(f"Stage '{stage}' failed. See {self.ctx.log_file}")
 
-    def post_build(self):
+    def post_build(self, portable: bool = False):
         """Platform-specific post-build tasks."""
         pass
 
-    def build(self, resolver: ToolchainResolver, clean: bool = False, parallel: int = 4, verify: bool = False):
+    def build(self, resolver: ToolchainResolver, clean: bool = False, parallel: int = 4, verify: bool = False, portable: bool = False):
         # 1. Validation
         if not self.ctx.lib_dir.exists(): raise RuntimeError(f"Llama prebuilts missing at {self.ctx.lib_dir}")
         if not (self.ctx.ort_root / "include/onnxruntime_cxx_api.h").exists():
@@ -76,7 +76,7 @@ class Builder:
         self._run_step(["cmake", "--build", str(self.ctx.build_dir), "-j", str(parallel), "--config", "Release"], "cmake_build")
         
         # 6. Post-build
-        self.post_build()
+        self.post_build(portable=portable)
         
         # 7. Verify
         if verify:
