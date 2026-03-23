@@ -33,6 +33,7 @@ bool append_cpu_provider(Ort::SessionOptions & opts, std::string & error_msg) {
     }
 }
 
+#if defined(_WIN32) || defined(__linux__)
 bool append_cuda_provider(Ort::SessionOptions & opts, std::string & error_msg) {
     try {
         OrtCUDAProviderOptions cuda_opts{};
@@ -43,7 +44,9 @@ bool append_cuda_provider(Ort::SessionOptions & opts, std::string & error_msg) {
         return false;
     }
 }
+#endif
 
+#if defined(__APPLE__)
 bool append_coreml_provider(Ort::SessionOptions & opts, std::string & error_msg) {
     try {
         opts.AppendExecutionProvider(
@@ -55,6 +58,7 @@ bool append_coreml_provider(Ort::SessionOptions & opts, std::string & error_msg)
         return false;
     }
 }
+#endif
 
 } // namespace
 
@@ -79,18 +83,23 @@ bool apply_ort_provider_policy(
     }
 
     std::string provider_error;
+
+#if defined(_WIN32) || defined(__linux__)
     if (append_cuda_provider(opts, provider_error)) {
         enabled.push_back("cuda");
     } else {
         skipped.push_back("cuda(" + provider_error + ")");
     }
+#endif
 
+#if defined(__APPLE__)
     provider_error.clear();
     if (append_coreml_provider(opts, provider_error)) {
         enabled.push_back("coreml");
     } else {
         skipped.push_back("coreml(" + provider_error + ")");
     }
+#endif
 
     std::string cpu_error;
     if (!append_cpu_provider(opts, cpu_error)) {
