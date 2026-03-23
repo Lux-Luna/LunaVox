@@ -1041,7 +1041,7 @@ tts_result Qwen3TTS::synthesize_internal(
     result.t_total_ms = get_time_ms() - t_total_start;
     sample_memory("synth/end");
 
-    if (params.print_timing) {
+    if (params.print_timing && false) { // Handled by main.cpp in a prettier way
         double audio_sec = result.sample_rate > 0 ? (double) result.audio.size() / (double) result.sample_rate : 0.0;
         double wall_sec = (double) result.t_total_ms / 1000.0;
         double rtf = audio_sec > 0.0 ? wall_sec / audio_sec : 0.0;

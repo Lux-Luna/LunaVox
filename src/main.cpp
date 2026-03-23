@@ -7,6 +7,7 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -351,14 +352,13 @@ int main(int argc, char ** argv) {
 
     qwen3_tts::set_ort_debug_log(params.ort_debug_log);
     
-    LOG_USER("[+] Loading Models...   ");
+    LOG_USER("[LOAD] Loading Models...");
     if (!tts.load_models(model_dir, params.n_threads)) {
         LOG_ERROR("\nError during model load: %s", tts.get_error().c_str());
         return 1;
     }
-    LOG_USER("[  Done  ]");
-
-    LOG_USER("[+] Text: \"%s\"", text.c_str());
+    
+    LOG_USER("[PARA] Text: \"%s\"", text.c_str());
     
     // Set progress callback
     tts.set_progress_callback([](int tokens, int max_tokens) {
@@ -370,10 +370,10 @@ int main(int argc, char ** argv) {
         mode = "clone";
     }
 
-    LOG_USER("[+] Mode: %s", mode.c_str());
-    if (mode == "clone") LOG_USER("[+] Reference: %s", reference_audio.c_str());
-    if (mode == "custom") LOG_USER("[+] Speaker: %s", speaker_name.c_str());
-    if (!instruct_text.empty()) LOG_USER("[+] Instruct: %s", instruct_text.c_str());
+    LOG_USER("[PARA] Mode: %s", mode.c_str());
+    if (mode == "clone") LOG_USER("[PARA] Reference: %s", reference_audio.c_str());
+    if (mode == "custom") LOG_USER("[PARA] Speaker: %s", speaker_name.c_str());
+    if (!instruct_text.empty()) LOG_USER("[PARA] Instruct: %s", instruct_text.c_str());
 
     // Generate speech
     qwen3_tts::tts_result result;
@@ -414,17 +414,56 @@ int main(int argc, char ** argv) {
         return 1;
     }
     
-    LOG_USER("[ Performance Stats ]");
+    double vram_gb = 0.0;
+    try {
+        uintmax_t total_size = 0;
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(model_dir)) {
+            if (std::filesystem::is_regular_file(entry)) {
+                total_size += std::filesystem::file_size(entry);
+            }
+        }
+        vram_gb = (double)total_size / (1024.0 * 1024.0 * 1024.0);
+    } catch (...) {}
+
+    LOG_USER("");
+    LOG_USER("[ Backend Configuration ]");
+    LOG_USER("  - LLM Engine:     llama.cpp (%s)", qwen3_tts::Logger::instance().get_llama_backend_info().c_str());
+    
+    if (result.ort_provider_speaker_encoder == "not_loaded" && result.ort_provider_codec_encoder == "not_loaded") {
+        LOG_USER("  - Audio Encoder:  ONNX Runtime (not loaded)");
+    } else {
+        LOG_USER("  - Audio Encoder:  ONNX Runtime (Codec: %s)", result.ort_provider_codec_encoder.c_str());
+    }
+    LOG_USER("  - Audio Decoder:  ONNX Runtime (%s)", result.ort_provider_decoder.c_str());
+
+    LOG_USER("");
+    LOG_USER("[ Resource Usage ]");
+    LOG_USER("  - Peak RAM:       %.2f GB", (double)result.mem_rss_peak_bytes / (1024.0 * 1024.0 * 1024.0));
+    if (vram_gb > 0) {
+        LOG_USER("  - Est. VRAM:      %.2f GB (Static Weights)", vram_gb);
+    } else {
+        LOG_USER("  - Est. VRAM:      N/A");
+    }
+    LOG_USER("  - Peak Phys:      %.2f GB", (double)result.mem_phys_peak_bytes / (1024.0 * 1024.0 * 1024.0));
+    
+    LOG_USER("");
+    LOG_USER("[ Inference Metrics ]");
     const double audio_sec = (double)result.audio.size() / result.sample_rate;
     const double wall_sec = (double)result.t_total_ms / 1000.0;
     const double rtf = audio_sec > 0 ? wall_sec / audio_sec : 0;
     
-    LOG_USER("- Throughput:   %.2fx realtime (RTF=%.3f)", 1.0/rtf, rtf);
-    LOG_USER("- Total Time:   %lld ms", (long long)result.t_total_ms);
-    LOG_USER("- Audio Len:    %.2f s", (float)audio_sec);
+    LOG_USER("  - Tokenization:          %6lld ms", (long long)result.t_tokenize_ms);
+    LOG_USER("  - Speaker Encoding:      %6lld ms", (long long)result.t_encode_ms);
+    LOG_USER("  - Code Generation:       %6lld ms", (long long)result.t_generate_ms);
+    LOG_USER("  - Audio Decoding:        %6lld ms", (long long)result.t_decode_ms);
+    LOG_USER("  -----------------------------------");
+    LOG_USER("  - Total Latency:         %6lld ms", (long long)result.t_total_ms);
+    LOG_USER("  - Audio Duration:        %6.2f s", (float)audio_sec);
+    LOG_USER("  - Real-time Factor:      %6.2fx (%.3f RTF)", 1.0/rtf, rtf);
+    
     LOG_USER("");
     LOG_USER("[ Result ]");
-    LOG_USER("- Saved to:     %s", output_file.c_str());
+    LOG_USER("  - Saved to:       %s", output_file.c_str());
     LOG_USER("--------------------------------------------------");
 
     if (!stats_json_file.empty()) {

@@ -21,6 +21,26 @@ bool Logger::init(const char * filename) {
 
 
 void Logger::log_backend(int backend_level, const char * text) {
+    std::string t = text;
+    // Known logs: "ggml_vulkan: 0 = NVIDIA ..." or "ggml_cuda: 0 = NVIDIA ..."
+    if (t.find("ggml_vulkan: 0 = ") != std::string::npos) {
+        size_t start = t.find("ggml_vulkan: 0 = ") + 17;
+        size_t end = t.find(" |", start);
+        if (end != std::string::npos) {
+            llama_backend_info_ = "Vulkan: " + t.substr(start, end - start);
+        } else {
+            llama_backend_info_ = "Vulkan";
+        }
+    } else if (t.find("ggml_cuda: 0 = ") != std::string::npos) {
+        size_t start = t.find("ggml_cuda: 0 = ") + 15;
+        size_t end = t.find(" |", start);
+        if (end != std::string::npos) {
+            llama_backend_info_ = "CUDA: " + t.substr(start, end - start);
+        } else {
+            llama_backend_info_ = "CUDA";
+        }
+    }
+
     // Backend logs (llama.cpp, ORT) are treated as DEBUG unless they are warnings/errors
     // For now we just dump them to file as DEBUG
     log(LogLevel::DEBUG_LOG, "[Backend] %s", text);

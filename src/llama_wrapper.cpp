@@ -112,14 +112,7 @@ bool LlamaLibrary::ensure_loaded(const std::string & lib_dir, std::string & err)
         return false;
     }
 
-    if (ggml_backend_load_all_from_path) {
-        ggml_backend_load_all_from_path(lib_dir.c_str());
-    } else if (ggml_backend_load_all) {
-        ggml_backend_load_all();
-    }
-    llama_backend_init();
-    
-    // Register logger
+    // Register logger early to capture backend discovery logs
     if (llama_log_set) {
         llama_log_set([](enum llama_log_level level, const char * text, void * user_data) {
             (void) user_data;
@@ -127,6 +120,13 @@ bool LlamaLibrary::ensure_loaded(const std::string & lib_dir, std::string & err)
             Logger::instance().log_backend((int)level, text);
         }, nullptr);
     }
+
+    if (ggml_backend_load_all_from_path) {
+        ggml_backend_load_all_from_path(lib_dir.c_str());
+    } else if (ggml_backend_load_all) {
+        ggml_backend_load_all();
+    }
+    llama_backend_init();
     
     loaded_ = true;
     return true;

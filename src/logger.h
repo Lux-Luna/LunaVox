@@ -24,6 +24,8 @@ public:
 
     // Specifically for backend logs (like llama.cpp)
     void log_backend(int level, const char * text);
+    
+    std::string get_llama_backend_info() const { return llama_backend_info_; }
 
 private:
     Logger() = default;
@@ -34,6 +36,7 @@ private:
     LogLevel level_ = LogLevel::INFO_LOG;
     std::ofstream file_stream_;
     std::mutex mutex_;
+    std::string llama_backend_info_ = "CPU";
 };
 
 // Convenience macros
