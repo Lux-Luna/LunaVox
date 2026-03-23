@@ -164,7 +164,7 @@ if(UNIX AND NOT APPLE)
     target_link_libraries(talker_predictor_llama PUBLIC dl)
 endif()
 
-add_library(qwen3_tts STATIC src/qwen3_tts.cpp)
+add_library(qwen3_tts STATIC src/qwen3_tts.cpp src/nvml_monitor.cpp)
 target_include_directories(qwen3_tts PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(qwen3_tts PUBLIC
     qwen3_tts_build_options

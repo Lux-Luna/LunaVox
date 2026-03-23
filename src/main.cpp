@@ -1,5 +1,6 @@
 #include "qwen3_tts.h"
 #include "logger.h"
+#include "nvml_monitor.h"
 
 #include <cstdio>
 #include <cstring>
@@ -7,7 +8,6 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
-#include <filesystem>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -142,6 +142,11 @@ void print_usage(const char * program) {
 int main(int argc, char ** argv) {
     // Initialize logger first
     Logger::instance().init("logs/latest.log");
+
+    uint64_t vram_start = 0;
+    if (qwen3_tts::NVMLMonitor::instance().init()) {
+        vram_start = qwen3_tts::NVMLMonitor::instance().get_used_vram();
+    }
 
 #ifdef _WIN32
     std::vector<std::string> args = collect_cli_args_utf8(argc, argv);
@@ -414,17 +419,6 @@ int main(int argc, char ** argv) {
         return 1;
     }
     
-    double vram_gb = 0.0;
-    try {
-        uintmax_t total_size = 0;
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(model_dir)) {
-            if (std::filesystem::is_regular_file(entry)) {
-                total_size += std::filesystem::file_size(entry);
-            }
-        }
-        vram_gb = (double)total_size / (1024.0 * 1024.0 * 1024.0);
-    } catch (...) {}
-
     LOG_USER("");
     LOG_USER("[ Backend Configuration ]");
     LOG_USER("  - LLM Engine:     llama.cpp (%s)", qwen3_tts::Logger::instance().get_llama_backend_info().c_str());
@@ -435,15 +429,19 @@ int main(int argc, char ** argv) {
         LOG_USER("  - Audio Encoder:  ONNX Runtime (Codec: %s)", result.ort_provider_codec_encoder.c_str());
     }
     LOG_USER("  - Audio Decoder:  ONNX Runtime (%s)", result.ort_provider_decoder.c_str());
-
+    
     LOG_USER("");
     LOG_USER("[ Resource Usage ]");
     LOG_USER("  - Peak RAM:       %.2f GB", (double)result.mem_rss_peak_bytes / (1024.0 * 1024.0 * 1024.0));
-    if (vram_gb > 0) {
-        LOG_USER("  - Est. VRAM:      %.2f GB (Static Weights)", vram_gb);
+    
+    if (qwen3_tts::NVMLMonitor::instance().is_available()) {
+        uint64_t vram_end = qwen3_tts::NVMLMonitor::instance().get_used_vram();
+        double delta_gb = (double)(vram_end > vram_start ? vram_end - vram_start : 0) / (1024.0 * 1024.0 * 1024.0);
+        LOG_USER("  - GPU VRAM Delta: %.2f GB (%s)", delta_gb, qwen3_tts::NVMLMonitor::instance().get_device_name().c_str());
     } else {
-        LOG_USER("  - Est. VRAM:      N/A");
+        LOG_USER("  - GPU VRAM Delta: N/A (NVML not initialized)");
     }
+    
     LOG_USER("  - Peak Phys:      %.2f GB", (double)result.mem_phys_peak_bytes / (1024.0 * 1024.0 * 1024.0));
     
     LOG_USER("");
