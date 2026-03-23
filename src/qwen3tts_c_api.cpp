@@ -108,8 +108,8 @@ void qwen3_tts_default_params(Qwen3TtsParams * params) {
 Qwen3Tts * qwen3_tts_create(const char * model_dir, int32_t n_threads) {
     if (!model_dir) return nullptr;
     auto * tts = new Qwen3Tts;
-    (void)n_threads; // thread count is set per-call via params
-    if (!tts->engine.load_models(model_dir)) {
+    const int32_t load_threads = n_threads > 0 ? n_threads : 4;
+    if (!tts->engine.load_models(model_dir, load_threads)) {
         tts->last_error = tts->engine.get_error();
         delete tts;
         return nullptr;

@@ -439,6 +439,7 @@ bool Qwen3TTS::load_models(const std::string & model_dir, int32_t n_threads) {
     talker_predictor_loaded_ = false;
     assets_loaded_ = false;
     decoder_loaded_ = false;
+    hot_rows_preloaded_ = false;
     error_msg_.clear();
 
     speaker_onnx_path_.clear();
@@ -467,6 +468,79 @@ bool Qwen3TTS::load_models(const std::string & model_dir, int32_t n_threads) {
     }
 
     LOG_INFO("Loaded models in NEW layout (%lld ms)", (long long) (get_time_ms() - t_start));
+    return true;
+}
+
+bool Qwen3TTS::preload_hot_embedding_rows() {
+    std::lock_guard<std::mutex> guard(hot_rows_preload_mu_);
+    if (hot_rows_preloaded_) {
+        return true;
+    }
+    if (!assets_loaded_ || !assets_.is_loaded()) {
+        error_msg_ = "Embedding assets are not loaded";
+        return false;
+    }
+
+    const int32_t dim = assets_.hidden_dim();
+    if (dim <= 0) {
+        error_msg_ = "Invalid embedding hidden dim during hot preload";
+        return false;
+    }
+
+    volatile float touch_sink = 0.0f;
+    auto touch_row = [&](const float * row, const char * name) -> bool {
+        if (!row) {
+            error_msg_ = std::string("Missing embedding row during hot preload: ") + name;
+            return false;
+        }
+        touch_sink += row[0];
+        touch_sink += row[(size_t) dim / 2];
+        touch_sink += row[(size_t) dim - 1];
+        return true;
+    };
+
+    static const int32_t kHotTextRows[] = {
+        198,    // \n
+        872,    // user
+        151644, // <|im_start|>
+        151645, // <|im_end|>
+        151671, // tts_pad
+        151672, // tts_bos
+        151673, // tts_eos
+        77091,  // assistant
+    };
+
+    static const int32_t kHotCodecQ0Rows[] = {
+        // Protocol rows
+        2148, 2149, 2150, 2154, 2155, 2156, 2157,
+        // Common language IDs
+        2050, 2053, 2054, 2055, 2058, 2061, 2064, 2069, 2070, 2071,
+        // Common built-in speakers
+        2861, 2864, 2873, 2875, 2878, 3010, 3061, 3065, 3066,
+    };
+
+    for (int32_t tid : kHotTextRows) {
+        if (!touch_row(assets_.text_row(tid), "hot text row")) {
+            return false;
+        }
+    }
+
+    for (int32_t cid : kHotCodecQ0Rows) {
+        if (!touch_row(assets_.codec_row(0, cid), "hot codec q0 row")) {
+            return false;
+        }
+    }
+
+    // Touch one row from each codec table to reduce first-access page faults.
+    for (int32_t q = 0; q < 16; ++q) {
+        if (!touch_row(assets_.codec_row(q, 0), "codec table first row")) {
+            return false;
+        }
+    }
+
+    (void) touch_sink;
+    hot_rows_preloaded_ = true;
+    LOG_INFO("  Embedding hot-row preload completed");
     return true;
 }
 
@@ -552,6 +626,12 @@ tts_result Qwen3TTS::synthesize_with_voice(
         if (n_ref_frames > 0 && (ref_codes.empty() || (int32_t) ref_codes.size() != n_ref_frames * 16)) {
             result.error_msg = "[clone/JSON] Invalid ref_codes shape; expected T x 16";
             return result;
+        }
+        for (int32_t c : ref_codes) {
+            if (c < 0 || c >= 2048) {
+                result.error_msg = "[clone/JSON] Invalid ref code id out of [0, 2047]";
+                return result;
+            }
         }
         
         if (params.print_progress) {
@@ -903,6 +983,11 @@ tts_result Qwen3TTS::synthesize_internal(
     };
 
     sample_memory("synth/start");
+
+    if (!preload_hot_embedding_rows()) {
+        result.error_msg = "Failed to preload embedding hot rows: " + error_msg_;
+        return result;
+    }
 
     int64_t t_tok = get_time_ms();
     std::string full_text = params.ref_text.empty() ? text : params.ref_text + text;

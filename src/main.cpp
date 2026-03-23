@@ -499,7 +499,17 @@ int main(int argc, char ** argv) {
                 "  },\n"
                 "  \"diag\": {\n"
                 "    \"spk_emb_dim\": %d,\n"
-                "    \"eos_step\": %d\n"
+                "    \"eos_step\": %d,\n"
+                "    \"effective_language_id\": %d,\n"
+                "    \"used_auto_language\": %s,\n"
+                "    \"gen_code_frames\": %d,\n"
+                "    \"gen_code_min\": %d,\n"
+                "    \"gen_code_max\": %d,\n"
+                "    \"gen_codes_hash\": %llu,\n"
+                "    \"trailing_count\": %d,\n"
+                "    \"trailing_consumed\": %d,\n"
+                "    \"pcm_peak\": %.9f,\n"
+                "    \"pcm_rms\": %.9f\n"
                 "  },\n"
                 "  \"ort_providers\": {\n"
                 "    \"speaker_encoder\": \"%s\",\n"
@@ -524,6 +534,16 @@ int main(int argc, char ** argv) {
                 (unsigned long long) result.mem_phys_peak_bytes,
                 (int) result.spk_emb_dim,
                 (int) result.eos_step,
+                (int) result.effective_language_id,
+                result.used_auto_language ? "true" : "false",
+                (int) result.gen_code_frames,
+                (int) result.gen_code_min,
+                (int) result.gen_code_max,
+                (unsigned long long) result.gen_codes_hash,
+                (int) result.trailing_count,
+                (int) result.trailing_consumed,
+                result.pcm_peak,
+                result.pcm_rms,
                 spk_ep_json.c_str(),
                 codec_ep_json.c_str(),
                 decoder_ep_json.c_str());

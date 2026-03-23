@@ -9,6 +9,7 @@
 #include <vector>
 #include <functional>
 #include <cstdint>
+#include <mutex>
 
 namespace qwen3_tts {
 
@@ -218,6 +219,8 @@ public:
     bool is_loaded() const { return models_loaded_; }
     
 private:
+    bool preload_hot_embedding_rows();
+
     tts_result synthesize_internal(const std::string & text,
                                    const float * speaker_embedding,
                                    const int32_t * ref_codes,
@@ -244,6 +247,8 @@ private:
     bool assets_loaded_ = false;
     bool decoder_loaded_ = false;
     bool low_mem_mode_ = false;
+    bool hot_rows_preloaded_ = false;
+    std::mutex hot_rows_preload_mu_;
     std::string error_msg_;
     std::string speaker_onnx_path_;
     std::string codec_encoder_onnx_path_;
