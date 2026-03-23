@@ -1,4 +1,5 @@
 #include "qwen3_tts.h"
+#include "logger.h"
 
 #include <cstdio>
 #include <cstring>
@@ -14,6 +15,8 @@
 #include <windows.h>
 #include <shellapi.h>
 #endif
+
+using namespace qwen3_tts;
 
 static std::string to_lower_ascii(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
@@ -130,16 +133,15 @@ void print_usage(const char * program) {
     fprintf(stderr, "  -l, --language <lang>  Force language: en,ru,zh,ja,ko,de,fr,es,it,pt,none\n");
     fprintf(stderr, "  --no-auto-language     Disable language auto-detection (uses --language or en)\n");
     fprintf(stderr, "  -j, --threads <n>      Number of threads (default: 4)\n");
+    fprintf(stderr, "  -v, --verbose          Show detailed debug logs\n");
     fprintf(stderr, "  -h, --help             Show this help\n");
     fprintf(stderr, "\n");
-    fprintf(stderr, "Examples:\n");
-    fprintf(stderr, "  %s -m ./models/base_small -t \"Hello, world!\" -o hello.wav\n", program);
-    fprintf(stderr, "  %s -m ./models/base_small -t \"Hello!\" -r reference.wav -o cloned.wav\n", program);
-    fprintf(stderr, "  %s -m ./models/custom --mode custom --speaker Vivian --instruct \"Speak gently\" -t \"Hello\" -o custom.wav\n", program);
-    fprintf(stderr, "  %s -m ./models/design --mode design --instruct \"A warm female voice\" -t \"Hello\" -o design.wav\n", program);
 }
 
 int main(int argc, char ** argv) {
+    // Initialize logger first
+    Logger::instance().init("logs/latest.log");
+
 #ifdef _WIN32
     std::vector<std::string> args = collect_cli_args_utf8(argc, argv);
 #else
@@ -159,6 +161,7 @@ int main(int argc, char ** argv) {
     std::string mode = "base";
     std::string instruct_text;
     std::string speaker_name;
+    bool verbose = false;
     
     qwen3_tts::tts_params params;
     params.auto_language = true;
@@ -172,49 +175,49 @@ int main(int argc, char ** argv) {
             return 0;
         } else if (arg == "-m" || arg == "--model") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing model directory\n");
+                LOG_ERROR("Error: missing model directory");
                 return 1;
             }
             model_dir = args[i];
         } else if (arg == "-t" || arg == "--text") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing text\n");
+                LOG_ERROR("Error: missing text");
                 return 1;
             }
             text = args[i];
         } else if (arg == "-o" || arg == "--output") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing output file\n");
+                LOG_ERROR("Error: missing output file");
                 return 1;
             }
             output_file = args[i];
         } else if (arg == "-r" || arg == "--reference") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing reference audio\n");
+                LOG_ERROR("Error: missing reference audio");
                 return 1;
             }
             reference_audio = args[i];
         } else if (arg == "--ref-text") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing reference text\n");
+                LOG_ERROR("Error: missing reference text");
                 return 1;
             }
             params.ref_text = args[i];
         } else if (arg == "--temperature") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing temperature value\n");
+                LOG_ERROR("Error: missing temperature value");
                 return 1;
             }
             params.temperature = std::stof(args[i]);
         } else if (arg == "--top-k") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing top-k value\n");
+                LOG_ERROR("Error: missing top-k value");
                 return 1;
             }
             params.top_k = std::stoi(args[i]);
         } else if (arg == "--top-p") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing top-p value\n");
+                LOG_ERROR("Error: missing top-p value");
                 return 1;
             }
             params.top_p = std::stof(args[i]);
@@ -222,44 +225,44 @@ int main(int argc, char ** argv) {
             params.predictor_do_sample = false;
         } else if (arg == "--predictor-temperature") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing predictor-temperature value\n");
+                LOG_ERROR("Error: missing predictor-temperature value");
                 return 1;
             }
             params.predictor_temperature = std::stof(args[i]);
             params.predictor_do_sample = params.predictor_temperature > 0.0f;
         } else if (arg == "--predictor-top-k") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing predictor-top-k value\n");
+                LOG_ERROR("Error: missing predictor-top-k value");
                 return 1;
             }
             params.predictor_top_k = std::stoi(args[i]);
         } else if (arg == "--predictor-top-p") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing predictor-top-p value\n");
+                LOG_ERROR("Error: missing predictor-top-p value");
                 return 1;
             }
             params.predictor_top_p = std::stof(args[i]);
         } else if (arg == "--seed") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing seed value\n");
+                LOG_ERROR("Error: missing seed value");
                 return 1;
             }
             params.seed = std::stoi(args[i]);
         } else if (arg == "--predictor-seed") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing predictor-seed value\n");
+                LOG_ERROR("Error: missing predictor-seed value");
                 return 1;
             }
             params.predictor_seed = std::stoi(args[i]);
         } else if (arg == "--max-tokens") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing max-tokens value\n");
+                LOG_ERROR("Error: missing max-tokens value");
                 return 1;
             }
             params.max_audio_tokens = std::stoi(args[i]);
         } else if (arg == "--repetition-penalty") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing repetition-penalty value\n");
+                LOG_ERROR("Error: missing repetition-penalty value");
                 return 1;
             }
             params.repetition_penalty = std::stof(args[i]);
@@ -267,19 +270,19 @@ int main(int argc, char ** argv) {
             params.ort_debug_log = true;
         } else if (arg == "--stats-json") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing stats-json file path\n");
+                LOG_ERROR("Error: missing stats-json file path");
                 return 1;
             }
             stats_json_file = args[i];
         } else if (arg == "-l" || arg == "--language") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing language value\n");
+                LOG_ERROR("Error: missing language value");
                 return 1;
             }
             std::string lang = args[i];
             int32_t parsed_language_id = 2050;
             if (!parse_language_id(lang, parsed_language_id)) {
-                fprintf(stderr, "Error: unknown language '%s'. Supported: en,ru,zh,ja,ko,de,fr,es,it,pt,none\n", lang.c_str());
+                LOG_ERROR("Error: unknown language '%s'. Supported: en,ru,zh,ja,ko,de,fr,es,it,pt,none", lang.c_str());
                 return 1;
             }
             params.language_id = parsed_language_id;
@@ -288,66 +291,78 @@ int main(int argc, char ** argv) {
             params.auto_language = false;
         } else if (arg == "-j" || arg == "--threads") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing threads value\n");
+                LOG_ERROR("Error: missing threads value");
                 return 1;
             }
             params.n_threads = std::stoi(args[i]);
         } else if (arg == "--mode") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing mode value\n");
+                LOG_ERROR("Error: missing mode value");
                 return 1;
             }
             mode = to_lower_ascii(args[i]);
             if (mode != "base" && mode != "clone" && mode != "custom" && mode != "design") {
-                fprintf(stderr, "Error: unknown mode '%s'. Use: base, clone, custom, design\n", mode.c_str());
+                LOG_ERROR("Error: unknown mode '%s'. Use: base, clone, custom, design", mode.c_str());
                 return 1;
             }
         } else if (arg == "--instruct") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing instruct text\n");
+                LOG_ERROR("Error: missing instruct text");
                 return 1;
             }
             instruct_text = args[i];
         } else if (arg == "--speaker") {
             if (++i >= (int)args.size()) {
-                fprintf(stderr, "Error: missing speaker name\n");
+                LOG_ERROR("Error: missing speaker name");
                 return 1;
             }
             speaker_name = args[i];
+        } else if (arg == "-v" || arg == "--verbose") {
+            verbose = true;
         } else {
-            fprintf(stderr, "Error: unknown argument: %s\n", arg.c_str());
+            LOG_ERROR("Error: unknown argument: %s", arg.c_str());
             print_usage(program);
             return 1;
         }
     }
+
+    if (verbose) {
+        Logger::instance().set_level(LogLevel::DEBUG_LOG);
+    }
     
     // Validate required arguments
     if (model_dir.empty()) {
-        fprintf(stderr, "Error: model directory is required\n");
+        LOG_ERROR("Error: model directory is required");
         print_usage(program);
         return 1;
     }
     
     if (text.empty()) {
-        fprintf(stderr, "Error: text is required\n");
+        LOG_ERROR("Error: text is required");
         print_usage(program);
         return 1;
     }
+
+    LOG_USER("[ LunaVox TTS Engine ]");
+    LOG_USER("--------------------------------------------------");
     
     // Initialize TTS
     qwen3_tts::Qwen3TTS tts;
 
     qwen3_tts::set_ort_debug_log(params.ort_debug_log);
     
-    fprintf(stderr, "Loading models from: %s\n", model_dir.c_str());
+    LOG_USER("[+] Loading Models...   ");
     if (!tts.load_models(model_dir, params.n_threads)) {
-        fprintf(stderr, "Error: %s\n", tts.get_error().c_str());
+        LOG_ERROR("\nError during model load: %s", tts.get_error().c_str());
         return 1;
     }
+    LOG_USER("[  Done  ]");
+
+    LOG_USER("[+] Text: \"%s\"", text.c_str());
     
     // Set progress callback
     tts.set_progress_callback([](int tokens, int max_tokens) {
-        fprintf(stderr, "\rGenerating: %d/%d tokens", tokens, max_tokens);
+        fprintf(stderr, "\rGenerating: %d/%d tokens   ", tokens, max_tokens);
     });
     
     // Infer mode from --reference if provided and mode is still "base"
@@ -355,67 +370,68 @@ int main(int argc, char ** argv) {
         mode = "clone";
     }
 
+    LOG_USER("[+] Mode: %s", mode.c_str());
+    if (mode == "clone") LOG_USER("[+] Reference: %s", reference_audio.c_str());
+    if (mode == "custom") LOG_USER("[+] Speaker: %s", speaker_name.c_str());
+    if (!instruct_text.empty()) LOG_USER("[+] Instruct: %s", instruct_text.c_str());
+
     // Generate speech
     qwen3_tts::tts_result result;
     
     if (mode == "clone") {
         if (reference_audio.empty()) {
-            fprintf(stderr, "Error: clone mode requires --reference\n");
+            LOG_ERROR("Error: clone mode requires --reference");
             return 1;
         }
-        fprintf(stderr, "Synthesizing with voice cloning: \"%s\"\n", text.c_str());
-        fprintf(stderr, "Reference audio: %s\n", reference_audio.c_str());
         result = tts.synthesize_with_voice(text, reference_audio, params);
     } else if (mode == "custom") {
         if (speaker_name.empty()) {
-            fprintf(stderr, "Error: custom mode requires --speaker\n");
+            LOG_ERROR("Error: custom mode requires --speaker");
             return 1;
-        }
-        fprintf(stderr, "Synthesizing with custom voice: \"%s\" (speaker: %s)\n", text.c_str(), speaker_name.c_str());
-        if (!instruct_text.empty()) {
-            fprintf(stderr, "Instruct: %s\n", instruct_text.c_str());
         }
         result = tts.synthesize_custom(text, speaker_name, instruct_text, params);
     } else if (mode == "design") {
         if (instruct_text.empty()) {
-            fprintf(stderr, "Error: design mode requires --instruct\n");
+            LOG_ERROR("Error: design mode requires --instruct");
             return 1;
         }
-        fprintf(stderr, "Synthesizing with voice design: \"%s\"\n", text.c_str());
-        fprintf(stderr, "Design instruct: %s\n", instruct_text.c_str());
         result = tts.synthesize_design(text, instruct_text, params);
     } else {
-        // base mode
-        fprintf(stderr, "Synthesizing: \"%s\"\n", text.c_str());
         result = tts.synthesize(text, params);
     }
     
     if (!result.success) {
-        fprintf(stderr, "\nError: %s\n", result.error_msg.c_str());
+        LOG_ERROR("\nError: %s", result.error_msg.c_str());
         return 1;
     }
     
-    fprintf(stderr, "\n");
+    LOG_USER("\rGenerating: [####################] 100%%          ");
+    LOG_USER("");
     
     // Save output
     if (!qwen3_tts::save_audio_file(output_file, result.audio, result.sample_rate)) {
-        fprintf(stderr, "Error: failed to save output file: %s\n", output_file.c_str());
+        LOG_ERROR("Error: failed to save output file: %s", output_file.c_str());
         return 1;
     }
     
-    fprintf(stderr, "Output saved to: %s\n", output_file.c_str());
-    fprintf(stderr, "Audio duration: %.2f seconds\n", 
-            (float)result.audio.size() / result.sample_rate);
+    LOG_USER("[ Performance Stats ]");
+    const double audio_sec = (double)result.audio.size() / result.sample_rate;
+    const double wall_sec = (double)result.t_total_ms / 1000.0;
+    const double rtf = audio_sec > 0 ? wall_sec / audio_sec : 0;
+    
+    LOG_USER("- Throughput:   %.2fx realtime (RTF=%.3f)", 1.0/rtf, rtf);
+    LOG_USER("- Total Time:   %lld ms", (long long)result.t_total_ms);
+    LOG_USER("- Audio Len:    %.2f s", (float)audio_sec);
+    LOG_USER("");
+    LOG_USER("[ Result ]");
+    LOG_USER("- Saved to:     %s", output_file.c_str());
+    LOG_USER("--------------------------------------------------");
 
     if (!stats_json_file.empty()) {
         FILE * jf = fopen(stats_json_file.c_str(), "wb");
         if (!jf) {
-            fprintf(stderr, "Warning: failed to write stats JSON: %s\n", stats_json_file.c_str());
+            LOG_WARN("Warning: failed to write stats JSON: %s", stats_json_file.c_str());
         } else {
-            const double audio_sec =
-                result.sample_rate > 0 ? (double) result.audio.size() / (double) result.sample_rate : 0.0;
-            const double wall_sec = (double) result.t_total_ms / 1000.0;
-            const double rtf = audio_sec > 0.0 ? wall_sec / audio_sec : 0.0;
             const std::string spk_ep_json = json_escape(result.ort_provider_speaker_encoder);
             const std::string codec_ep_json = json_escape(result.ort_provider_codec_encoder);
             const std::string decoder_ep_json = json_escape(result.ort_provider_decoder);
@@ -442,25 +458,9 @@ int main(int argc, char ** argv) {
                 "    \"phys_end\": %llu,\n"
                 "    \"phys_peak\": %llu\n"
                 "  },\n"
-                "  \"diagnostics\": {\n"
+                "  \"diag\": {\n"
                 "    \"spk_emb_dim\": %d,\n"
-                "    \"spk_emb_l2\": %.9f,\n"
-                "    \"spk_emb_nan_count\": %d,\n"
-                "    \"spk_emb_inf_count\": %d,\n"
-                "    \"ref_code_frames\": %d,\n"
-                "    \"ref_codebooks\": %d,\n"
-                "    \"ref_code_min\": %d,\n"
-                "    \"ref_code_max\": %d,\n"
-                "    \"gen_code_frames\": %d,\n"
-                "    \"gen_codebooks\": %d,\n"
-                "    \"gen_code_min\": %d,\n"
-                "    \"gen_code_max\": %d,\n"
-                "    \"gen_codes_hash_hex\": \"%016llx\",\n"
-                "    \"eos_step\": %d,\n"
-                "    \"trailing_count\": %d,\n"
-                "    \"trailing_consumed\": %d,\n"
-                "    \"pcm_peak\": %.9f,\n"
-                "    \"pcm_rms\": %.9f\n"
+                "    \"eos_step\": %d\n"
                 "  },\n"
                 "  \"ort_providers\": {\n"
                 "    \"speaker_encoder\": \"%s\",\n"
@@ -484,39 +484,12 @@ int main(int argc, char ** argv) {
                 (unsigned long long) result.mem_phys_end_bytes,
                 (unsigned long long) result.mem_phys_peak_bytes,
                 (int) result.spk_emb_dim,
-                (double) result.spk_emb_l2,
-                (int) result.spk_emb_nan_count,
-                (int) result.spk_emb_inf_count,
-                (int) result.ref_code_frames,
-                (int) result.ref_codebooks,
-                (int) result.ref_code_min,
-                (int) result.ref_code_max,
-                (int) result.gen_code_frames,
-                (int) result.gen_codebooks,
-                (int) result.gen_code_min,
-                (int) result.gen_code_max,
-                (unsigned long long) result.gen_codes_hash,
                 (int) result.eos_step,
-                (int) result.trailing_count,
-                (int) result.trailing_consumed,
-                (double) result.pcm_peak,
-                (double) result.pcm_rms,
                 spk_ep_json.c_str(),
                 codec_ep_json.c_str(),
                 decoder_ep_json.c_str());
             fclose(jf);
         }
-    }
-    
-    // Print timing
-    if (params.print_timing) {
-        fprintf(stderr, "\nTiming:\n");
-        fprintf(stderr, "  Load:      %6lld ms\n", (long long)result.t_load_ms);
-        fprintf(stderr, "  Tokenize:  %6lld ms\n", (long long)result.t_tokenize_ms);
-        fprintf(stderr, "  Encode:    %6lld ms\n", (long long)result.t_encode_ms);
-        fprintf(stderr, "  Generate:  %6lld ms\n", (long long)result.t_generate_ms);
-        fprintf(stderr, "  Decode:    %6lld ms\n", (long long)result.t_decode_ms);
-        fprintf(stderr, "  Total:     %6lld ms\n", (long long)result.t_total_ms);
     }
     
     return 0;

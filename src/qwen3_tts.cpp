@@ -1,4 +1,5 @@
 #include "qwen3_tts.h"
+#include "logger.h"
 
 #include <algorithm>
 #include <cctype>
@@ -10,7 +11,15 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <limits>
+#include <iomanip>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <numeric>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 #ifdef __APPLE__
 #include <mach/mach.h>
@@ -393,10 +402,9 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
         error_msg_ = "Failed to load tokenizer.json: " + tokenizer_.get_error();
         return false;
     }
-    fprintf(stderr,
-            "  Text tokenizer loaded from tokenizer.json: vocab_size=%d (%lld ms)\n",
-            tokenizer_.get_config().vocab_size,
-            (long long) (get_time_ms() - t_tok));
+    LOG_INFO("  Text tokenizer loaded from tokenizer.json: vocab_size=%d (%lld ms)",
+             tokenizer_.get_config().vocab_size,
+             (long long) (get_time_ms() - t_tok));
 
     const char * lib_dir_env = std::getenv("QWEN3_TTS_LIB_DIR");
     std::string lib_dir = lib_dir_env && lib_dir_env[0] ? std::string(lib_dir_env) : std::string("lib/llama");
@@ -412,10 +420,10 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
             return false;
         }
         decoder_loaded_ = true;
-        fprintf(stderr, "  Decoder providers: %s\n", decoder_.provider_summary().c_str());
+        LOG_INFO("  Decoder providers: %s", decoder_.provider_summary().c_str());
     } else {
         decoder_loaded_ = false;
-        fprintf(stderr, "  Decoder ONNX: deferred (lazy load)\n");
+        LOG_INFO("  Decoder ONNX: deferred (lazy load)");
     }
 
     models_loaded_ = true;
@@ -450,7 +458,7 @@ bool Qwen3TTS::load_models(const std::string & model_dir, int32_t n_threads) {
     const char * low_mem_env = std::getenv("QWEN3_TTS_LOW_MEM");
     low_mem_mode_ = low_mem_env && low_mem_env[0] != '\0' && low_mem_env[0] != '0';
     if (low_mem_mode_) {
-        fprintf(stderr, "  Low-memory mode enabled (lazy decoder + deferred encoders)\n");
+        LOG_INFO("  Low-memory mode enabled (lazy decoder + deferred encoders)");
     }
 
     const int32_t effective_threads = std::max(1, n_threads);
@@ -458,7 +466,7 @@ bool Qwen3TTS::load_models(const std::string & model_dir, int32_t n_threads) {
         return false;
     }
 
-    fprintf(stderr, "Loaded models in NEW layout (%lld ms)\n", (long long) (get_time_ms() - t_start));
+    LOG_INFO("Loaded models in NEW layout (%lld ms)", (long long) (get_time_ms() - t_start));
     return true;
 }
 
@@ -534,7 +542,7 @@ tts_result Qwen3TTS::synthesize_with_voice(
         }
         
         if (talker_predictor_.hidden_dim() > 0 && (int32_t) speaker_embedding.size() != talker_predictor_.hidden_dim()) {
-            fprintf(stderr, "[clone/JSON] Speaker embedding dim mismatch: got=%d expected=%d. Truncating/Padding for cross-verification...\n",
+            LOG_WARN("[clone/JSON] Speaker embedding dim mismatch: got=%d expected=%d. Truncating/Padding for cross-verification...",
                           (int) speaker_embedding.size(), (int) talker_predictor_.hidden_dim());
             speaker_embedding.resize(talker_predictor_.hidden_dim(), 0.0f);
         }
@@ -547,8 +555,7 @@ tts_result Qwen3TTS::synthesize_with_voice(
         }
         
         if (params.print_progress) {
-            fprintf(stderr,
-                    "Reference features extracted from JSON: spk_dim=%d, ref_codes=%d frames x 16\n",
+            LOG_INFO("Reference features extracted from JSON: spk_dim=%d, ref_codes=%d frames x 16",
                     (int) speaker_embedding.size(),
                     n_ref_frames);
         }
@@ -557,7 +564,7 @@ tts_result Qwen3TTS::synthesize_with_voice(
         const int32_t * ref_codes_ptr = (use_clone_icl && !ref_codes.empty()) ? ref_codes.data() : nullptr;
         const int32_t ref_frames_for_gen = (ref_codes_ptr != nullptr) ? n_ref_frames : 0;
         if (params.print_progress && !use_clone_icl) {
-            fprintf(stderr, "Clone mode: using x-vector-only prompt from JSON (set QWEN3_TTS_CLONE_USE_ICL=1 to enable ICL)\n");
+            LOG_INFO("Clone mode: using x-vector-only prompt from JSON (set QWEN3_TTS_CLONE_USE_ICL=1 to enable ICL)");
         }
 
         int64_t t_encode = get_time_ms();
@@ -615,7 +622,7 @@ tts_result Qwen3TTS::synthesize_with_voice(
             return result;
         }
         speaker_encoder_loaded_ = true;
-        fprintf(stderr, "  Speaker encoder providers: %s\n", speaker_encoder_.provider_summary().c_str());
+        LOG_INFO("  Speaker encoder providers: %s", speaker_encoder_.provider_summary().c_str());
     }
     if (!codec_encoder_loaded_) {
         if (!codec_encoder_.load_model(codec_encoder_onnx_path_, params.n_threads)) {
@@ -623,7 +630,7 @@ tts_result Qwen3TTS::synthesize_with_voice(
             return result;
         }
         codec_encoder_loaded_ = true;
-        fprintf(stderr, "  Codec encoder providers: %s\n", codec_encoder_.provider_summary().c_str());
+        LOG_INFO("  Codec encoder providers: %s", codec_encoder_.provider_summary().c_str());
     }
 
     // Default behavior aligns with Qwen3-TTS-GGUF: keep full reference audio.
@@ -642,10 +649,9 @@ tts_result Qwen3TTS::synthesize_with_voice(
                 clone_ref_ptr = clone_ref_buffer.data();
                 clone_ref_samples = cap_samples;
                 if (params.print_progress || params.print_timing) {
-                    fprintf(stderr,
-                            "Clone reference capped by QWEN3_TTS_CLONE_MAX_REF_SAMPLES=%d (original=%d)\n",
-                            cap_samples,
-                            n_ref_samples);
+                    LOG_INFO("Clone reference capped by QWEN3_TTS_CLONE_MAX_REF_SAMPLES=%d (original=%d)",
+                             cap_samples,
+                             n_ref_samples);
                 }
             }
         }
@@ -700,8 +706,7 @@ tts_result Qwen3TTS::synthesize_with_voice(
     result.t_encode_ms = get_time_ms() - t_encode;
 
     if (params.print_progress) {
-        fprintf(stderr,
-                "Reference features extracted: spk_dim=%d, ref_codes=%d frames x 16\n",
+        LOG_INFO("Reference features extracted: spk_dim=%d, ref_codes=%d frames x 16",
                 (int) speaker_embedding.size(),
                 n_ref_frames);
     }
@@ -714,7 +719,7 @@ tts_result Qwen3TTS::synthesize_with_voice(
     const int32_t * ref_codes_ptr = (use_clone_icl && !ref_codes.empty()) ? ref_codes.data() : nullptr;
     const int32_t ref_frames_for_gen = (ref_codes_ptr != nullptr) ? n_ref_frames : 0;
     if (params.print_progress && !use_clone_icl) {
-        fprintf(stderr, "Clone mode: using x-vector-only prompt (set QWEN3_TTS_CLONE_USE_ICL=1 to enable ICL)\n");
+        LOG_INFO("Clone mode: using x-vector-only prompt (set QWEN3_TTS_CLONE_USE_ICL=1 to enable ICL)");
     }
 
     return synthesize_internal(
@@ -833,6 +838,10 @@ tts_result Qwen3TTS::synthesize_custom(
     tts_params p = params_in;
     p.instruct = instruct;
 
+    if (params_in.print_progress) {
+        LOG_INFO("Custom voice features extracted: speaker_id=%d, spk_dim=%d", spk_id, (int)assets_.hidden_dim());
+    }
+
     return synthesize_internal(text, emb, nullptr, 0, p, result);
 }
 
@@ -854,6 +863,10 @@ tts_result Qwen3TTS::synthesize_design(
     // Design mode: no speaker embedding, only instruct
     tts_params p = params_in;
     p.instruct = instruct;
+
+    if (params_in.print_progress) {
+        LOG_INFO("Voice design features: instruct=\"%s\"", instruct.c_str());
+    }
 
     return synthesize_internal(text, nullptr, nullptr, 0, p, result);
 }
@@ -882,8 +895,7 @@ tts_result Qwen3TTS::synthesize_internal(
         result.mem_rss_peak_bytes = std::max(result.mem_rss_peak_bytes, mem.rss_bytes);
         result.mem_phys_peak_bytes = std::max(result.mem_phys_peak_bytes, mem.phys_footprint_bytes);
         if (params.print_timing) {
-            fprintf(stderr,
-                    "  [mem] %-24s rss=%s  phys=%s\n",
+            LOG_DEBUG("  [mem] %-24s rss=%s  phys=%s",
                     stage,
                     format_bytes(mem.rss_bytes).c_str(),
                     format_bytes(mem.phys_footprint_bytes).c_str());
@@ -915,7 +927,7 @@ tts_result Qwen3TTS::synthesize_internal(
         instruct_tokens.push_back(198);    // \n
         
         if (params.print_timing) {
-            fprintf(stderr, "Instruct tokens: %d tokens for block: %s\n",
+            LOG_DEBUG("Instruct tokens: %d tokens for block: %s",
                     (int)instruct_tokens.size(), params.instruct.c_str());
         }
     }
@@ -936,8 +948,7 @@ tts_result Qwen3TTS::synthesize_internal(
     result.effective_language_id = effective_language_id;
     result.used_auto_language = params.auto_language;
     if (params.print_timing || params.print_progress) {
-        fprintf(stderr,
-                "Language selection: %s -> %s (%d)\n",
+        LOG_INFO("Language selection: %s -> %s (%d)",
                 params.auto_language ? "auto" : "manual",
                 language_name_from_id(effective_language_id),
                 effective_language_id);
@@ -998,7 +1009,7 @@ tts_result Qwen3TTS::synthesize_internal(
         }
     }
     if (params.print_progress) {
-        fprintf(stderr, "Speech codes generated: %d frames x %d codebooks\n", n_frames, n_codebooks);
+        LOG_INFO("Speech codes generated: %d frames x %d codebooks", n_frames, n_codebooks);
     }
 
     int64_t t_decode = get_time_ms();
@@ -1139,7 +1150,7 @@ bool load_audio_file(const std::string & path, std::vector<float> & samples, int
         }
     }
     fclose(f);
-    fprintf(stderr, "ERROR: No data chunk found\n");
+    LOG_ERROR("ERROR: No data chunk found");
     return false;
 }
 
@@ -1154,7 +1165,7 @@ bool save_audio_file(const std::string & path, const std::vector<float> & sample
     }
     FILE * f = fopen(path.c_str(), "wb");
     if (!f) {
-        fprintf(stderr, "ERROR: Cannot create WAV file: %s\n", path.c_str());
+        LOG_ERROR("ERROR: Cannot create WAV file: %s", path.c_str());
         return false;
     }
     uint16_t num_channels = 1;

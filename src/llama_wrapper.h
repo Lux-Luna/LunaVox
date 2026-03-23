@@ -12,6 +12,15 @@ using llama_token = int32_t;
 using llama_pos = int32_t;
 using llama_seq_id = int32_t;
 
+enum llama_log_level {
+    LLAMA_LOG_LEVEL_ERROR = 2,
+    LLAMA_LOG_LEVEL_WARN  = 3,
+    LLAMA_LOG_LEVEL_INFO  = 4,
+    LLAMA_LOG_LEVEL_DEBUG = 5
+};
+
+typedef void (*llama_log_callback)(enum llama_log_level level, const char * text, void * user_data);
+
 struct llama_model_params {
     void * devices;
     void * tensor_buft_overrides;
@@ -137,6 +146,9 @@ public:
     llama_token (*llama_sampler_sample)(void * sampler, void * ctx, int32_t idx);
     void (*llama_sampler_accept)(void * sampler, llama_token token);
     void (*llama_sampler_free)(void * sampler);
+
+    // logger
+    void (*llama_log_set)(llama_log_callback log_callback, void * user_data);
 
 private:
     LlamaLibrary() = default;

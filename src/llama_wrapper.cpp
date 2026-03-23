@@ -1,4 +1,5 @@
 #include "llama_wrapper.h"
+#include "logger.h"
 
 #include <cstdio>
 #include <cstring>
@@ -117,6 +118,16 @@ bool LlamaLibrary::ensure_loaded(const std::string & lib_dir, std::string & err)
         ggml_backend_load_all();
     }
     llama_backend_init();
+    
+    // Register logger
+    if (llama_log_set) {
+        llama_log_set([](enum llama_log_level level, const char * text, void * user_data) {
+            (void) user_data;
+            // Translate llama_log_level to our Logger
+            Logger::instance().log_backend((int)level, text);
+        }, nullptr);
+    }
+    
     loaded_ = true;
     return true;
 }
@@ -156,6 +167,8 @@ bool LlamaLibrary::load_symbol_table(std::string & err) {
     if (!load_fn(handle_llama_, "llama_sampler_sample", llama_sampler_sample, err)) return false;
     if (!load_fn(handle_llama_, "llama_sampler_accept", llama_sampler_accept, err)) return false;
     if (!load_fn(handle_llama_, "llama_sampler_free", llama_sampler_free, err)) return false;
+
+    if (!load_fn(handle_llama_, "llama_log_set", llama_log_set, err)) return false;
 
     if (!try_load_fn(handle_llama_, "ggml_backend_load_all_from_path", ggml_backend_load_all_from_path)) {
         try_load_fn(handle_ggml_base_, "ggml_backend_load_all_from_path", ggml_backend_load_all_from_path);

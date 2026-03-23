@@ -134,9 +134,14 @@ elseif(MSVC)
     target_compile_options(qwen3_tts_build_options INTERFACE /W4 /utf-8)
 endif()
 
+# Logger
+add_library(qwen3_logger STATIC src/logger.cpp)
+target_include_directories(qwen3_logger PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(qwen3_logger PUBLIC qwen3_tts_build_options)
+
 add_library(text_tokenizer STATIC src/text_tokenizer.cpp)
 target_include_directories(text_tokenizer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(text_tokenizer PUBLIC qwen3_tts_build_options)
+target_link_libraries(text_tokenizer PUBLIC qwen3_tts_build_options qwen3_logger)
 
 add_library(onnx_audio_runtime STATIC
     src/onnx_audio_runtime.cpp
@@ -146,14 +151,15 @@ target_include_directories(onnx_audio_runtime PUBLIC
     ${QWEN3_TTS_ORT_ROOT}/include)
 target_link_libraries(onnx_audio_runtime PUBLIC
     qwen3_tts_build_options
-    onnxruntime::onnxruntime)
+    onnxruntime::onnxruntime
+    qwen3_logger)
 
 add_library(talker_predictor_llama STATIC
     src/llama_wrapper.cpp
     src/assets_manager.cpp
     src/talker_predictor_llama.cpp)
 target_include_directories(talker_predictor_llama PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(talker_predictor_llama PUBLIC qwen3_tts_build_options)
+target_link_libraries(talker_predictor_llama PUBLIC qwen3_tts_build_options qwen3_logger)
 if(UNIX AND NOT APPLE)
     target_link_libraries(talker_predictor_llama PUBLIC dl)
 endif()
@@ -164,7 +170,8 @@ target_link_libraries(qwen3_tts PUBLIC
     qwen3_tts_build_options
     text_tokenizer
     talker_predictor_llama
-    onnx_audio_runtime)
+    onnx_audio_runtime
+    qwen3_logger)
 if(WIN32)
     target_link_libraries(qwen3_tts PUBLIC psapi)
 endif()
@@ -188,6 +195,7 @@ if(BUILD_TESTING)
 endif()
 
 install(TARGETS
+    qwen3_logger
     text_tokenizer
     onnx_audio_runtime
     talker_predictor_llama

@@ -1,4 +1,5 @@
 #include "onnx_audio_runtime.h"
+#include "logger.h"
 
 #include <algorithm>
 #include <array>
@@ -26,7 +27,16 @@ static constexpr float kEps = 1e-9f;
 
 struct ort_env_holder {
     Ort::Env env;
-    explicit ort_env_holder(OrtLoggingLevel level) : env(level, "lunavox-ort") {}
+    explicit ort_env_holder(OrtLoggingLevel level) : 
+        env(level, "lunavox-ort", 
+            [](void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location, const char* message) {
+                (void)param; (void)code_location; (void)logid;
+                // ORT levels: 0=verbose, 1=info, 2=warn, 3=error, 4=fatal
+                // We map them to our Logger backend log
+                char buf[2048];
+                std::snprintf(buf, sizeof(buf), "[ORT:%s] %s\n", category, message);
+                Logger::instance().log_backend((int)severity, buf);
+            }, nullptr) {}
 };
 
 std::mutex g_ort_env_mu;

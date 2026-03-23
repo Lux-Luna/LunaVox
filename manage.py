@@ -46,7 +46,7 @@ console = Console(theme=THEME, force_terminal=True, safe_box=True)
 ROOT = Path(__file__).resolve().parent
 TOOLS = ROOT / "tools"
 SETUP_SCRIPT = TOOLS / "model_manager" / "main.py"
-BUILD_SCRIPT = TOOLS / "build_manager.py"
+BUILD_SCRIPT = TOOLS / "build_manager" / "main.py"
 EXPECTED_CONDA_ENV = "lunavox"
 DEFAULT_TIMEOUT_SEC = 300
 LOG_DIR = ROOT / "logs"
@@ -291,6 +291,11 @@ def run_python_script(script: Path, extra_args: list[str], *, timeout_sec: int, 
     return run_stage_process(cmd, cwd=ROOT, timeout_sec=timeout_sec, stage=stage, verbose=verbose)
 
 
+def run_python_module(module: str, extra_args: list[str], *, timeout_sec: int, stage: str, verbose: bool = False) -> int:
+    cmd = [sys.executable, "-m", module] + extra_args
+    return run_stage_process(cmd, cwd=ROOT, timeout_sec=timeout_sec, stage=stage, verbose=verbose)
+
+
 def run_build_verify(timeout_sec: int) -> int:
     build_dir = ROOT / "build"
     exe_name = "qwen3-tts-cli"
@@ -350,7 +355,7 @@ def command_build(args: argparse.Namespace) -> int:
     if getattr(args, "verify", False):
         build_args.append("--verify")
         
-    return run_python_script(BUILD_SCRIPT, build_args, timeout_sec=args.timeout_sec, stage="build", verbose=getattr(args, "verbose", False))
+    return run_python_module("tools.build_manager.main", build_args, timeout_sec=args.timeout_sec, stage="build", verbose=getattr(args, "verbose", False))
 
 
 def command_bootstrap(args: argparse.Namespace) -> int:
