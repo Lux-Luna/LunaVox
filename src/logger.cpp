@@ -22,8 +22,39 @@ bool Logger::init(const char * filename) {
 
 void Logger::log_backend(int backend_level, const char * text) {
     std::string t = text;
-    // Known logs: "ggml_vulkan: 0 = NVIDIA ..." or "ggml_cuda: 0 = NVIDIA ..."
-    if (t.find("ggml_vulkan: 0 = ") != std::string::npos) {
+    
+    // Pattern 1: Newer llama.cpp device info
+    // [Backend] llama_model_load_from_file_impl: using device CUDA0 (NVIDIA GeForce RTX 3090) (0000:01:00.0) - 23300 MiB free
+    if (t.find("using device CUDA") != std::string::npos) {
+        size_t start = t.find("CUDA");
+        size_t name_start = t.find("(", start);
+        size_t name_end = t.find(")", name_start);
+        if (name_start != std::string::npos && name_end != std::string::npos) {
+            std::string device_name = t.substr(name_start + 1, name_end - name_start - 1);
+            llama_backend_info_ = "CUDA: " + device_name;
+        } else {
+            llama_backend_info_ = "CUDA";
+        }
+    } else if (t.find("using device Vulkan") != std::string::npos) {
+        size_t start = t.find("Vulkan");
+        size_t name_start = t.find("(", start);
+        size_t name_end = t.find(")", name_start);
+        if (name_start != std::string::npos && name_end != std::string::npos) {
+             std::string device_name = t.substr(name_start + 1, name_end - name_start - 1);
+             llama_backend_info_ = "Vulkan: " + device_name;
+        } else {
+            llama_backend_info_ = "Vulkan";
+        }
+    }
+    // Pattern 2: Layer offloading confirmation
+    else if (t.find("offloaded ") != std::string::npos && t.find("layers to GPU") != std::string::npos) {
+        // Only set if we don't have a specific backend name yet or it's still CPU
+        if (llama_backend_info_ == "CPU") {
+            llama_backend_info_ = "GPU (Accelerated)";
+        }
+    }
+    // Pattern 3: Legacy ggml logs
+    else if (t.find("ggml_vulkan: 0 = ") != std::string::npos) {
         size_t start = t.find("ggml_vulkan: 0 = ") + 17;
         size_t end = t.find(" |", start);
         if (end != std::string::npos) {

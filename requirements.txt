@@ -16,3 +16,5 @@ scipy
 soundfile
 einops
 rich
+
+# cuDNN 9.x 

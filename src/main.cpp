@@ -131,6 +131,8 @@ void print_usage(const char * program) {
     fprintf(stderr, "  --repetition-penalty <val> Repetition penalty (default: 1.05)\n");
     fprintf(stderr, "  --ort-debug-log        Enable ORT warning logs (default: error-only)\n");
     fprintf(stderr, "  --stats-json <file>    Write timing/runtime stats JSON report\n");
+    fprintf(stderr, "  --warmup <n>           Warm-up runs (default: 0)\n");
+    fprintf(stderr, "  --repeat <n>           Benchmark runs (default: 1)\n");
     fprintf(stderr, "  -l, --language <lang>  Force language: en,ru,zh,ja,ko,de,fr,es,it,pt,none\n");
     fprintf(stderr, "  --no-auto-language     Disable language auto-detection (uses --language or en)\n");
     fprintf(stderr, "  -j, --threads <n>      Number of threads (default: 4)\n");
@@ -167,6 +169,8 @@ int main(int argc, char ** argv) {
     std::string mode = "base";
     std::string instruct_text;
     std::string speaker_name;
+    int warmup = 0;
+    int repeat = 1;
     bool verbose = false;
     
     qwen3_tts::tts_params params;
@@ -280,6 +284,18 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             stats_json_file = args[i];
+        } else if (arg == "--warmup") {
+            if (++i >= (int)args.size()) {
+                LOG_ERROR("Error: missing warmup count");
+                return 1;
+            }
+            warmup = std::stoi(args[i]);
+        } else if (arg == "--repeat") {
+            if (++i >= (int)args.size()) {
+                LOG_ERROR("Error: missing repeat count");
+                return 1;
+            }
+            repeat = std::stoi(args[i]);
         } else if (arg == "-l" || arg == "--language") {
             if (++i >= (int)args.size()) {
                 LOG_ERROR("Error: missing language value");
@@ -380,60 +396,104 @@ int main(int argc, char ** argv) {
     if (mode == "custom") LOG_USER("[PARA] Speaker: %s", speaker_name.c_str());
     if (!instruct_text.empty()) LOG_USER("[PARA] Instruct: %s", instruct_text.c_str());
 
-    // Generate speech
-    qwen3_tts::tts_result result;
-    
-    if (mode == "clone") {
-        if (reference_audio.empty()) {
-            LOG_ERROR("Error: clone mode requires --reference");
-            return 1;
+    // Warm-up
+    if (warmup > 0) {
+        LOG_USER("\n[BNCH] Starting %d warm-up runs...", warmup);
+        for (int i = 0; i < warmup; ++i) {
+            fprintf(stderr, "\rWarm-up: %d/%d   ", i + 1, warmup);
+            if (mode == "clone") {
+                tts.synthesize_with_voice(text, reference_audio, params);
+            } else if (mode == "custom") {
+                tts.synthesize_custom(text, speaker_name, instruct_text, params);
+            } else if (mode == "design") {
+                tts.synthesize_design(text, instruct_text, params);
+            } else {
+                tts.synthesize(text, params);
+            }
         }
-        result = tts.synthesize_with_voice(text, reference_audio, params);
-    } else if (mode == "custom") {
-        if (speaker_name.empty()) {
-            LOG_ERROR("Error: custom mode requires --speaker");
-            return 1;
-        }
-        result = tts.synthesize_custom(text, speaker_name, instruct_text, params);
-    } else if (mode == "design") {
-        if (instruct_text.empty()) {
-            LOG_ERROR("Error: design mode requires --instruct");
-            return 1;
-        }
-        result = tts.synthesize_design(text, instruct_text, params);
-    } else {
-        result = tts.synthesize(text, params);
+        fprintf(stderr, "\n");
     }
+
+    // Benchmark Run
+    std::vector<qwen3_tts::tts_result> repeat_results;
+    LOG_USER("[BNCH] Starting %d benchmark runs...", repeat);
     
-    if (!result.success) {
-        LOG_ERROR("\nError: %s", result.error_msg.c_str());
-        return 1;
-    }
-    
-    LOG_USER("\rGenerating: [####################] 100%%          ");
-    LOG_USER("");
-    
-    // Save output
-    if (!qwen3_tts::save_audio_file(output_file, result.audio, result.sample_rate)) {
-        LOG_ERROR("Error: failed to save output file: %s", output_file.c_str());
-        return 1;
+    for (int it = 0; it < repeat; ++it) {
+        if (repeat > 1) {
+            LOG_USER("[BNCH] Run %d/%d", it + 1, repeat);
+        }
+        
+        // Generate speech
+        qwen3_tts::tts_result result;
+        
+        if (mode == "clone") {
+            if (reference_audio.empty()) { // Added this check back for safety, though it should be caught earlier
+                LOG_ERROR("Error: clone mode requires --reference");
+                return 1;
+            }
+            result = tts.synthesize_with_voice(text, reference_audio, params);
+        } else if (mode == "custom") {
+            if (speaker_name.empty()) { // Added this check back for safety
+                LOG_ERROR("Error: custom mode requires --speaker");
+                return 1;
+            }
+            result = tts.synthesize_custom(text, speaker_name, instruct_text, params);
+        } else if (mode == "design") {
+            if (instruct_text.empty()) { // Added this check back for safety
+                LOG_ERROR("Error: design mode requires --instruct");
+                return 1;
+            }
+            result = tts.synthesize_design(text, instruct_text, params);
+        } else {
+            result = tts.synthesize(text, params);
+        }
+        
+        if (!result.success) {
+            LOG_ERROR("\nError: %s", result.error_msg.c_str());
+            return 1;
+        }
+
+        repeat_results.push_back(result);
+        
+        // Save output
+        std::string current_output = output_file;
+        if (repeat > 1) {
+            size_t dot_pos = output_file.find_last_of('.');
+            if (dot_pos != std::string::npos) {
+                current_output = output_file.substr(0, dot_pos) + "_" + std::to_string(it + 1) + output_file.substr(dot_pos);
+            } else {
+                current_output = output_file + "_" + std::to_string(it + 1);
+            }
+        }
+
+        if (!qwen3_tts::save_audio_file(current_output, result.audio, result.sample_rate)) {
+            LOG_ERROR("Error: failed to save output file: %s", current_output.c_str());
+            return 1;
+        }
+        
+        if (repeat == 1) {
+            LOG_USER("\rGenerating: [####################] 100%%          \n");
+        } else {
+            LOG_USER("  - Completed: %s", current_output.c_str());
+        }
     }
     
     LOG_USER("");
     LOG_USER("[ Backend Configuration ]");
     LOG_USER("  - LLM Engine:     llama.cpp (%s)", qwen3_tts::Logger::instance().get_llama_backend_info().c_str());
     
-    if (result.ort_provider_speaker_encoder == "not_loaded" && result.ort_provider_codec_encoder == "not_loaded") {
+    // Using the last result for provider info
+    const auto & last_res = repeat_results.back();
+    if (last_res.ort_provider_speaker_encoder == "not_loaded" && last_res.ort_provider_codec_encoder == "not_loaded") {
         LOG_USER("  - Audio Encoder:  ONNX Runtime (not loaded)");
     } else {
-        LOG_USER("  - Audio Encoder:  ONNX Runtime (Codec: %s)", result.ort_provider_codec_encoder.c_str());
+        LOG_USER("  - Audio Encoder:  ONNX Runtime (Codec: %s)", last_res.ort_provider_codec_encoder.c_str());
     }
-    LOG_USER("  - Audio Decoder:  ONNX Runtime (%s)", result.ort_provider_decoder.c_str());
-    
+    LOG_USER("  - Audio Decoder:  ONNX Runtime (%s)", last_res.ort_provider_decoder.c_str());
+
     LOG_USER("");
-    LOG_USER("[ Resource Usage ]");
-    LOG_USER("  - Peak RAM:       %.2f GB", (double)result.mem_rss_peak_bytes / (1024.0 * 1024.0 * 1024.0));
-    
+    LOG_USER("[ Resource Usage (Last Run) ]");
+    LOG_USER("  - Peak RAM:       %.2f GB", (double)last_res.mem_rss_peak_bytes / (1024.0 * 1024.0 * 1024.0));
     if (qwen3_tts::NVMLMonitor::instance().is_available()) {
         uint64_t vram_end = qwen3_tts::NVMLMonitor::instance().get_used_vram();
         double delta_gb = (double)(vram_end > vram_start ? vram_end - vram_start : 0) / (1024.0 * 1024.0 * 1024.0);
@@ -441,27 +501,51 @@ int main(int argc, char ** argv) {
     } else {
         LOG_USER("  - GPU VRAM Delta: N/A (NVML not initialized)");
     }
-    
-    LOG_USER("  - Peak Phys:      %.2f GB", (double)result.mem_phys_peak_bytes / (1024.0 * 1024.0 * 1024.0));
+    LOG_USER("  - Peak Phys:      %.2f GB", (double)last_res.mem_phys_peak_bytes / (1024.0 * 1024.0 * 1024.0));
     
     LOG_USER("");
     LOG_USER("[ Inference Metrics ]");
-    const double audio_sec = (double)result.audio.size() / result.sample_rate;
-    const double wall_sec = (double)result.t_total_ms / 1000.0;
-    const double rtf = audio_sec > 0 ? wall_sec / audio_sec : 0;
     
-    LOG_USER("  - Tokenization:          %6lld ms", (long long)result.t_tokenize_ms);
-    LOG_USER("  - Speaker Encoding:      %6lld ms", (long long)result.t_encode_ms);
-    LOG_USER("  - Code Generation:       %6lld ms", (long long)result.t_generate_ms);
-    LOG_USER("  - Audio Decoding:        %6lld ms", (long long)result.t_decode_ms);
-    LOG_USER("  -----------------------------------");
-    LOG_USER("  - Total Latency:         %6lld ms", (long long)result.t_total_ms);
-    LOG_USER("  - Audio Duration:        %6.2f s", (float)audio_sec);
-    LOG_USER("  - Real-time Factor:      %6.2fx (%.3f RTF)", 1.0/rtf, rtf);
+    double avg_total_ms = 0;
+    double avg_audio_sec = 0;
+    double avg_rtf = 0;
+    
+    for (const auto & r : repeat_results) {
+        double audio_sec = (double)r.audio.size() / r.sample_rate;
+        double wall_sec = (double)r.t_total_ms / 1000.0;
+        double rtf = audio_sec > 0 ? wall_sec / audio_sec : 0;
+        
+        avg_total_ms += r.t_total_ms;
+        avg_audio_sec += audio_sec;
+        avg_rtf += rtf;
+    }
+    
+    avg_total_ms /= repeat;
+    avg_audio_sec /= repeat;
+    avg_rtf /= repeat;
+
+    if (repeat == 1) {
+        const auto & r = repeat_results[0];
+        LOG_USER("  - Tokenization:          %6lld ms", (long long)r.t_tokenize_ms);
+        LOG_USER("  - Speaker Encoding:      %6lld ms", (long long)r.t_encode_ms);
+        LOG_USER("  - Code Generation:       %6lld ms", (long long)r.t_generate_ms);
+        LOG_USER("  - Audio Decoding:        %6lld ms", (long long)r.t_decode_ms);
+        LOG_USER("  -----------------------------------");
+        LOG_USER("  - Total Latency:         %6lld ms", (long long)r.t_total_ms);
+    } else {
+        LOG_USER("  - Avg Total Latency:     %6.1f ms (N=%d)", avg_total_ms, repeat);
+    }
+    
+    LOG_USER("  - Audio Duration:        %6.2f s", (float)avg_audio_sec);
+    LOG_USER("  - Real-time Factor:      %6.2fx (%.3f RTF)", 1.0/avg_rtf, avg_rtf);
     
     LOG_USER("");
     LOG_USER("[ Result ]");
-    LOG_USER("  - Saved to:       %s", output_file.c_str());
+    if (repeat == 1) {
+        LOG_USER("  - Saved to:       %s", output_file.c_str());
+    } else {
+        LOG_USER("  - Saved %d files to: %s_*", repeat, output_file.c_str());
+    }
     LOG_USER("--------------------------------------------------");
 
     if (!stats_json_file.empty()) {
@@ -469,82 +553,68 @@ int main(int argc, char ** argv) {
         if (!jf) {
             LOG_WARN("Warning: failed to write stats JSON: %s", stats_json_file.c_str());
         } else {
-            const std::string spk_ep_json = json_escape(result.ort_provider_speaker_encoder);
-            const std::string codec_ep_json = json_escape(result.ort_provider_codec_encoder);
-            const std::string decoder_ep_json = json_escape(result.ort_provider_decoder);
-            fprintf(
-                jf,
-                "{\n"
-                "  \"success\": true,\n"
-                "  \"sample_rate\": %d,\n"
-                "  \"audio_samples\": %d,\n"
-                "  \"audio_sec\": %.6f,\n"
-                "  \"timing_ms\": {\n"
-                "    \"tokenize\": %lld,\n"
-                "    \"encode\": %lld,\n"
-                "    \"generate\": %lld,\n"
-                "    \"decode\": %lld,\n"
-                "    \"total\": %lld\n"
-                "  },\n"
-                "  \"rtf\": %.6f,\n"
-                "  \"mem\": {\n"
-                "    \"rss_start\": %llu,\n"
-                "    \"rss_end\": %llu,\n"
-                "    \"rss_peak\": %llu,\n"
-                "    \"phys_start\": %llu,\n"
-                "    \"phys_end\": %llu,\n"
-                "    \"phys_peak\": %llu\n"
-                "  },\n"
-                "  \"diag\": {\n"
-                "    \"spk_emb_dim\": %d,\n"
-                "    \"eos_step\": %d,\n"
-                "    \"effective_language_id\": %d,\n"
-                "    \"used_auto_language\": %s,\n"
-                "    \"gen_code_frames\": %d,\n"
-                "    \"gen_code_min\": %d,\n"
-                "    \"gen_code_max\": %d,\n"
-                "    \"gen_codes_hash\": %llu,\n"
-                "    \"trailing_count\": %d,\n"
-                "    \"trailing_consumed\": %d,\n"
-                "    \"pcm_peak\": %.9f,\n"
-                "    \"pcm_rms\": %.9f\n"
-                "  },\n"
-                "  \"ort_providers\": {\n"
-                "    \"speaker_encoder\": \"%s\",\n"
-                "    \"codec_encoder\": \"%s\",\n"
-                "    \"decoder\": \"%s\"\n"
-                "  }\n"
-                "}\n",
-                result.sample_rate,
-                (int) result.audio.size(),
-                audio_sec,
-                (long long) result.t_tokenize_ms,
-                (long long) result.t_encode_ms,
-                (long long) result.t_generate_ms,
-                (long long) result.t_decode_ms,
-                (long long) result.t_total_ms,
-                rtf,
-                (unsigned long long) result.mem_rss_start_bytes,
-                (unsigned long long) result.mem_rss_end_bytes,
-                (unsigned long long) result.mem_rss_peak_bytes,
-                (unsigned long long) result.mem_phys_start_bytes,
-                (unsigned long long) result.mem_phys_end_bytes,
-                (unsigned long long) result.mem_phys_peak_bytes,
-                (int) result.spk_emb_dim,
-                (int) result.eos_step,
-                (int) result.effective_language_id,
-                result.used_auto_language ? "true" : "false",
-                (int) result.gen_code_frames,
-                (int) result.gen_code_min,
-                (int) result.gen_code_max,
-                (unsigned long long) result.gen_codes_hash,
-                (int) result.trailing_count,
-                (int) result.trailing_consumed,
-                result.pcm_peak,
-                result.pcm_rms,
-                spk_ep_json.c_str(),
-                codec_ep_json.c_str(),
-                decoder_ep_json.c_str());
+            fprintf(jf, "[\n");
+            for (size_t it = 0; it < repeat_results.size(); ++it) {
+                const auto & r = repeat_results[it];
+                double audio_sec = (double)r.audio.size() / r.sample_rate;
+                double wall_sec = (double)r.t_total_ms / 1000.0;
+                double rtf = audio_sec > 0 ? wall_sec / audio_sec : 0;
+                
+                const std::string spk_ep_json = json_escape(r.ort_provider_speaker_encoder);
+                const std::string codec_ep_json = json_escape(r.ort_provider_codec_encoder);
+                const std::string decoder_ep_json = json_escape(r.ort_provider_decoder);
+                fprintf(
+                    jf,
+                    "  {\n"
+                    "    \"run_id\": %d,\n"
+                    "    \"success\": true,\n"
+                    "    \"sample_rate\": %d,\n"
+                    "    \"audio_samples\": %d,\n"
+                    "    \"audio_sec\": %.6f,\n"
+                    "    \"timing_ms\": {\n"
+                    "      \"tokenize\": %lld,\n"
+                    "      \"encode\": %lld,\n"
+                    "      \"generate\": %lld,\n"
+                    "      \"decode\": %lld,\n"
+                    "      \"total\": %lld\n"
+                    "    },\n"
+                    "    \"rtf\": %.6f,\n"
+                    "    \"mem\": {\n"
+                    "      \"rss_peak\": %llu,\n"
+                    "      \"phys_peak\": %llu\n"
+                    "    },\n"
+                    "    \"diag\": {\n"
+                    "      \"trailing_consumed\": %d,\n"
+                    "      \"pcm_peak\": %.6f,\n"
+                    "      \"pcm_rms\": %.6f\n"
+                    "    },\n"
+                    "    \"ort_providers\": {\n"
+                    "      \"speaker_encoder\": \"%s\",\n"
+                    "      \"codec_encoder\": \"%s\",\n"
+                    "      \"decoder\": \"%s\"\n"
+                    "    }\n"
+                    "  }%s\n",
+                    (int)it + 1,
+                    r.sample_rate,
+                    (int) r.audio.size(),
+                    audio_sec,
+                    (long long) r.t_tokenize_ms,
+                    (long long) r.t_encode_ms,
+                    (long long) r.t_generate_ms,
+                    (long long) r.t_decode_ms,
+                    (long long) r.t_total_ms,
+                    rtf,
+                    (unsigned long long) r.mem_rss_peak_bytes,
+                    (unsigned long long) r.mem_phys_peak_bytes,
+                    (int) r.trailing_consumed,
+                    r.pcm_peak,
+                    r.pcm_rms,
+                    spk_ep_json.c_str(),
+                    codec_ep_json.c_str(),
+                    decoder_ep_json.c_str(),
+                    (it == repeat_results.size() - 1) ? "" : ",");
+            }
+            fprintf(jf, "]\n");
             fclose(jf);
         }
     }
