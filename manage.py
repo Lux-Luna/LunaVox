@@ -17,8 +17,6 @@ ROOT = Path(__file__).resolve().parent
 TOOLS = ROOT / "tools"
 SETUP_SCRIPT = TOOLS / "setup" / "setup_pipeline.py"
 BUILD_SCRIPT = TOOLS / "build_manager.py"
-COMPARE_SCRIPT = TOOLS / "compare_inference.py"
-
 EXPECTED_CONDA_ENV = "lunavox"
 DEFAULT_TIMEOUT_SEC = 300
 LOG_DIR = ROOT / "logs"
@@ -235,10 +233,12 @@ def run_python_script(script: Path, extra_args: list[str], *, timeout_sec: int, 
 
 def run_build_verify(timeout_sec: int) -> int:
     build_dir = ROOT / "build"
+    exe_name = "qwen3-tts-cli"
     if os.name == "nt":
-        exe = build_dir / "qwen3-tts-cli.exe"
+        exe = build_dir / f"{exe_name}.exe"
     else:
-        exe = build_dir / "qwen3-tts-cli"
+        exe = build_dir / exe_name
+        
     if not exe.exists():
         raise RuntimeError(f"Built CLI not found for verify: {exe}")
 
@@ -254,8 +254,8 @@ def run_build_verify(timeout_sec: int) -> int:
 
 
 def make_build_args(args: argparse.Namespace) -> list[str]:
-    build_args = ["--backend", args.backend, "--j", str(args.j), "--timeout-sec", str(args.timeout_sec)]
-    if args.clean:
+    build_args = ["--j", str(args.j), "--timeout-sec", str(args.timeout_sec)]
+    if getattr(args, "clean", False):
         build_args.append("--clean")
     return build_args
 
@@ -263,25 +263,24 @@ def make_build_args(args: argparse.Namespace) -> list[str]:
 def command_setup(args: argparse.Namespace) -> int:
     enable_quant = resolve_enable_quant(args)
     check_preflight(
-        need_convert_modules=not args.skip_convert,
+        need_convert_modules=not getattr(args, "skip_convert", False),
         need_build_deps=False,
         enable_quant=enable_quant,
-        fix_git_safe=args.fix_git_safe,
+        fix_git_safe=getattr(args, "fix_git_safe", True),
     )
     setup_args = [
-        "--model",
-        args.model,
-        "--timeout-sec",
-        str(args.timeout_sec),
+        "--model", args.model,
+        "--timeout-sec", str(args.timeout_sec),
     ]
-    if args.models_dir:
+    if getattr(args, "models_dir", None):
         setup_args += ["--models-dir", args.models_dir]
-    if args.skip_convert:
+    if getattr(args, "skip_convert", False):
         setup_args.append("--skip-convert")
-    if args.force:
+    if getattr(args, "force", False):
         setup_args.append("--force")
     if enable_quant:
         setup_args.append("--enable-quant")
+        
     return run_python_script(
         SETUP_SCRIPT,
         setup_args,
@@ -290,44 +289,17 @@ def command_setup(args: argparse.Namespace) -> int:
     )
 
 
-def command_convert(args: argparse.Namespace) -> int:
-    enable_quant = resolve_enable_quant(args)
-    check_preflight(
-        need_convert_modules=True,
-        need_build_deps=False,
-        enable_quant=enable_quant,
-        fix_git_safe=args.fix_git_safe,
-    )
-    setup_args = [
-        "--model",
-        args.model,
-        "--timeout-sec",
-        str(args.timeout_sec),
-    ]
-    if args.models_dir:
-        setup_args += ["--models-dir", args.models_dir]
-    if args.force:
-        setup_args.append("--force")
-    if enable_quant:
-        setup_args.append("--enable-quant")
-    return run_python_script(
-        SETUP_SCRIPT,
-        setup_args,
-        timeout_sec=max(1, int(args.timeout_sec)),
-        stage="setup_pipeline_convert",
-    )
-
-
 def command_build(args: argparse.Namespace) -> int:
     check_preflight(
         need_convert_modules=False,
         need_build_deps=True,
         enable_quant=False,
-        fix_git_safe=args.fix_git_safe,
+        fix_git_safe=getattr(args, "fix_git_safe", True),
     )
     build_args = make_build_args(args)
-    if args.verify:
+    if getattr(args, "verify", False):
         build_args.append("--verify")
+        
     return run_python_script(
         BUILD_SCRIPT,
         build_args,
@@ -336,64 +308,15 @@ def command_build(args: argparse.Namespace) -> int:
     )
 
 
-def command_preflight(args: argparse.Namespace) -> int:
-    enable_quant = resolve_enable_quant(args)
-    check_preflight(
-        need_convert_modules=args.check_convert,
-        need_build_deps=args.check_build,
-        enable_quant=enable_quant,
-        fix_git_safe=args.fix_git_safe,
-    )
-    print("[ok] preflight checks passed")
-    return 0
-
-
 def command_bootstrap(args: argparse.Namespace) -> int:
-    enable_quant = resolve_enable_quant(args)
-    check_preflight(
-        need_convert_modules=not args.skip_convert,
-        need_build_deps=True,
-        enable_quant=enable_quant,
-        fix_git_safe=args.fix_git_safe,
-    )
-
-    setup_args = [
-        "--model",
-        args.model,
-        "--timeout-sec",
-        str(args.timeout_sec),
-    ]
-    if args.models_dir:
-        setup_args += ["--models-dir", args.models_dir]
-    if args.skip_convert:
-        setup_args.append("--skip-convert")
-    if args.force:
-        setup_args.append("--force")
-    if enable_quant:
-        setup_args.append("--enable-quant")
-
-    rc = run_python_script(
-        SETUP_SCRIPT,
-        setup_args,
-        timeout_sec=max(1, int(args.timeout_sec)),
-        stage="setup_pipeline_bootstrap",
-    )
+    # 强制启用验证
+    args.verify = getattr(args, "verify", True)
+    
+    rc = command_setup(args)
     if rc != 0:
         return rc
-
-    build_args = make_build_args(args)
-    rc = run_python_script(
-        BUILD_SCRIPT,
-        build_args,
-        timeout_sec=max(1, int(args.timeout_sec)),
-        stage="build_manager_bootstrap",
-    )
-    if rc != 0:
-        return rc
-
-    if args.verify:
-        return run_build_verify(timeout_sec=max(1, int(args.timeout_sec)))
-    return 0
+        
+    return command_build(args)
 
 
 def command_download(args: argparse.Namespace) -> int:
@@ -401,16 +324,16 @@ def command_download(args: argparse.Namespace) -> int:
         need_convert_modules=False,
         need_build_deps=False,
         enable_quant=False,
-        fix_git_safe=args.fix_git_safe,
+        fix_git_safe=getattr(args, "fix_git_safe", True),
     )
     from tools.download.models_downloader import download_model
 
     if args.all:
-        for model in VALID_MODELS:
+        for m in VALID_MODELS:
             try:
-                download_model(model)
+                download_model(m)
             except Exception as e:
-                eprint(f"Failed to download {model}: {e}")
+                eprint(f"Failed to download {m}: {e}")
                 return 1
         return 0
 
@@ -422,193 +345,57 @@ def command_download(args: argparse.Namespace) -> int:
         return 1
 
 
-def command_compare(args: argparse.Namespace) -> int:
-    check_preflight(
-        need_convert_modules=False,
-        need_build_deps=False,
-        enable_quant=False,
-        fix_git_safe=args.fix_git_safe,
-    )
-    compare_args = [
-        "--mode",
-        args.mode,
-        "--timeout-sec",
-        str(args.timeout_sec),
-        "--report-out",
-        args.report_out,
-        "--lunavox-model-dir",
-        args.models_dir,
-        "--lunavox-build-dir",
-        args.build_dir,
-        "--text",
-        args.text,
-        "--max-steps",
-        str(args.max_steps),
-        "--temperature",
-        str(args.temperature),
-        "--top-k",
-        str(args.top_k),
-        "--top-p",
-        str(args.top_p),
-        "--predictor-temperature",
-        str(args.predictor_temperature),
-        "--predictor-top-k",
-        str(args.predictor_top_k),
-        "--predictor-top-p",
-        str(args.predictor_top_p),
-        "--seed",
-        str(args.seed),
-        "--predictor-seed",
-        str(args.predictor_seed),
-    ]
-    if args.reference_audio:
-        compare_args += ["--lunavox-reference-audio", args.reference_audio]
-    if args.qwen_reference_audio:
-        compare_args += ["--qwen-reference-audio", args.qwen_reference_audio]
-    if args.qwen_reference_text:
-        compare_args += ["--qwen-reference-text", args.qwen_reference_text]
-    if args.qwen_clone_anchor_seconds is not None:
-        compare_args += ["--qwen-clone-anchor-seconds", str(args.qwen_clone_anchor_seconds)]
-    if args.qwen_repo:
-        compare_args += ["--qwen-repo", args.qwen_repo]
-    if args.qwen_model_dir:
-        compare_args += ["--qwen-model-dir", args.qwen_model_dir]
-    if args.strict_qwen_model:
-        compare_args.append("--strict-qwen-model")
-    else:
-        compare_args.append("--no-strict-qwen-model")
-    if args.qwen_python:
-        compare_args += ["--qwen-python", args.qwen_python]
-    if args.keep_artifacts:
-        compare_args.append("--keep-artifacts")
-
-    return run_python_script(
-        COMPARE_SCRIPT,
-        compare_args,
-        timeout_sec=max(1, int(args.timeout_sec)),
-        stage="compare_inference",
-    )
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="LunaVox management tool")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_setup = sub.add_parser("setup", help="Convert pre-downloaded models into runtime artifacts")
-    p_setup.add_argument("--model", choices=VALID_MODELS, default="base_small", help="Model variant to convert")
-    p_setup.add_argument("--models-dir", default="", help="Override output directory (default: from model_config)")
-    p_setup.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
-    p_setup.add_argument("--skip-convert", action="store_true")
-    p_setup.add_argument("--force", action="store_true")
-    p_setup.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
-    p_setup.add_argument(
-        "--skip-quant",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Skip optional local ONNX int8 quantization (default: true)",
-    )
-    p_setup.add_argument("--enable-quant", action="store_true", help="Alias of --no-skip-quant")
+    # Common arguments
+    def add_common_setup(p):
+        p.add_argument("--model", choices=VALID_MODELS, default="base_small", help="Model variant")
+        p.add_argument("--models-dir", default="", help="Override output directory")
+        p.add_argument("--skip-convert", action="store_true", help="Skip ONNX conversion if artifacts exist")
+        p.add_argument("--force", action="store_true", help="Force re-conversion")
+        p.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
+        p.add_argument("--skip-quant", action=argparse.BooleanOptionalAction, default=True)
+        p.add_argument("--enable-quant", action="store_true", help="Alias of --no-skip-quant")
+        p.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
+
+    def add_common_build(p):
+        p.add_argument("--clean", action="store_true", help="Clean build directory")
+        p.add_argument("--j", type=int, default=4, help="Parallel build jobs")
+        p.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
+        # Check by actual option strings to avoid duplication in bootstrap
+        existing_options = set()
+        for action in p._actions:
+            existing_options.update(action.option_strings)
+        
+        if "--timeout-sec" not in existing_options:
+            p.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
+        if "--fix-git-safe" not in existing_options:
+            p.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
+
+    # Setup
+    p_setup = sub.add_parser("setup", help="Prepare model artifacts (download must be done separately or via bootstrap)")
+    add_common_setup(p_setup)
     p_setup.set_defaults(func=command_setup)
 
-    p_convert = sub.add_parser("convert", help="Convert model into runtime artifacts")
-    p_convert.add_argument("--model", choices=VALID_MODELS, default="base_small", help="Model variant to convert")
-    p_convert.add_argument("--models-dir", default="", help="Override output directory (default: from model_config)")
-    p_convert.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
-    p_convert.add_argument("--force", action="store_true")
-    p_convert.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
-    p_convert.add_argument(
-        "--skip-quant",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Skip optional local ONNX int8 quantization (default: true)",
-    )
-    p_convert.add_argument("--enable-quant", action="store_true", help="Alias of --no-skip-quant")
-    p_convert.set_defaults(func=command_convert)
-
+    # Build
     p_build = sub.add_parser("build", help="Build C++ runtime")
-    p_build.add_argument("--backend", choices=["cpu"], default="cpu")
-    p_build.add_argument("--clean", action="store_true")
-    p_build.add_argument("--j", type=int, default=4)
-    p_build.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
-    p_build.add_argument("--verify", action="store_true")
-    p_build.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
+    add_common_build(p_build)
     p_build.set_defaults(func=command_build)
 
-    p_preflight = sub.add_parser("preflight", help="Run environment checks")
-    p_preflight.add_argument("--check-convert", action=argparse.BooleanOptionalAction, default=True)
-    p_preflight.add_argument("--check-build", action=argparse.BooleanOptionalAction, default=True)
-    p_preflight.add_argument(
-        "--skip-quant",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Skip optional local ONNX int8 quantization checks (default: true)",
-    )
-    p_preflight.add_argument("--enable-quant", action="store_true", help="Alias of --no-skip-quant")
-    p_preflight.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
-    p_preflight.set_defaults(func=command_preflight)
-
-    p_bootstrap = sub.add_parser("bootstrap", help="One-command setup + build + verify")
-    p_bootstrap.add_argument("--model", choices=VALID_MODELS, default="base_small", help="Model variant to convert")
-    p_bootstrap.add_argument("--backend", choices=["cpu"], default="cpu")
-    p_bootstrap.add_argument("--models-dir", default="", help="Override output directory (default: from model_config)")
-    p_bootstrap.add_argument("--skip-convert", action="store_true")
-    p_bootstrap.add_argument("--force", action="store_true")
-    p_bootstrap.add_argument(
-        "--skip-quant",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Skip optional local ONNX int8 quantization (default: true)",
-    )
-    p_bootstrap.add_argument("--enable-quant", action="store_true", help="Alias of --no-skip-quant")
-    p_bootstrap.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
-    p_bootstrap.add_argument("--clean", action="store_true")
-    p_bootstrap.add_argument("--j", type=int, default=4)
-    p_bootstrap.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
-    p_bootstrap.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
+    # Bootstrap
+    p_bootstrap = sub.add_parser("bootstrap", help="One-command: Setup + Build + Verify")
+    add_common_setup(p_bootstrap)
+    add_common_build(p_bootstrap)
     p_bootstrap.set_defaults(func=command_bootstrap)
 
-    p_compare = sub.add_parser("compare", help="Compare lunavox vs Qwen3-TTS-GGUF inference chain")
-    p_compare.add_argument("--mode", choices=["base", "clone", "both"], default="both")
-    p_compare.add_argument("--text", default="LunaVox alignment test.")
-    p_compare.add_argument("--reference-audio", default=str(ROOT / "ref" / "ref.wav"))
-    p_compare.add_argument("--qwen-reference-audio", default="")
-    p_compare.add_argument("--qwen-reference-text", default="")
-    p_compare.add_argument(
-        "--qwen-clone-anchor-seconds",
-        type=float,
-        default=0.0,
-        help="Qwen-side clone-only reference clipping seconds for root-cause isolation (default: 0.0)",
-    )
-    p_compare.add_argument("--models-dir", default=str(ROOT / "models" / "base_small"))
-    p_compare.add_argument("--build-dir", default=str(ROOT / "build"))
-    p_compare.add_argument("--qwen-repo", default=str(ROOT.parent / "Qwen3-TTS-GGUF"))
-    p_compare.add_argument("--qwen-model-dir", default=str(ROOT / "models" / "base_small"))
-    p_compare.add_argument(
-        "--strict-qwen-model",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Fail compare immediately when --qwen-model-dir misses required core artifacts (default: true)",
-    )
-    p_compare.add_argument("--qwen-python", default="")
-    p_compare.add_argument("--report-out", default=str(ROOT / "logs" / "compare" / "latest_compare_report.json"))
-    p_compare.add_argument("--max-steps", type=int, default=220)
-    p_compare.add_argument("--temperature", type=float, default=0.6)
-    p_compare.add_argument("--top-k", type=int, default=50)
-    p_compare.add_argument("--top-p", type=float, default=1.0)
-    p_compare.add_argument("--predictor-temperature", type=float, default=0.6)
-    p_compare.add_argument("--predictor-top-k", type=int, default=50)
-    p_compare.add_argument("--predictor-top-p", type=float, default=1.0)
-    p_compare.add_argument("--seed", type=int, default=12345)
-    p_compare.add_argument("--predictor-seed", type=int, default=12345)
-    p_compare.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
-    p_compare.add_argument("--keep-artifacts", action="store_true")
-    p_compare.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
-    p_compare.set_defaults(func=command_compare)
-
+    # Download
     p_download = sub.add_parser("download", help="Download model source from Hugging Face Hub")
-    p_download.add_argument("--model", choices=VALID_MODELS, default="base_small", help="Specific model to download")
-    p_download.add_argument("--all", action="store_true", help="Download All known models")
+    p_download.add_argument("--model", choices=VALID_MODELS, default="base_small")
+    p_download.add_argument("--all", action="store_true")
     p_download.add_argument("--fix-git-safe", action=argparse.BooleanOptionalAction, default=True)
+    p_download.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
     p_download.set_defaults(func=command_download)
 
     return parser
@@ -618,7 +405,6 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     
-    # Truncate/Initialize latest.log
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     with open(LATEST_LOG, "w", encoding="utf-8") as f:
         f.write(f"LunaVox Manager - Session Start: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")

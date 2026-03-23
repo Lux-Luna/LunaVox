@@ -8,493 +8,238 @@ import shutil
 import subprocess
 import sys
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
-class Builder:
-    def __init__(self, root: Path, timeout_sec: int = 170):
-        self.root = root
-        self.env = os.environ.copy()
+@dataclass
+class BuildContext:
+    root: Path
+    env: dict[str, str]
+    toolchain_name: str = "unknown"
+    toolchain_args: list[str] = field(default_factory=list)
+    lib_dir: Path = field(init=False)
+    ort_root: Path = field(init=False)
+    build_dir: Path = field(init=False)
+    log_file: Path = field(init=False)
+
+    def __post_init__(self):
         self.lib_dir = self.root / "lib" / "llama"
         self.ort_root = self.root / "lib" / "onnx"
-        self.tmp_dir = self.root / "_tmp_build"
-        self.timeout_sec = max(1, int(timeout_sec))
-        self.log_dir = self.root / "logs"
-        self.latest_log = self.log_dir / "latest.log"
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.tmp_dir.mkdir(parents=True, exist_ok=True)
-        # Avoid writing temp files to user profile paths that may be inaccessible in sandboxed sessions.
-        self.env["TMP"] = str(self.tmp_dir)
-        self.env["TEMP"] = str(self.tmp_dir)
-        self.conda_prefix = self._resolve_conda_prefix()
+        self.build_dir = self.root / "build"
+        log_dir = self.root / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        self.log_file = log_dir / "latest.log"
+
+
+class ToolchainResolver:
+    """Handles the complex task of finding and setting up a C++ toolchain."""
+    
+    MSVC_VARS = [
+        "INCLUDE", "LIB", "LIBPATH", "VSINSTALLDIR", "VCINSTALLDIR",
+        "VCToolsInstallDir", "VisualStudioVersion", "WindowsSdkDir",
+        "WindowsSDKLibVersion", "WindowsSDKVersion", "UniversalCRTSdkDir",
+        "UCRTVersion", "VSCMD_ARG_TGT_ARCH", "VSCMD_ARG_HOST_ARCH",
+        "DISTUTILS_USE_SDK", "MSSdk", "CMAKE_GENERATOR",
+        "CMAKE_GENERATOR_PLATFORM", "CMAKE_GENERATOR_TOOLSET",
+    ]
+    
+    COMPILER_ENV_VARS = [
+        "CC", "CXX", "AR", "LD", "NM", "RANLIB",
+        "CPPFLAGS", "CPPFLAGS_USED", "CFLAGS", "CXXFLAGS", "LDFLAGS"
+    ]
+
+    def __init__(self, context: BuildContext):
+        self.ctx = context
         self._vs2022_available_cache: bool | None = None
-        self._inject_conda_paths()
-
-    def _run_logged(self, cmd: list[str], cwd: Path, stage: str, timeout_sec: int | None = None) -> None:
-        timeout = self.timeout_sec if timeout_sec is None else max(1, int(timeout_sec))
-        safe_stage = re.sub(r"[^a-zA-Z0-9._-]+", "_", stage).strip("_") or "build"
-        print(f"[build:{safe_stage}] {' '.join(cmd)}")
-        
-        header = (
-            f"\n{'='*80}\n"
-            f"BUILD STAGE: {safe_stage}\n"
-            f"TIME: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"CMD: {' '.join(cmd)}\n"
-            f"CWD: {cwd}\n"
-            f"{'='*80}\n"
-        )
-        
-        start = time.time()
-        try:
-            proc = subprocess.run(
-                cmd,
-                cwd=str(cwd),
-                env=self.env,
-                check=False,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout,
-            )
-        except subprocess.TimeoutExpired as err:
-            output = ""
-            if err.stdout:
-                output += err.stdout if isinstance(err.stdout, str) else err.stdout.decode("utf-8", errors="ignore")
-            if err.stderr:
-                output += err.stderr if isinstance(err.stderr, str) else err.stderr.decode("utf-8", errors="ignore")
-            elapsed = time.time() - start
-            
-            log_entry = (
-                f"{header}"
-                f"STATUS: timeout\n"
-                f"ELAPSED: {elapsed:.3f}s\n\n"
-                f"{output}\n"
-            )
-            with open(self.latest_log, "a", encoding="utf-8") as f:
-                f.write(log_entry)
-                
-            raise RuntimeError(f"Build stage '{safe_stage}' timed out after {timeout}s. See {self.latest_log}") from err
-
-        elapsed = time.time() - start
-        output = proc.stdout or ""
-        status = "ok" if proc.returncode == 0 else "failed"
-        
-        log_entry = (
-            f"{header}"
-            f"STATUS: {status}\n"
-            f"ELAPSED: {elapsed:.3f}s\n"
-            f"RETURNCODE: {proc.returncode}\n\n"
-            f"{output}\n"
-        )
-        
-        with open(self.latest_log, "a", encoding="utf-8") as f:
-            f.write(log_entry)
-            
-        if proc.returncode != 0:
-            raise RuntimeError(f"Build stage '{safe_stage}' failed (rc={proc.returncode}). See {self.latest_log}")
-
-    def run_cmake(self, args: list[str], cwd: Path, stage: str) -> None:
-        self._run_logged(["cmake"] + args, cwd, stage=stage)
-
-    def run_cmd(self, cmd: list[str], cwd: Path, stage: str, timeout_sec: int | None = None) -> None:
-        self._run_logged(cmd, cwd, stage=stage, timeout_sec=timeout_sec)
-
-    def _resolve_conda_prefix(self) -> Path | None:
-        # Prefer the currently running interpreter prefix.
-        py_prefix = Path(sys.prefix).resolve()
-        if py_prefix.exists() and (py_prefix / "python.exe").exists():
-            return py_prefix
-
-        env_prefix = self.env.get("CONDA_PREFIX", "").strip()
-        if env_prefix:
-            p = Path(env_prefix)
-            if p.exists():
-                return p
-
-        py = Path(sys.executable).resolve()
-        if py.name.lower().startswith("python") and py.parent.exists():
-            return py.parent
-        return None
-
-    def _candidate_tool_dirs(self) -> list[Path]:
-        dirs: list[Path] = []
-        if self.conda_prefix:
-            dirs.extend(
-                [
-                    self.conda_prefix,
-                    self.conda_prefix / "Library" / "bin",
-                    self.conda_prefix / "Library" / "mingw-w64" / "bin",
-                    self.conda_prefix / "Scripts",
-                    self.conda_prefix / "bin",
-                ]
-            )
-        return [d for d in dirs if d.exists()]
-
-    def _inject_conda_paths(self) -> None:
-        prepend = [str(p) for p in self._candidate_tool_dirs()]
-        if not prepend:
-            return
-        old_path = self.env.get("PATH", "")
-        self.env["PATH"] = ";".join(prepend + [old_path])
 
     def _which(self, program: str) -> str | None:
-        found = shutil.which(program, path=self.env.get("PATH"))
-        if found:
-            return found
+        return shutil.which(program, path=self.ctx.env.get("PATH"))
 
-        # Manual fallback for environments where shutil.which misses executable names with '+'.
-        exts = [".exe", ".com", ".bat", ".cmd", ""]
-        for d in self._candidate_tool_dirs():
-            for ext in exts:
-                p = d / f"{program}{ext}"
-                if p.exists():
-                    return str(p)
+    def _cmake_path(self, path: Path | str) -> str:
+        return Path(path).as_posix()
+
+    def _get_compiler_major_version(self, compiler: str) -> int | None:
+        for flag in ["-dumpversion", "--version"]:
+            try:
+                out = subprocess.check_output([compiler, flag], stderr=subprocess.STDOUT, timeout=5, text=True)
+                m = re.search(r"(\d+)", out)
+                if m: return int(m.group(1))
+            except Exception: continue
         return None
 
-    @staticmethod
-    def _cmake_path(path_str: str) -> str:
-        return Path(path_str).as_posix()
-
-    def _copy_windows_runtime_dlls(self, build_dir: Path) -> None:
-        if platform.system() != "Windows":
-            return
-
-        candidates: list[Path] = []
-        if self.conda_prefix:
-            candidates.extend(
-                [
-                    self.conda_prefix / "Library" / "mingw-w64" / "bin",
-                    self.conda_prefix / "Library" / "bin",
-                ]
-            )
-        candidates.extend(self._candidate_tool_dirs())
-
-        runtime_names = ("libstdc++-6.dll", "libgcc_s_seh-1.dll", "libwinpthread-1.dll")
-        seen: set[str] = set()
-        for dll_name in runtime_names:
-            src: Path | None = None
-            for d in candidates:
-                if not d.exists():
-                    continue
-                p = d / dll_name
-                if p.exists():
-                    src = p
-                    break
-            if src is None:
-                continue
-
-            dst = build_dir / dll_name
-            if dst.exists() and dst.stat().st_mtime >= src.stat().st_mtime:
-                continue
-            if str(dst) in seen:
-                continue
-            print(f"[build] Copying runtime DLL: {dll_name}")
-            shutil.copy2(src, dst)
-            seen.add(str(dst))
-
-    def _toolchain_available(
-        self,
-        name: str,
-        clangxx: str | None,
-        clang: str | None,
-        cl: str | None,
-        gxx: str | None,
-        gcc: str | None,
-    ) -> bool:
-        if name == "clang":
-            return bool(clangxx and clang)
-        if name == "msvc":
-            return self._has_vs2022_generator()
-        if name == "mingw":
-            return bool(gxx and gcc)
-        return False
-
-    def _has_vs2022_generator(self) -> bool:
-        if platform.system() != "Windows":
-            return False
-        if self._vs2022_available_cache is not None:
-            return self._vs2022_available_cache
-
-        vswhere = shutil.which("vswhere", path=self.env.get("PATH"))
-        if not vswhere:
-            default_vswhere = Path(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe")
-            vswhere = str(default_vswhere) if default_vswhere.exists() else None
-        if not vswhere:
-            self._vs2022_available_cache = False
-            return False
+    def _has_vs2022(self) -> bool:
+        if platform.system() != "Windows": return False
+        if self._vs2022_available_cache is not None: return self._vs2022_available_cache
+        
+        vswhere = self._which("vswhere") or str(Path(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"))
+        if not Path(vswhere).exists(): return False
 
         try:
-            out = subprocess.check_output(
-                [
-                    vswhere,
-                    "-nologo",
-                    "-products",
-                    "*",
-                    "-version",
-                    "[17.0,18.0)",
-                    "-property",
-                    "installationPath",
-                ],
-                stderr=subprocess.STDOUT,
-                timeout=5,
-                text=True,
-            ).strip()
+            out = subprocess.check_output([vswhere, "-nologo", "-products", "*", "-version", "[17.0,18.0)", "-property", "installationPath"], text=True, timeout=5).strip()
             self._vs2022_available_cache = bool(out)
-        except Exception:
-            self._vs2022_available_cache = False
+        except Exception: self._vs2022_available_cache = False
         return self._vs2022_available_cache
 
-    def _sanitize_toolchain_env(self, toolchain: str) -> None:
-        # Conda activation may inject compiler/linker flags that force lld-link
-        # or non-portable defaults; clear them before configuring any toolchain.
-        for key in (
-            "CC",
-            "CXX",
-            "AR",
-            "LD",
-            "NM",
-            "RANLIB",
-            "CPPFLAGS",
-            "CPPFLAGS_USED",
-            "CFLAGS",
-            "CXXFLAGS",
-            "LDFLAGS",
-        ):
-            self.env.pop(key, None)
-
+    def sanitize_env(self, toolchain: str) -> None:
+        """Removes environment variables that might interfere with the selected toolchain."""
+        for key in self.COMPILER_ENV_VARS:
+            self.ctx.env.pop(key, None)
         if toolchain in {"clang", "mingw"}:
-            # `conda run` may export MSVC/CMake variables that force clang into
-            # an MSVC-oriented link mode (lld-link + kernel32.lib lookup),
-            # which breaks MinGW-style builds.
-            for key in (
-                "INCLUDE",
-                "LIB",
-                "LIBPATH",
-                "VSINSTALLDIR",
-                "VCINSTALLDIR",
-                "VCToolsInstallDir",
-                "VisualStudioVersion",
-                "WindowsSdkDir",
-                "WindowsSDKLibVersion",
-                "WindowsSDKVersion",
-                "UniversalCRTSdkDir",
-                "UCRTVersion",
-                "VSCMD_ARG_TGT_ARCH",
-                "VSCMD_ARG_HOST_ARCH",
-                "DISTUTILS_USE_SDK",
-                "MSSdk",
-                "CMAKE_GENERATOR",
-                "CMAKE_GENERATOR_PLATFORM",
-                "CMAKE_GENERATOR_TOOLSET",
-            ):
-                self.env.pop(key, None)
+            for key in self.MSVC_VARS:
+                self.ctx.env.pop(key, None)
 
-    def _compiler_major_version(self, compiler: str) -> int | None:
-        try:
-            out = subprocess.check_output(
-                [compiler, "-dumpversion"],
-                stderr=subprocess.STDOUT,
-                timeout=5,
-                text=True,
-            ).strip()
-            m = re.match(r"(\d+)", out)
-            if m:
-                return int(m.group(1))
-        except Exception:
-            pass
-        try:
-            out = subprocess.check_output(
-                [compiler, "--version"],
-                stderr=subprocess.STDOUT,
-                timeout=5,
-                text=True,
-            )
-            m = re.search(r"\b(\d+)\.\d+(\.\d+)?\b", out)
-            if m:
-                return int(m.group(1))
-        except Exception:
-            return None
-        return None
-
-    def _resolve_toolchain(self) -> tuple[list[str], str]:
+    def resolve(self) -> tuple[str, list[str]]:
         if platform.system() != "Windows":
-            return ([], "default")
+            return "default", []
 
-        clangxx = self._which("clang++")
-        clang = self._which("clang")
-        cl = self._which("cl")
-        gxx = self._which("g++")
-        gcc = self._which("gcc")
-        ninja = self._which("ninja")
-        mingw_make = self._which("mingw32-make")
-        windres = self._which("windres")
+        forced = self.ctx.env.get("QWEN3_TTS_TOOLCHAIN", "auto").lower()
+        order = ["msvc", "mingw", "clang"] if forced == "auto" else [forced]
+        
+        # Tools availability
+        tools = {
+            "cl": self._which("cl"),
+            "g++": self._which("g++"),
+            "gcc": self._which("gcc"),
+            "clang++": self._which("clang++"),
+            "ninja": self._which("ninja"),
+            "make": self._which("mingw32-make"),
+            "windres": self._which("windres")
+        }
 
-        forced = self.env.get("QWEN3_TTS_TOOLCHAIN", "").strip().lower()
-        # Prefer MSVC first for C++17 headers (e.g. <variant>) and robust
-        # Windows SDK linkage in conda environments.
-        default_order = ["msvc", "mingw", "clang"]
-        if forced:
-            if forced not in {"mingw", "clang", "msvc", "auto"}:
-                raise RuntimeError(
-                    "Invalid QWEN3_TTS_TOOLCHAIN value. Expected one of: auto, mingw, clang, msvc."
-                )
-            order = default_order if forced == "auto" else [forced]
-        else:
-            order = default_order
+        for ts in order:
+            if ts == "msvc" and self._has_vs2022():
+                self.sanitize_env("msvc")
+                return "msvc", ["-G", "Visual Studio 17 2022", "-A", "x64"]
+            
+            if ts == "mingw" and tools["g++"] and tools["gcc"]:
+                ver = self._get_compiler_major_version(tools["g++"])
+                if ver and ver < 7:
+                    print(f"[build] Skipping MinGW: g++ version {ver} is too old (need 7+ for C++17).")
+                    continue
+                args = [f"-DCMAKE_CXX_COMPILER={self._cmake_path(tools['g++'])}"]
+                if tools["make"]: args += ["-G", "MinGW Makefiles", f"-DCMAKE_MAKE_PROGRAM={self._cmake_path(tools['make'])}"]
+                elif tools["ninja"]: args += ["-G", "Ninja"]
+                if tools["windres"]: args += [f"-DCMAKE_RC_COMPILER={self._cmake_path(tools['windres'])}"]
+                self.sanitize_env("mingw")
+                return "mingw", args
 
-        mingw_version_ok = True
-        mingw_major = self._compiler_major_version(gxx) if gxx else None
-        if mingw_major is not None and mingw_major < 7:
-            mingw_version_ok = False
+            if ts == "clang" and tools["clang++"]:
+                args = [f"-DCMAKE_CXX_COMPILER={self._cmake_path(tools['clang++'])}"]
+                if tools["make"]: args += ["-G", "MinGW Makefiles", f"-DCMAKE_MAKE_PROGRAM={self._cmake_path(tools['make'])}"]
+                elif tools["ninja"]: args += ["-G", "Ninja"]
+                self.sanitize_env("clang")
+                return "clang", args
 
-        for toolchain in order:
-            if not self._toolchain_available(toolchain, clangxx, clang, cl, gxx, gcc):
-                continue
-            if toolchain == "mingw" and not mingw_version_ok:
-                print(
-                    f"[build] Skipping MinGW toolchain: g++ version {mingw_major} is too old for C++17 <variant>."
-                )
-                continue
+        raise RuntimeError(f"No supported C++ toolchain found (order: {order}). Install MSVC 2022 or MinGW/Clang.")
 
-            if toolchain == "mingw":
-                args: list[str] = []
-                if mingw_make:
-                    args += ["-G", "MinGW Makefiles", f"-DCMAKE_MAKE_PROGRAM={self._cmake_path(mingw_make)}"]
-                elif ninja:
-                    args += ["-G", "Ninja"]
-                args += [
-                    f"-DCMAKE_CXX_COMPILER={self._cmake_path(gxx)}",
-                ]
-                if windres:
-                    args += [f"-DCMAKE_RC_COMPILER={self._cmake_path(windres)}"]
-                self._sanitize_toolchain_env(toolchain)
-                return (args, toolchain)
 
-            if toolchain == "clang":
-                args: list[str] = []
-                if mingw_make:
-                    args += ["-G", "MinGW Makefiles", f"-DCMAKE_MAKE_PROGRAM={self._cmake_path(mingw_make)}"]
-                elif ninja:
-                    args += ["-G", "Ninja"]
-                args += [
-                    f"-DCMAKE_CXX_COMPILER={self._cmake_path(clangxx)}",
-                ]
-                if windres:
-                    args += [f"-DCMAKE_RC_COMPILER={self._cmake_path(windres)}"]
-                self._sanitize_toolchain_env(toolchain)
-                return (args, toolchain)
+class Builder:
+    def __init__(self, root: Path, timeout_sec: int = 200):
+        # Initial environment setup
+        env = os.environ.copy()
+        py_prefix = Path(sys.prefix).resolve()
+        if (py_prefix / "python.exe").exists():
+            # Injecting Conda/Python paths early
+            candidates = [py_prefix, py_prefix / "Library/bin", py_prefix / "Library/mingw-w64/bin", py_prefix / "Scripts", py_prefix / "bin"]
+            valid_dirs = [str(d) for d in candidates if d.exists()]
+            if valid_dirs:
+                env["PATH"] = ";".join(valid_dirs + [env.get("PATH", "")])
+            env["TMP"] = env["TEMP"] = str(root / "_tmp_build")
+            (root / "_tmp_build").mkdir(parents=True, exist_ok=True)
 
-            if toolchain == "msvc":
-                # Prefer Visual Studio generator so CMake can discover MSVC toolchain
-                # without requiring cl.exe to be pre-initialized in current shell.
-                args: list[str] = ["-G", "Visual Studio 17 2022", "-A", "x64"]
-                self._sanitize_toolchain_env(toolchain)
-                return (args, toolchain)
+        self.ctx = BuildContext(root, env)
+        self.timeout = max(10, timeout_sec)
+        self.resolver = ToolchainResolver(self.ctx)
 
-        raise RuntimeError("No supported C++ toolchain found (need cl or gcc/g++ in PATH).")
+    def _run_step(self, cmd: list[str], stage: str, cwd: Path | None = None, timeout: int | None = None) -> None:
+        cwd = cwd or self.ctx.root
+        t = timeout or self.timeout
+        print(f"[build:{stage}] {' '.join(cmd)}")
+        
+        header = f"\n{'='*80}\nSTAGE: {stage}\nTIME: {time.strftime('%Y-%m-%d %H:%M:%S')}\nCMD: {' '.join(cmd)}\n{'='*80}\n"
+        start = time.time()
+        try:
+            p = subprocess.run(cmd, cwd=str(cwd), env=self.ctx.env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=t)
+            output, rc = p.stdout + p.stderr, p.returncode
+        except subprocess.TimeoutExpired as e:
+            output, rc = (e.stdout.decode() if e.stdout else "") + (e.stderr.decode() if e.stderr else "") + f"\nTIMEOUT after {t}s", -1
 
-    def verify(self, build_dir: Path) -> None:
-        exe = build_dir / ("qwen3-tts-cli.exe" if platform.system() == "Windows" else "qwen3-tts-cli")
-        if not exe.exists():
-            raise RuntimeError(f"Verify failed: executable not found: {exe}")
-        self.run_cmd([str(exe), "--help"], cwd=self.root, stage="verify_help", timeout_sec=60)
-        print("[build] Verify passed: qwen3-tts-cli --help")
+        log_entry = f"{header}STATUS: {'ok' if rc==0 else 'failed'}\nELAPSED: {time.time()-start:.2f}s\nRC: {rc}\n\n{output}\n"
+        with open(self.ctx.log_file, "a", encoding="utf-8") as f: f.write(log_entry)
+        if rc != 0: raise RuntimeError(f"Stage '{stage}' failed. See {self.ctx.log_file}")
 
-    def build(
-        self,
-        backend: str = "cpu",
-        clean: bool = False,
-        parallel: int = 4,
-        verify: bool = False,
-    ) -> None:
-        if backend not in {"cpu", "auto"}:
-            raise RuntimeError(
-                f"Backend '{backend}' is no longer supported. "
-                "This build now links prebuilt runtime from ./lib and only uses backend=cpu/auto."
-            )
-        backend = "cpu"
+    def _copy_runtimes(self):
+        """Windows-only: Copy compiler runtime DLLs (libstdc++, etc.) if using MinGW."""
+        if platform.system() != "Windows" or self.ctx.toolchain_name != "mingw": return
+        dlls = ["libstdc++-6.dll", "libgcc_s_seh-1.dll", "libwinpthread-1.dll"]
+        found_any = False
+        for d in self.ctx.env.get("PATH", "").split(";"):
+            path = Path(d)
+            if not path.exists(): continue
+            for dll in dlls:
+                src = path / dll
+                if src.exists():
+                    shutil.copy2(src, self.ctx.build_dir / dll)
+                    found_any = True
+        if found_any: print("[build] Copied compiler runtime DLLs to build directory.")
 
-        if not self.lib_dir.exists():
-            raise RuntimeError(f"Prebuilt runtime directory missing: {self.lib_dir}")
-        if not self.ort_root.exists():
-            raise RuntimeError(
-                f"ONNX Runtime SDK missing: {self.ort_root}\n"
-                "Expected include/ and lib/ under this directory."
-            )
-        if not (self.ort_root / "include" / "onnxruntime_cxx_api.h").exists():
-            raise RuntimeError(f"ONNX Runtime headers missing under: {self.ort_root / 'include'}")
-        toolchain_args, toolchain_name = self._resolve_toolchain()
-        print(f"[build] Toolchain: {toolchain_name}")
+    def build(self, clean: bool = False, parallel: int = 4, verify: bool = False):
+        # 1. Validation
+        if not self.ctx.lib_dir.exists(): raise RuntimeError(f"Llama prebuilts missing at {self.ctx.lib_dir}")
+        if not (self.ctx.ort_root / "include/onnxruntime_cxx_api.h").exists():
+            raise RuntimeError(f"ONNX SDK missing at {self.ctx.ort_root}")
 
-        build_dir = self.root / "build"
-        if clean and build_dir.exists():
-            print(f"[build] Cleaning {build_dir}")
-            shutil.rmtree(build_dir)
-        build_dir.mkdir(exist_ok=True)
+        # 2. Toolchain Resolution
+        name, args = self.resolver.resolve()
+        self.ctx.toolchain_name, self.ctx.toolchain_args = name, args
+        print(f"[build] Toolchain: {name}")
 
-        desired_generator: str | None = None
-        if "-G" in toolchain_args:
-            g_idx = toolchain_args.index("-G")
-            if g_idx + 1 < len(toolchain_args):
-                desired_generator = toolchain_args[g_idx + 1]
+        # 3. Preparation
+        if clean and self.ctx.build_dir.exists(): shutil.rmtree(self.ctx.build_dir)
+        self.ctx.build_dir.mkdir(exist_ok=True)
 
-        if desired_generator:
-            cache_file = build_dir / "CMakeCache.txt"
-            if cache_file.exists():
-                cached_generator: str | None = None
-                for line in cache_file.read_text(encoding="utf-8", errors="ignore").splitlines():
-                    if line.startswith("CMAKE_GENERATOR:INTERNAL="):
-                        cached_generator = line.split("=", 1)[1].strip()
-                        break
-                if cached_generator and cached_generator != desired_generator:
-                    print(
-                        "[build] Generator changed "
-                        f"({cached_generator} -> {desired_generator}), recreating {build_dir}"
-                    )
-                    shutil.rmtree(build_dir)
-                    build_dir.mkdir(exist_ok=True)
-
+        # 4. Configure
         cmake_args = [
-            "-S",
-            ".",
-            "-B",
-            str(build_dir),
+            "cmake", "-S", ".", "-B", str(self.ctx.build_dir),
             "-DCMAKE_BUILD_TYPE=Release",
-            f"-DQWEN3_TTS_PREBUILT_LIB_DIR={self._cmake_path(str(self.lib_dir))}",
-            f"-DQWEN3_TTS_ORT_ROOT={self._cmake_path(str(self.ort_root))}",
-        ] + toolchain_args
+            f"-DQWEN3_TTS_PREBUILT_LIB_DIR={self.ctx.lib_dir.as_posix()}",
+            f"-DQWEN3_TTS_ORT_ROOT={self.ctx.ort_root.as_posix()}",
+        ] + args
+        self._run_step(cmake_args, "cmake_configure")
 
-        self.run_cmake(cmake_args, self.root, stage="cmake_configure")
-
-        build_cmd = ["--build", str(build_dir), "-j", str(parallel), "--config", "Release"]
-        self.run_cmake(build_cmd, self.root, stage="cmake_build")
-        self._copy_windows_runtime_dlls(build_dir)
+        # 5. Build
+        self._run_step(["cmake", "--build", str(self.ctx.build_dir), "-j", str(parallel), "--config", "Release"], "cmake_build")
+        
+        # 6. Post-build
+        self._copy_runtimes()
+        
+        # 7. Verify
         if verify:
-            self.verify(build_dir)
-        print(f"\n[build] Successfully built in {build_dir}")
+            exe = self.ctx.build_dir / ("qwen3-tts-cli.exe" if platform.system() == "Windows" else "qwen3-tts-cli")
+            if not exe.exists(): raise RuntimeError("Build finished but executable not found.")
+            self._run_step([str(exe), "--help"], "verify_help", timeout=60)
+            print("[build] Verification passed.")
+
+        print(f"\n[build] Successfully completed. Artifacts in: {self.ctx.build_dir}")
 
 
-def main() -> None:
+def main():
     import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--backend", choices=["cpu", "auto"], default="auto")
-    parser.add_argument("--clean", action="store_true")
-    parser.add_argument("--j", type=int, default=4)
-    parser.add_argument("--timeout-sec", type=int, default=170)
-    parser.add_argument("--verify", action="store_true")
+    parser = argparse.ArgumentParser(description="LunaVox Build Manager")
+    parser.add_argument("--clean", action="store_true", help="Clean build directory first")
+    parser.add_argument("--j", type=int, default=4, help="Parallel build jobs")
+    parser.add_argument("--timeout-sec", type=int, default=200, help="Stage timeout")
+    parser.add_argument("--verify", action="store_true", help="Verify build with --help test")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[1]
     builder = Builder(root, timeout_sec=args.timeout_sec)
-    builder.build(
-        backend=args.backend,
-        clean=args.clean,
-        parallel=args.j,
-        verify=args.verify,
-    )
+    try:
+        builder.build(clean=args.clean, parallel=args.j, verify=args.verify)
+    except Exception as e:
+        print(f"\n[ERROR] Build failed: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
