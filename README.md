@@ -21,7 +21,7 @@
 ## 🛠️ 环境与构建要求
 
 ### 1. 系统环境
-- **操作系统**: Windows 10/11 (已优化 VS 2025/2022 支持)
+- **操作系统**: Windows 10/11 (VS 2025/2022 支持)
 - **编译器**: MSVC (v143/v144) 或 MinGW-w64 (GCC >= 7.0)
 - **构建工具**: CMake 3.16+，建议安装 **Ninja** 提升构建速度
 
@@ -33,8 +33,6 @@
 ### 3. Python 依赖安装
 ```powershell
 pip install -r requirements.txt
-# 若涉及模型本地导出，还需：
-pip install -r requirements-convert-onnx.txt
 ```
 
 ---

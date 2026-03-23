@@ -210,6 +210,7 @@ def run_stage_process(
     cwd: Path,
     timeout_sec: int,
     stage: str,
+    verbose: bool = False,
 ) -> int:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     stage_name = _safe_stage_name(stage)
@@ -224,54 +225,70 @@ def run_stage_process(
         f"{'='*80}\n"
     )
     
-    with console.status(f"[bold cyan]Executing {stage_name}...", spinner="dots"):
-        try:
+    try:
+        if verbose:
+            UI.info(f"Executing {stage_name} (verbose mode)...")
             proc = subprocess.run(
                 cmd,
                 cwd=str(cwd),
                 check=False,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
                 timeout=max(1, int(timeout_sec)),
+                stdout=None,
+                stderr=None,
             )
-            output = proc.stdout or ""
-            elapsed = time.time() - start
-            status = "ok" if proc.returncode == 0 else "failed"
-            
-            log_entry = (
-                f"{header}"
-                f"STATUS: {status}\n"
-                f"ELAPSED: {elapsed:.3f}s\n"
-                f"RETURNCODE: {proc.returncode}\n\n"
-                f"{output}\n"
-            )
-            
-            with open(LATEST_LOG, "a", encoding="utf-8") as f:
-                f.write(log_entry)
-                
-            if proc.returncode == 0:
-                UI.success(f"{stage_name} completed in {elapsed:.2f}s")
-            else:
-                UI.error(f"{stage_name} failed (rc={proc.returncode}). See log: {LATEST_LOG}")
-            return int(proc.returncode)
+            rc, output = proc.returncode, "(Output shown in console)"
+        else:
+            with console.status(f"[bold cyan]Executing {stage_name}...", spinner="dots"):
+                proc = subprocess.run(
+                    cmd,
+                    cwd=str(cwd),
+                    check=False,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=max(1, int(timeout_sec)),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                )
+                rc, output = proc.returncode, proc.stdout or ""
+    except subprocess.TimeoutExpired as err:
+        elapsed = time.time() - start
+        out_bytes = err.stdout or b""
+        output = out_bytes.decode("utf-8", "replace") if isinstance(out_bytes, bytes) else str(out_bytes)
+        log_entry = f"{header}STATUS: timeout\nELAPSED: {elapsed:.3f}s\n\n{output}\n"
+        with open(LATEST_LOG, "a", encoding="utf-8") as f: f.write(log_entry)
+        UI.error(f"{stage_name} timed out after {timeout_sec}s")
+        return 1
 
-        except subprocess.TimeoutExpired as err:
-            elapsed = time.time() - start
-            output = err.stdout.decode() if err.stdout and not isinstance(err.stdout, str) else (err.stdout or "")
-            log_entry = f"{header}STATUS: timeout\nELAPSED: {elapsed:.3f}s\n\n{output}\n"
-            with open(LATEST_LOG, "a", encoding="utf-8") as f: f.write(log_entry)
-            UI.error(f"{stage_name} timed out after {timeout_sec}s")
-            return 1
+    elapsed = time.time() - start
+    status = "ok" if rc == 0 else "failed"
+    
+    log_entry = (
+        f"{header}"
+        f"STATUS: {status}\n"
+        f"ELAPSED: {elapsed:.3f}s\n"
+        f"RETURNCODE: {rc}\n\n"
+        f"{output}\n"
+    )
+    
+    with open(LATEST_LOG, "a", encoding="utf-8") as f:
+        f.write(log_entry)
+        
+    if rc == 0:
+        UI.success(f"{stage_name} completed in {elapsed:.2f}s")
+    else:
+        UI.error(f"{stage_name} failed (rc={rc}). See log: {LATEST_LOG}")
+    return int(rc)
 
 
-def run_python_script(script: Path, extra_args: list[str], *, timeout_sec: int, stage: str) -> int:
+def run_python_script(script: Path, extra_args: list[str], *, timeout_sec: int, stage: str, verbose: bool = False) -> int:
     if not script.exists():
         raise RuntimeError(f"Script not found: {script}")
     cmd = [sys.executable, str(script)] + extra_args
-    return run_stage_process(cmd, cwd=ROOT, timeout_sec=timeout_sec, stage=stage)
+    return run_stage_process(cmd, cwd=ROOT, timeout_sec=timeout_sec, stage=stage, verbose=verbose)
 
 
 def run_build_verify(timeout_sec: int) -> int:
@@ -294,6 +311,8 @@ def make_build_args(args: argparse.Namespace) -> list[str]:
     build_args = ["--j", str(args.j), "--timeout-sec", str(args.timeout_sec)]
     if getattr(args, "clean", False):
         build_args.append("--clean")
+    if getattr(args, "toolchain", "auto") != "auto":
+        build_args += ["--toolchain", args.toolchain]
     return build_args
 
 
@@ -331,7 +350,7 @@ def command_build(args: argparse.Namespace) -> int:
     if getattr(args, "verify", False):
         build_args.append("--verify")
         
-    return run_python_script(BUILD_SCRIPT, build_args, timeout_sec=args.timeout_sec, stage="build")
+    return run_python_script(BUILD_SCRIPT, build_args, timeout_sec=args.timeout_sec, stage="build", verbose=getattr(args, "verbose", False))
 
 
 def command_bootstrap(args: argparse.Namespace) -> int:
@@ -380,7 +399,9 @@ def build_parser() -> argparse.ArgumentParser:
         
         p.add_argument("--clean", action="store_true", help="Clean build directory")
         p.add_argument("--j", type=int, default=4, help="Parallel build jobs")
+        p.add_argument("--verbose", action="store_true", help="Show real-time build output")
         p.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
+        p.add_argument("--toolchain", choices=["auto", "msvc", "mingw", "clang", "gcc"], default="auto")
         
         if "--timeout-sec" not in existing:
             p.add_argument("--timeout-sec", type=int, default=DEFAULT_TIMEOUT_SEC)
