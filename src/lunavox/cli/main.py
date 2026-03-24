@@ -21,6 +21,14 @@ from lunavox.model import ModelDownloader, ModelConvertPipeline, Models
 
 app = typer.Typer(no_args_is_help=True, help="LunaVox unified CLI")
 
+MODEL_OPTIONS = [
+    ("base_small", "Qwen3-TTS-12Hz-0.6B-Base"),
+    ("custom_small", "Qwen3-TTS-12Hz-0.6B-CustomVoice"),
+    ("base", "Qwen3-TTS-12Hz-1.7B-Base"),
+    ("custom", "Qwen3-TTS-12Hz-1.7B-CustomVoice"),
+    ("design", "Qwen3-TTS-12Hz-1.7B-VoiceDesign"),
+]
+
 
 @dataclass
 class RuntimeState:
@@ -129,28 +137,19 @@ def convert_command(
 ) -> None:
     """Convert source model weights into LunaVox runtime artifacts."""
     state = _state(ctx)
-    
-    options = [
-        ("base_small", "Qwen3-TTS-12Hz-0.6B-Base"),
-        ("custom_small", "Qwen3-TTS-12Hz-0.6B-CustomVoice"),
-        ("base", "Qwen3-TTS-12Hz-1.7B-Base"),
-        ("custom", "Qwen3-TTS-12Hz-1.7B-CustomVoice"),
-        ("design", "Qwen3-TTS-12Hz-1.7B-VoiceDesign"),
-    ]
-
     selected_keys = []
 
     if all_models:
-        selected_keys = [opt[0] for opt in options]
+        selected_keys = [opt[0] for opt in MODEL_OPTIONS]
     elif model:
         selected_keys = [model]
     else:
         # Interactive selection
         console.print("\n[bold cyan]═══ Model Selection ═══[/]")
-        for i, (key, display) in enumerate(options, 1):
+        for i, (key, display) in enumerate(MODEL_OPTIONS, 1):
             console.print(f"  [bold]{i}) {display}[/]")
         
-        console.print(f"  [bold]{len(options) + 1}) ALL MODELS[/]")
+        console.print(f"  [bold]{len(MODEL_OPTIONS) + 1}) ALL MODELS[/]")
         console.print("  [bold]0) Cancel[/]")
         
         choice = typer.prompt("\nSelect a model to convert", default="1")
@@ -160,10 +159,10 @@ def convert_command(
         
         try:
             idx = int(choice) - 1
-            if idx == len(options): # All models
-                selected_keys = [opt[0] for opt in options]
-            elif 0 <= idx < len(options):
-                selected_keys = [options[idx][0]]
+            if idx == len(MODEL_OPTIONS): # All models
+                selected_keys = [opt[0] for opt in MODEL_OPTIONS]
+            elif 0 <= idx < len(MODEL_OPTIONS):
+                selected_keys = [MODEL_OPTIONS[idx][0]]
             else:
                 raise ValueError()
         except (ValueError, IndexError):
@@ -179,12 +178,48 @@ def convert_command(
 @app.command("pull-model")
 def pull_model_command(
     ctx: typer.Context,
-    model: str = typer.Option("base_small", "--model", help="Model variant"),
+    model: Optional[str] = typer.Option(None, "--model", help="Model variant"),
 ) -> None:
     """Download pre-converted runtime artifacts (GGUF/ONNX) from HuggingFace."""
     state = _state(ctx)
-    ModelDownloader.download_converted_model(model, state.project_root)
-    console.print(f"[success]Model '{model}' pulled successfully.[/success]")
+    _pull_model_internal(state, model)
+
+def _pull_model_internal(state: RuntimeState, model: Optional[str]) -> list[str]:
+    selected_keys = []
+
+    if model:
+        selected_keys = [model]
+    else:
+        # Interactive selection
+        console.print("\n[bold cyan]═══ Model Pull Selection ═══[/]")
+        for i, (key, display) in enumerate(MODEL_OPTIONS, 1):
+            console.print(f"  [bold]{i}) {display}[/]")
+        
+        console.print(f"  [bold]{len(MODEL_OPTIONS) + 1}) ALL MODELS[/]")
+        console.print("  [bold]0) Cancel[/]")
+        
+        choice = typer.prompt("\nSelect a model to pull", default="1")
+        if choice == "0":
+            console.print("[warn]Cancelled.[/]")
+            return []
+        
+        try:
+            idx = int(choice) - 1
+            if idx == len(MODEL_OPTIONS): # All models
+                selected_keys = [opt[0] for opt in MODEL_OPTIONS]
+            elif 0 <= idx < len(MODEL_OPTIONS):
+                selected_keys = [MODEL_OPTIONS[idx][0]]
+            else:
+                raise ValueError()
+        except (ValueError, IndexError):
+            raise RuntimeError("Invalid selection.")
+
+    for key in selected_keys:
+        console.print(Panel(f"Pulling Model: [bold]{key}[/]", style="stage", expand=False))
+        ModelDownloader.download_converted_model(key, state.project_root)
+    
+    console.print("\n[success]Model pull process completed successfully.[/success]")
+    return selected_keys
 
 
 @app.command("build")
@@ -196,6 +231,7 @@ def build_command(
     toolchain: str = typer.Option("auto", "--toolchain", help="Force toolchain"),
     portable: bool = typer.Option(False, "--portable", help="Bundle system runtime dependencies"),
 ) -> None:
+    """Build the LunaVox C++ inference engine."""
     state = _state(ctx)
     _build_internal(state, clean=clean, j=j, verify=verify, toolchain=toolchain, portable=portable)
     console.print("[success]Build completed successfully.[/success]")
@@ -204,8 +240,8 @@ def build_command(
 @app.command("bootstrap")
 def bootstrap_command(
     ctx: typer.Context,
-    model: str = typer.Option("base_small", "--model", help="Model variant"),
-    models_dir: str = typer.Option("", "--models-dir", help="Override output models directory"),
+    model: Optional[str] = typer.Option(None, "--model", help="Model variant"),
+    platform: Optional[str] = typer.Option(None, "--platform", help="Target platform"),
     force: bool = typer.Option(False, "--force", help="Force reconversion"),
     clean: bool = typer.Option(False, "--clean", help="Clean build directory first"),
     j: int = typer.Option(4, "--j", min=1, help="Parallel build jobs"),
@@ -213,10 +249,85 @@ def bootstrap_command(
     toolchain: str = typer.Option("auto", "--toolchain", help="Force toolchain"),
     portable: bool = typer.Option(False, "--portable", help="Bundle system runtime dependencies"),
 ) -> None:
+    """Guided interactive setup: Pull -> Download Libs -> Build -> Test."""
     state = _state(ctx)
-    _convert_internal(state, model=model, models_dir=models_dir, force=force)
+    
+    # 1. Pull Model
+    _pull_model_internal(state, model)
+    
+    # 2. Download Libs
+    _download_libs_internal(state, platform)
+    
+    # 3. Build
     _build_internal(state, clean=clean, j=j, verify=verify, toolchain=toolchain, portable=portable)
+    
+    # 4. Interactive Synthesis Test
+    _synthesis_test_interactive(state)
+    
     console.print("[success]Bootstrap completed successfully.[/success]")
+
+def _synthesis_test_interactive(state: RuntimeState) -> None:
+    models_dir = state.project_root / "models"
+    if not models_dir.exists():
+        console.print("[warn]Models directory missing. Skipping test.[/]")
+        return
+        
+    available = []
+    for d in models_dir.iterdir():
+        if d.is_dir() and not d.name.startswith("."):
+            # Check for at least one model file (.gguf or .onnx)
+            has_gguf = any(d.glob("*.gguf"))
+            has_onnx = any(d.glob("*.onnx"))
+            if has_gguf or has_onnx:
+                available.append(d.name)
+                
+    if not available:
+        console.print("[warn]No models translated/pulled yet. Skipping test.[/]")
+        return
+        
+    console.print("\n[bold cyan]═══ Synthesis Test ═══[/]")
+    for i, name in enumerate(available, 1):
+        console.print(f"  [bold]{i}) {name}[/]")
+    console.print("  [bold]0) Skip Test[/]")
+    
+    choice = typer.prompt("\nSelect a model for synthesis test", default="1")
+    if choice == "0":
+        return
+        
+    try:
+        idx = int(choice) - 1
+        selected_model = available[idx]
+    except Exception:
+        console.print("[error]Invalid selection.[/]")
+        return
+        
+    text = typer.prompt("Enter test text", default="Hi, this is lunavox speaking English.")
+    instruct = typer.prompt("Enter voice instruction", default="Natural and clear speech with a pleasant tone.")
+    
+    exe_ext = ".exe" if sys.platform == "win32" else ""
+    exe = state.project_root / "build" / f"qwen3-tts-cli{exe_ext}"
+    if not exe.exists():
+        console.print(f"[error]Executable not found at {exe}.[/]")
+        return
+        
+    output_wav = state.project_root / "output" / "bootstrap_test.wav"
+    output_wav.parent.mkdir(exist_ok=True, parents=True)
+    
+    cmd = [
+        str(exe),
+        "-m", f"models/{selected_model}",
+        "-t", text,
+        "--instruct", instruct,
+        "-o", f"output/bootstrap_test.wav"
+    ]
+    
+    console.print(f"[stage]Running synthesis: {' '.join(cmd)}[/]")
+    try:
+        import subprocess
+        subprocess.run(cmd, cwd=str(state.project_root), check=True)
+        console.print(f"[success]Test successful! Output saved to: {output_wav}[/]")
+    except Exception as e:
+        console.print(f"[error]Synthesis test failed: {e}[/]")
 
 
 @app.command("download-libs")
@@ -228,6 +339,14 @@ def download_libs_command(
 ) -> None:
     """Download binary dependencies (ONNX Runtime, Llama.cpp) for your platform."""
     state = _state(ctx)
+    _download_libs_internal(state, platform_key, lib, backend)
+
+def _download_libs_internal(
+    state: RuntimeState,
+    platform_key: Optional[str] = None,
+    lib: Optional[str] = None,
+    backend: Optional[str] = None,
+) -> None:
     config = LIBS_CONFIG
     
     # 1. Handle Single Lib/Backend override
@@ -279,6 +398,7 @@ def download_libs_command(
 
 @app.command("doctor")
 def doctor_command(ctx: typer.Context) -> None:
+    """Environment check and dependency troubleshooting."""
     state = _state(ctx)
 
     table = Table(title="LunaVox Doctor", show_header=True, header_style="bold cyan")

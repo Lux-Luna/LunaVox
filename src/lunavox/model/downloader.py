@@ -28,10 +28,11 @@ class ModelDownloader:
     @staticmethod
     def download_converted_model(model_name: str, project_root: Path) -> Path:
         """Download pre-converted GGUF/ONNX artifacts from the community repo."""
+        from lunavox.core.ui import console
         repo_id = "wkwong/Lunavox-Qwen3-TTS-GGUF"
         dest_dir = project_root / "models" / model_name
         
-        print(f"[model_manager:downloader] Pulling converted artifacts for '{model_name}' from {repo_id}...")
+        console.print(f"[info]Pulling converted artifacts for [bold]'{model_name}'[/bold] from {repo_id}...[/info]")
         
         # We download to the models/<name> directory
         # Using allow_patterns to only get the specific model's folder if possible, 
@@ -43,7 +44,7 @@ class ModelDownloader:
             local_dir_use_symlinks=False,
         )
         
-        print(f"[model_manager:downloader] Pull complete: {dest_dir}")
+        console.print(f"[success]Pull complete: {dest_dir}[/success]")
         return dest_dir
 
     @staticmethod
