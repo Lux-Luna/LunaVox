@@ -97,77 +97,32 @@ class Builder:
             console.print(Panel(
                 "[bold yellow]Warning: No metadata.json found.[/]\n"
                 "[dim]Building without specific backend intent. Engine will default to CPU.[/]",
-                title="[bold yellow]Dependency Status[/]", border_style="yellow"
+                title="[bold yellow]Target Intent[/]", border_style="yellow"
             ))
             return True
 
         try:
             with open(metadata_file, "r", encoding="utf-8") as f:
                 meta = json.load(f)
-            
-            rules_path = Path(__file__).parent / "consistency_rules.json"
-            rules = {}
-            if rules_path.exists():
-                with open(rules_path, "r", encoding="utf-8") as f: rules = json.load(f)
         except Exception as e:
             console.print(f"[bold red]Error loading configuration: {e}[/]")
             return False
 
-        sys_name = py_platform.system().lower()
-        
-        def check_field(engine_type: str, val: str, valid_list: list[str], lib_subdir: Path, supported_list: list[str] = None):
-            status = "[bold green]Ready[/]"
-            hint = ""
-            
-            # 1. Check validity
-            if val not in valid_list:
-                status = "[bold red]Unrecognized[/]"
-                matches = difflib.get_close_matches(val, valid_list, n=1, cutoff=0.6)
-                if matches:
-                    hint = f"\n [yellow]└─ Did you mean: {matches[0]}?[/]"
-                else:
-                    hint = f"\n [yellow]└─ Not in whitelist.[/]"
-                return status, hint
-
-            # 2. Check existence of key files (Reality Check)
-            engine_rules = rules.get(engine_type, {}).get(val, {})
-            req_files = engine_rules.get(sys_name, [])
-            
-            missing_files = []
-            search_dirs = [lib_subdir, lib_subdir / "lib", lib_subdir / "bin"]
-            
-            for rf in req_files:
-                found = False
-                for sd in search_dirs:
-                    if (sd / rf).exists():
-                        found = True; break
-                if not found: missing_files.append(rf)
-            
-            if missing_files:
-                status = "[bold red]Missing Binaries[/]"
-                hint = f"\n [red]└─ Missing: {', '.join(missing_files)}[/]"
-            elif supported_list and val not in supported_list:
-                status = "[bold yellow]Experimental[/]"
-                hint = f"\n [dim]└─ Limited wrapper support for this provider.[/]"
-            
-            return status, hint
-
         onnx_prov = meta.get("onnx", {}).get("provider", "CPUExecutionProvider")
         llama_back = meta.get("llama", {}).get("backend", "cpu")
 
-        onnx_status, onnx_hint = check_field("onnx", onnx_prov, VALID_PROVIDERS, self.ctx.root / "lib" / "onnx", SUPPORTED_PROVIDERS)
-        llama_status, llama_hint = check_field("llama", llama_back, VALID_BACKENDS, self.ctx.root / "lib" / "llama")
+        # 1. Store details for summary
+        self.target_details["onnx"] = f"[bold cyan]{onnx_prov}[/]"
+        self.target_details["llama"] = f"[bold cyan]{llama_back}[/]"
 
-        self.target_details["onnx"] = f"[bold cyan]{onnx_prov}[/] ({onnx_status})"
-        self.target_details["llama"] = f"[bold cyan]{llama_back}[/] ({llama_status})"
-
-        onnx_panel = f" [bold]Provider[/] : [cyan]{onnx_prov}[/]\n [bold]Status[/]   : {onnx_status}{onnx_hint}"
-        llama_panel = f" [bold]Backend[/]  : [cyan]{llama_back}[/]\n [bold]Status[/]   : {llama_status}{llama_hint}"
+        # 2. Display Intent Panels
+        onnx_panel = f" [bold]Target Provider[/] : [cyan]{onnx_prov}[/]\n [dim]└─ Intent from metadata.json[/]"
+        llama_panel = f" [bold]Target Backend[/]  : [cyan]{llama_back}[/]\n [dim]└─ Intent from metadata.json[/]"
 
         console.print("\n")
-        console.print(Panel(onnx_panel, title="[bold]Engine: ONNX Audio Runtime (Decoder)[/]", border_style="blue", width=70))
-        console.print(Panel(llama_panel, title="[bold]Engine: GGML / Llama.cpp (LLM)[/]", border_style="magenta", width=70))
-        console.print("\n")
+        console.print(Panel(onnx_panel, title="[bold blue]Hardware Intent: Audio Decoder[/]", border_style="blue", width=70))
+        console.print(Panel(llama_panel, title="[bold magenta]Hardware Intent: LLM Engine[/]", border_style="magenta", width=70))
+        console.print("[dim] Note: Build manager will link against these providers. Use --stats-json at runtime to verify actual acceleration.[/]\n")
         
         return True
 
@@ -220,8 +175,8 @@ class Builder:
         llama_info = self.target_details.get("llama", "[yellow]cpu[/]")
         
         console.print(f" 🎯 Optimization: {onnx_info} / {llama_info}")
-        if "Missing" in onnx_info or "Missing" in llama_info:
-            console.print(" ⚠️ [dim]Note: Incomplete binaries detected. Inference may fallback to CPU.[/]")
+        console.print(" 💡 [dim]Note: Hardware acceleration depends on your runtime environment and installed drivers.[/]")
+        console.print(" 💡 [dim]Check the 'Backend Configuration' table during inference to verify actual GPU usage.[/]")
         console.print("─"*70 + "\n")
 
         return True
