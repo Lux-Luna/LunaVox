@@ -1,6 +1,5 @@
 # Build outputs
 build/
-build-*/
 cmake-build-*/
 _tmp_build/
 _tmp_onnx_export/

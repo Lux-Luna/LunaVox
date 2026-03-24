@@ -12,7 +12,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.table import Table
 
-from lunavox.build.lib_downloader import LIB_URLS, update_library
+from lunavox.build.lib_downloader import LIBS_CONFIG, update_library, download_platform_libs
 from lunavox.build.main import run_build
 from lunavox.core.deps import DEPENDENCY_GROUPS, DependencyPolicy, ensure_dependency_group, missing_modules
 from lunavox.core.project import resolve_project_root
@@ -20,8 +20,6 @@ from lunavox.core.ui import console
 from lunavox.model import ModelDownloader, ModelSetupPipeline, Models
 
 app = typer.Typer(no_args_is_help=True, help="LunaVox unified CLI")
-download_app = typer.Typer(help="Download commands")
-app.add_typer(download_app, name="download")
 
 
 @dataclass
@@ -95,7 +93,7 @@ def _setup_internal(state: RuntimeState, model: str, models_dir: str, force: boo
         )
         if not allow:
             raise RuntimeError("Model download cancelled by user.")
-        ModelDownloader.download(model)
+        cfg.source = ModelDownloader.download(model)
 
     target_dir = Path(models_dir).resolve() if models_dir else cfg.dest.resolve()
     pipeline = ModelSetupPipeline(state.project_root)
@@ -165,22 +163,62 @@ def bootstrap_command(
     console.print("[success]Bootstrap completed successfully.[/success]")
 
 
-@download_app.command("libs")
+@app.command("download-libs")
 def download_libs_command(
     ctx: typer.Context,
-    lib: str = typer.Argument(..., help="onnx or llama"),
-    backend: str = typer.Argument("win_cpu", help="Backend key"),
+    platform_key: Optional[str] = typer.Option(None, "--platform", "-p", help="Target platform (win_cuda, win_vulkan, etc.)"),
+    lib: Optional[str] = typer.Option(None, "--lib", help="Download a specific library only (onnx, llama)"),
+    backend: Optional[str] = typer.Option(None, "--backend", help="Specific backend for the library"),
 ) -> None:
+    """Download binary dependencies (ONNX Runtime, Llama.cpp) for your platform."""
     state = _state(ctx)
-    if lib not in LIB_URLS:
-        raise RuntimeError(f"Unknown library '{lib}'. Available: {', '.join(LIB_URLS.keys())}")
-    if backend not in LIB_URLS[lib]:
-        raise RuntimeError(
-            f"Unknown backend '{backend}' for {lib}. Available: {', '.join(LIB_URLS[lib].keys())}"
-        )
-    console.print(Panel(f"Downloading {lib} ({backend})", style="stage", expand=False))
-    update_library(lib, backend, str(state.project_root))
-    console.print("[success]Library download completed.[/success]")
+    config = LIBS_CONFIG
+    
+    # 1. Handle Single Lib/Backend override
+    if lib:
+        if lib not in config["libraries"]:
+            raise RuntimeError(f"Unknown library '{lib}'. Available: {', '.join(config['libraries'].keys())}")
+        if not backend:
+            # Interactive backend selection for this lib
+            backends = config["libraries"][lib]["backends"]
+            options = list(backends.keys())
+            console.print(f"\nSelect backend for [bold cyan]{lib}[/]:")
+            for i, opt in enumerate(options, 1):
+                console.print(f"  {i}) {opt}")
+            idx = int(typer.prompt("Enter choice", default="1")) - 1
+            backend = options[idx]
+        
+        console.print(Panel(f"Downloading {lib} ({backend})", style="stage", expand=False))
+        update_library(lib, backend, str(state.project_root))
+        console.print("[success]Library download completed.[/success]")
+        return
+
+    # 2. Handle Platform selection
+    if not platform_key:
+        # Interactive platform selection
+        platforms = config["platforms"]
+        options = list(platforms.keys())
+        
+        console.print("\n[bold cyan]═══ Library Download Selection ═══[/]")
+        for i, key in enumerate(options, 1):
+            console.print(f"  [bold]{i}) {platforms[key]['display_name']}[/]")
+        
+        console.print("  [bold]0) Cancel[/]")
+        
+        choice = typer.prompt("\nSelect your target platform", default="1")
+        if choice == "0":
+            console.print("[warn]Cancelled.[/]")
+            return
+        
+        try:
+            idx = int(choice) - 1
+            platform_key = options[idx]
+        except (ValueError, IndexError):
+            raise RuntimeError("Invalid selection.")
+
+    console.print(f"[stage]Selected platform: {platform_key}[/]")
+    download_platform_libs(platform_key, str(state.project_root))
+    console.print("[success]All platform libraries updated successfully.[/success]")
 
 
 @app.command("doctor")

@@ -1,6 +1,6 @@
 # 🌌 LunaVox: Qwen3-TTS C++ 高性能推理引擎
 
-![Version](https://img.shields.io/badge/version-1.2.0-blueviolet?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-2.0.0-blueviolet?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078d7?style=for-the-badge&logo=windows)
 ![C++](https://img.shields.io/badge/C++-17-00599C?style=for-the-badge&logo=c%2B%2B)
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
@@ -30,42 +30,59 @@
 - **ONNX Runtime SDK**: 放置于 `./lib/onnx`。
 - **Llama Runtime**: 预编译文件放置于 `./lib`。
 
-### 3. Python 依赖安装
+### 3. CLI 工具与依赖安装
 ```powershell
-pip install -r requirements.txt
+# 以可编辑模式安装 CLI 工具及其转换依赖
+pip install -e .[convert]
 ```
 
 ---
 
-## 📦 模型下载与转换快速指引
+## 📦 快速上手流程
 
-LunaVox 使用优化的 GGUF 和 ONNX 混合架构。你可以通过 `manage.py` 一键完成下载与转换：
+LunaVox 提供了统一的 `lunavox` CLI 工具来管理整个工作流。
 
+### 1. 模型初始化 (Setup)
+下载 HuggingFace 原始权重并自动转换为 LunaVox 优化格式（GGUF/ONNX）：
 ```powershell
-# 下载并转换指定模型（例如 base_small）
-python manage.py setup --model base_small
+# 设置指定模型（例如 base_small）
+lunavox setup --model base_small
 ```
 
-> [!NOTE]
-> 转换过程包括：提取 Tokenizer、导出声音编码器和编解码器 (ONNX)，以及将预测器转换为 GGUF 格式。
+### 2. 下载运行库 (Download Libs)
+下载推理引擎依赖的二进制库（ONNX Runtime / Llama）：
+```powershell
+# 下载 Windows CPU 后端的运行库
+lunavox download libs llama win_cpu
+lunavox download libs onnx win_cpu
+```
+
+### 3. 项目构建 (Build)
+自动配置 CMake 并编译 C++ 推理引擎：
+```powershell
+# 执行清理并使用 8 线程加速构建
+lunavox build --clean --j 8
+```
+
+> [!TIP]
+> 使用 `lunavox doctor` 可以随时检查当前环境的依赖完整性。
 
 ---
 
-## 🏗️ 构建快速指引
+## 🛠️ 进阶管理命令
 
-本项目引入了全新的 **结构化构建系统**，提供实时的进度旋转图标和清晰的阶段化展示。
+通过 `lunavox --help` 查看所有可用选项。
 
-### 一键快捷构建（推荐）
-适合初次配置，自动运行环境检查、模型设置、编译及验证：
+### 环境诊断
 ```powershell
-python manage.py bootstrap --model base_small
+# 检查编译器、运行库及 Python 依赖状态
+lunavox doctor
 ```
 
-### 仅执行编译
-如果你已经配置好模型，只需更新代码：
+### 详尽模式构建
+如果构建失败，可以使用详尽模式查看 CMake 输出：
 ```powershell
-# --clean 用于清理旧的构建缓存
-python manage.py build --clean
+lunavox build --verbose
 ```
 
 ---

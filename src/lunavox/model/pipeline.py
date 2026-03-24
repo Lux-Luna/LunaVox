@@ -177,11 +177,10 @@ class ModelSetupPipeline:
 
     def _ensure_onnx_artifacts(self, base_dir, models_dir, out_codec, out_speaker, out_decoder) -> None:
         stage_to_output = {"codec_encoder": out_codec, "speaker_encoder": out_speaker, "decoder": out_decoder}
+        # Record existence for final validation
         for stage, artifact in stage_to_output.items():
             if not artifact.exists():
                 self._run_onnx_stage(stage, base_dir, models_dir)
-
-        self._run_onnx_stage("quantize", base_dir, models_dir)
 
         self.run_cmd(
             [
@@ -202,6 +201,14 @@ class ModelSetupPipeline:
             pd = models_dir / (name + ".data")
             if pd.exists():
                 pd.unlink()
+            
+            # Cleanup unwanted int8 residues
+            pi8 = models_dir / name.replace(".fp32.onnx", ".fp32.int8.onnx")
+            if pi8.exists():
+                pi8.unlink()
+            pi8_alt = models_dir / name.replace(".fp32.onnx", ".int8.onnx")
+            if pi8_alt.exists():
+                pi8_alt.unlink()
 
     def _run_onnx_stage(self, stage, base_dir, models_dir):
         cmd = [
@@ -214,6 +221,5 @@ class ModelSetupPipeline:
             str(models_dir),
             "--stage",
             stage,
-            "--enable-quant",
         ]
         self.run_cmd(cmd, cwd=self.root)

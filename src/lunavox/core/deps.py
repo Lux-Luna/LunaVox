@@ -22,6 +22,7 @@ DEPENDENCY_GROUPS: dict[str, list[tuple[str, str]]] = {
         ("transformers", "transformers"),
         ("onnx", "onnx"),
         ("onnxruntime", "onnxruntime"),
+        ("onnxscript", "onnxscript"),
     ]
 }
 

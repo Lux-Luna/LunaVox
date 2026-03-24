@@ -1,0 +1,34 @@
+window:
+CPU
+ggml(cpu): https://github.com/ggml-org/llama.cpp/releases/download/b8470/llama-b8470-bin-win-cpu-x64.zip
+ort(cpu): https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-win-x64-1.24.4.zip
+
+NVIDIA GPU cuda12
+ggml(cuda12): https://github.com/ggml-org/llama.cpp/releases/download/b8470/llama-b8470-bin-win-cuda-12.4-x64.zip
+ort(cuda12): https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-win-x64-gpu-1.24.4.zip
+
+NVIDIA GPU cuda13
+ggml(cuda13): https://github.com/ggml-org/llama.cpp/releases/download/b8470/llama-b8470-bin-win-cuda-13.1-x64.zip
+ort(cuda13): https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-win-x64-gpu_cuda13-1.24.4.zip
+
+NVIDIA/AMD/Intel(通用) GPU
+ggml(vulkan): https://github.com/ggml-org/llama.cpp/releases/download/b8470/llama-b8470-bin-win-vulkan-x64.zip
+ort(DirectML): https://www.nuget.org/api/v2/package/Microsoft.ML.OnnxRuntime.DirectML/1.24.4
+
+
+
+linux:
+CPU
+ggml(cpu):https://github.com/ggml-org/llama.cpp/releases/download/b8470/llama-b8470-bin-ubuntu-x64.tar.gz
+ort(cpu): https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-x64-1.24.4.tgz
+
+NVIDIA GPU cuda12
+ggml(cuda12): https://github.com/ai-dock/llama.cpp-cuda/releases/download/b8493/llama.cpp-b8493-cuda-12.8.tar.gz
+ort(cuda12): https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-x64-gpu-1.24.4.tgz
+
+
+
+mac:
+Apple Silicon
+ggml(metal): https://github.com/ggml-org/llama.cpp/releases/download/b8470/llama-b8470-bin-macos-arm64.tar.gz
+ort(CoreML): https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-osx-arm64-1.24.4.tgz

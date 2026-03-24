@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lunavox"
-version = "0.1.0"
+version = "2.0.0"
 description = "LunaVox tooling CLI for model setup, conversion, quantization, and build workflows."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -34,6 +34,7 @@ convert = [
   "scipy",
   "soundfile",
   "einops",
+  "onnxscript",
 ]
 dev = [
   "pytest>=8.2",
