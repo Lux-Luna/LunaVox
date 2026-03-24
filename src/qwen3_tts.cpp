@@ -9,17 +9,12 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
-#include <iomanip>
-#include <iostream>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <numeric>
-#include <stdexcept>
 #include <string>
 #include <vector>
+#include <filesystem>
+namespace fs = std::filesystem;
+
+#include "json_utils.h"
 
 #ifdef __APPLE__
 #include <mach/mach.h>
@@ -277,86 +272,6 @@ static void pcm_peak_rms(const std::vector<float> & audio, float & peak, float &
     rms = (float) std::sqrt((double) (sum_sq / (long double) audio.size()));
 }
 
-// --- JSON Parsing and Base64 Utils for Vivian.json style references ---
-
-static std::vector<uint8_t> base64_decode(const std::string &in) {
-    std::vector<uint8_t> out;
-    std::vector<int> T(256, -1);
-    for (int i = 0; i < 64; i++) T["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"[i]] = i;
-
-    int val = 0, valb = -8;
-    for (unsigned char c : in) {
-        if (T[c] == -1) break;
-        val = (val << 6) + T[c];
-        valb += 6;
-        if (valb >= 0) {
-            out.push_back(uint8_t((val >> valb) & 0xFF));
-            valb -= 8;
-        }
-    }
-    return out;
-}
-
-static bool simple_extract_json_string(const std::string &json, const std::string &key, std::string &out) {
-    std::string qkey = "\"" + key + "\"";
-    size_t pos = json.find(qkey);
-    if (pos == std::string::npos) return false;
-    pos = json.find(":", pos + qkey.length());
-    if (pos == std::string::npos) return false;
-    pos = json.find("\"", pos);
-    if (pos == std::string::npos) return false;
-    size_t end = json.find("\"", pos + 1);
-    while (end != std::string::npos && json[end - 1] == '\\') {
-        end = json.find("\"", end + 1);
-    }
-    if (end == std::string::npos) return false;
-    out = json.substr(pos + 1, end - pos - 1);
-    return true;
-}
-
-static bool simple_extract_json_codes(const std::string &json, std::vector<int32_t> &codes, int32_t &n_frames) {
-    codes.clear();
-    n_frames = 0;
-    std::string key = "\"codes\"";
-    size_t pos = json.find(key);
-    if (pos == std::string::npos) return false;
-    pos = json.find(":", pos + key.length());
-    if (pos == std::string::npos) return false;
-    pos = json.find("[", pos);
-    if (pos == std::string::npos) return false;
-    
-    size_t i = pos + 1;
-    bool in_inner = false;
-    std::string current_num;
-    while (i < json.size()) {
-        char c = json[i];
-        if (c == '[') {
-            if (in_inner) return false;
-            in_inner = true;
-            n_frames++;
-        } else if (c == ']') {
-            if (in_inner) {
-                if (!current_num.empty()) {
-                    codes.push_back(std::stoi(current_num));
-                    current_num.clear();
-                }
-                in_inner = false;
-            } else {
-                break;
-            }
-        } else if (std::isdigit((unsigned char)c) || c == '-') {
-            current_num += c;
-        } else if (c == ',' || std::isspace((unsigned char)c)) {
-            if (!current_num.empty()) {
-                codes.push_back(std::stoi(current_num));
-                current_num.clear();
-            }
-        }
-        i++;
-    }
-    return true;
-}
-
 } // namespace
 
 Qwen3TTS::Qwen3TTS() = default;
@@ -577,17 +492,17 @@ tts_result Qwen3TTS::synthesize_with_voice(
         std::string json_content((std::istreambuf_iterator<char>(fin)), std::istreambuf_iterator<char>());
         
         std::string spk_emb_b64;
-        if (!simple_extract_json_string(json_content, "spk_emb", spk_emb_b64)) {
+        if (!json_extract_string(json_content, "spk_emb", spk_emb_b64)) {
             result.error_msg = "Failed to find spk_emb in reference JSON";
             return result;
         }
         
         std::string ref_text_json;
-        if (simple_extract_json_string(json_content, "text", ref_text_json)) {
+        if (json_extract_string(json_content, "text", ref_text_json)) {
             params_copy.ref_text = ref_text_json;
         }
         
-        std::vector<uint8_t> emb_bytes = base64_decode(spk_emb_b64);
+        std::vector<uint8_t> emb_bytes = qwen3_tts::base64_decode(spk_emb_b64);
         if (emb_bytes.empty() || emb_bytes.size() % sizeof(float) != 0) {
             result.error_msg = "Invalid spk_emb base64 data";
             return result;
@@ -597,10 +512,12 @@ tts_result Qwen3TTS::synthesize_with_voice(
 
         std::vector<int32_t> ref_codes;
         int32_t n_ref_frames = 0;
-        if (!simple_extract_json_codes(json_content, ref_codes, n_ref_frames)) {
+        // Re-implementing n_ref_frames calculation since json_extract_flat_int_array is flat
+        if (!json_extract_flat_int_array(json_content, "codes", ref_codes)) {
             result.error_msg = "Failed to parse codes from reference JSON";
             return result;
         }
+        n_ref_frames = (int32_t)ref_codes.size() / 16;
         
         result.spk_emb_dim = (int32_t) speaker_embedding.size();
         result.spk_emb_l2 = l2_norm(speaker_embedding.data(), (int32_t) speaker_embedding.size());
@@ -1241,9 +1158,9 @@ bool load_audio_file(const std::string & path, std::vector<float> & samples, int
 
 bool save_audio_file(const std::string & path, const std::vector<float> & samples, int sample_rate) {
     try {
-        std::filesystem::path p(path);
+        fs::path p(path);
         if (p.has_parent_path()) {
-            std::filesystem::create_directories(p.parent_path());
+            fs::create_directories(p.parent_path());
         }
     } catch (...) {
         // Continue and let fopen report a concrete error if directory creation fails.
