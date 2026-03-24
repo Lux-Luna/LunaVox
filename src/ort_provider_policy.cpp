@@ -68,6 +68,24 @@ bool append_coreml_provider(Ort::SessionOptions & opts, std::string & error_msg)
     }
 }
 
+bool append_vulkan_provider(Ort::SessionOptions & opts, std::string & error_msg) {
+    try {
+        opts.AppendExecutionProvider("VulkanExecutionProvider", {});
+        return true;
+    } catch (const std::exception & e) {
+        error_msg = e.what(); return false;
+    }
+}
+
+bool append_openvino_provider(Ort::SessionOptions & opts, std::string & error_msg) {
+    try {
+        opts.AppendExecutionProvider("OpenVINOExecutionProvider", {});
+        return true;
+    } catch (const std::exception & e) {
+        error_msg = e.what(); return false;
+    }
+}
+
 // Helper: Try to find metadata.json near the binary
 static std::string find_metadata_json() {
     const char* p_list[] = {"metadata.json", "lib/metadata.json", "../lib/metadata.json"};
@@ -128,9 +146,9 @@ bool apply_ort_provider_policy(
     } else if (intent == "CoreMLExecutionProvider") {
         success = append_coreml_provider(opts, detail);
     } else if (intent == "VulkanExecutionProvider") {
-        success = false; detail = "Vulkan EP support not yet explicitly encoded";
+        success = append_vulkan_provider(opts, detail);
     } else if (intent == "OpenVINOExecutionProvider") {
-        success = false; detail = "OpenVINO EP support not yet explicitly encoded";
+        success = append_openvino_provider(opts, detail);
     }
 
     if (success) {

@@ -317,7 +317,7 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
         error_msg_ = "Failed to load tokenizer.json: " + tokenizer_.get_error();
         return false;
     }
-    LOG_INFO("  Text tokenizer loaded from tokenizer.json: vocab_size=%d (%lld ms)",
+    LOG_DEBUG("  Text tokenizer loaded from tokenizer.json: vocab_size=%d (%lld ms)",
              tokenizer_.get_config().vocab_size,
              (long long) (get_time_ms() - t_tok));
 
@@ -335,10 +335,10 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
             return false;
         }
         decoder_loaded_ = true;
-        LOG_INFO("  Decoder providers: %s", decoder_.provider_summary().c_str());
+        LOG_DEBUG("  Decoder providers: %s", decoder_.provider_summary().c_str());
     } else {
         decoder_loaded_ = false;
-        LOG_INFO("  Decoder ONNX: deferred (lazy load)");
+        LOG_DEBUG("  Decoder ONNX: deferred (lazy load)");
     }
 
     models_loaded_ = true;
@@ -374,7 +374,7 @@ bool Qwen3TTS::load_models(const std::string & model_dir, int32_t n_threads) {
     const char * low_mem_env = std::getenv("QWEN3_TTS_LOW_MEM");
     low_mem_mode_ = low_mem_env && low_mem_env[0] != '\0' && low_mem_env[0] != '0';
     if (low_mem_mode_) {
-        LOG_INFO("  Low-memory mode enabled (lazy decoder + deferred encoders)");
+        LOG_DEBUG("  Low-memory mode enabled (lazy decoder + deferred encoders)");
     }
 
     const int32_t effective_threads = std::max(1, n_threads);
@@ -382,7 +382,7 @@ bool Qwen3TTS::load_models(const std::string & model_dir, int32_t n_threads) {
         return false;
     }
 
-    LOG_INFO("Loaded models in NEW layout (%lld ms)", (long long) (get_time_ms() - t_start));
+    LOG_DEBUG("Loaded models in NEW layout (%lld ms)", (long long) (get_time_ms() - t_start));
     return true;
 }
 
@@ -455,7 +455,7 @@ bool Qwen3TTS::preload_hot_embedding_rows() {
 
     (void) touch_sink;
     hot_rows_preloaded_ = true;
-    LOG_INFO("  Embedding hot-row preload completed");
+    LOG_DEBUG("  Embedding hot-row preload completed");
     return true;
 }
 
@@ -1021,7 +1021,7 @@ tts_result Qwen3TTS::synthesize_internal(
             return result;
         }
         decoder_loaded_ = true;
-        fprintf(stderr, "  Decoder providers: %s\n", decoder_.provider_summary().c_str());
+        LOG_DEBUG("  Decoder providers: %s", decoder_.provider_summary().c_str());
     }
     result.ort_provider_decoder = decoder_.provider_summary();
     if (!decoder_.decode(speech_codes.data(), n_frames, result.audio)) {

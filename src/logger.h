@@ -36,7 +36,7 @@ private:
     LogLevel level_ = LogLevel::INFO_LOG;
     std::ofstream file_stream_;
     std::mutex mutex_;
-    std::string llama_backend_info_ = "CPU";
+    std::string llama_backend_info_ = "cpu";
 };
 
 // Convenience macros

@@ -416,7 +416,7 @@ int main(int argc, char ** argv) {
 
     // Benchmark Run
     std::vector<qwen3_tts::tts_result> repeat_results;
-    LOG_USER("[BNCH] Starting %d benchmark runs...", repeat);
+    LOG_DEBUG("[BNCH] Starting %d benchmark runs...", repeat);
     
     for (int it = 0; it < repeat; ++it) {
         if (repeat > 1) {
@@ -480,16 +480,26 @@ int main(int argc, char ** argv) {
     
     LOG_USER("");
     LOG_USER("[ Backend Configuration ]");
-    LOG_USER("  - LLM Engine:     llama.cpp (%s)", qwen3_tts::Logger::instance().get_llama_backend_info().c_str());
+    {
+        std::string binfo = qwen3_tts::Logger::instance().get_llama_backend_info();
+        if (binfo == "cpu") binfo = "CPU: Native Implementation";
+        else if (binfo == "cuda" || binfo == "CUDA") binfo = "CUDA: NVIDIA Acceleration";
+        else if (binfo == "vulkan" || binfo == "Vulkan") binfo = "Vulkan: Generic Acceleration";
+        else if (binfo == "metal" || binfo == "Metal") binfo = "Metal: Apple Silicon Acceleration";
+        else if (binfo == "rocm" || binfo == "ROCm") binfo = "ROCm: AMD Acceleration";
+        else if (binfo == "sycl" || binfo == "SYCL") binfo = "SYCL: Intel Acceleration";
+        
+        LOG_USER("  - LLM Engine:     llama.cpp [%s]", binfo.c_str());
+    }
     
     // Using the last result for provider info
     const auto & last_res = repeat_results.back();
     if (last_res.ort_provider_speaker_encoder == "not_loaded" && last_res.ort_provider_codec_encoder == "not_loaded") {
-        LOG_USER("  - Audio Encoder:  ONNX Runtime (not loaded)");
+        LOG_USER("  - Audio Encoder:  ONNX Runtime [not loaded]");
     } else {
-        LOG_USER("  - Audio Encoder:  ONNX Runtime (Codec: %s)", last_res.ort_provider_codec_encoder.c_str());
+        LOG_USER("  - Audio Encoder:  ONNX Runtime [Codec: %s]", last_res.ort_provider_codec_encoder.c_str());
     }
-    LOG_USER("  - Audio Decoder:  ONNX Runtime (%s)", last_res.ort_provider_decoder.c_str());
+    LOG_USER("  - Audio Decoder:  ONNX Runtime [%s]", last_res.ort_provider_decoder.c_str());
 
     LOG_USER("");
     LOG_USER("[ Resource Usage (Last Run) ]");
