@@ -86,16 +86,6 @@ bool append_openvino_provider(Ort::SessionOptions & opts, std::string & error_ms
     }
 }
 
-// Helper: Try to find metadata.json near the binary
-static std::string find_metadata_json() {
-    const char* p_list[] = {"metadata.json", "lib/metadata.json", "../lib/metadata.json"};
-    for (const char* p : p_list) {
-        std::ifstream f(p);
-        if (f.good()) return p;
-    }
-    return "";
-}
-
 } // namespace
 
 bool apply_ort_provider_policy(
@@ -155,7 +145,10 @@ bool apply_ort_provider_policy(
         policy_summary = intent;
     } else {
         if (meta_found && intent != "CPUExecutionProvider" && intent != "unknown") {
-            LOG_WARN("Requested provider '%s' failed to load: %s. Falling back to CPU.", intent.c_str(), detail.c_str());
+            std::string target = intent;
+            size_t pos = target.find("ExecutionProvider");
+            if (pos != std::string::npos) target = target.substr(0, pos);
+            LOG_WARN("ONNX Runtime dependency (%s) is incomplete, falling back to CPU.", target.c_str());
         }
         append_cpu_provider(opts, detail);
         policy_summary = "CPUExecutionProvider";

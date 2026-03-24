@@ -29,9 +29,7 @@ def run_build(
     root: Path,
     clean: bool,
     jobs: int,
-    verify: bool,
     toolchain: str,
-    portable: bool,
     verbose: bool,
     platform_key: str | None = None,
 ) -> int:
@@ -77,8 +75,6 @@ def run_build(
         resolver,
         clean=clean,
         parallel=jobs,
-        verify=verify,
-        portable=portable,
         platform_key=platform_key,
     )
     return 0
@@ -88,14 +84,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="LunaVox Build Manager")
     parser.add_argument("--clean", action="store_true", help="Clean build directory first")
     parser.add_argument("--j", type=int, default=4, help="Parallel build jobs")
-    parser.add_argument("--verify", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
         "--toolchain",
         choices=["auto", "msvc", "mingw", "clang", "gcc"],
         default="auto",
         help="Force a toolchain",
     )
-    parser.add_argument("--portable", action="store_true", help="Bundle system dependencies")
     parser.add_argument(
         "--project-root",
         default=os.environ.get("LUNAVOX_PROJECT_ROOT", ""),
@@ -115,9 +109,7 @@ def main() -> int:
             root=root,
             clean=bool(args.clean),
             jobs=int(args.j),
-            verify=bool(args.verify),
             toolchain=str(args.toolchain),
-            portable=bool(args.portable),
             verbose=bool(args.verbose),
             platform_key=args.platform,
         )

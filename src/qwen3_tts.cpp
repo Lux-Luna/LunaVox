@@ -329,6 +329,32 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
     }
     talker_predictor_loaded_ = true;
 
+    // Check for Llama.cpp acceleration fallback
+    std::string metadata_path = find_metadata_json();
+    if (!metadata_path.empty()) {
+        std::ifstream f(metadata_path);
+        if (f.is_open()) {
+            std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            size_t llama_start = content.find("\"llama\"");
+            if (llama_start != std::string::npos) {
+                std::string llama_section = content.substr(llama_start);
+                std::string intent;
+                if (json_extract_string(llama_section, "backend", intent)) {
+                    std::string actual = Logger::instance().get_llama_backend_info();
+                    std::string actual_lower = actual;
+                    std::transform(actual_lower.begin(), actual_lower.end(), actual_lower.begin(), ::tolower);
+                    
+                    bool requested_accel = (intent == "cuda" || intent == "vulkan" || intent == "rocm" || intent == "metal" || intent == "sycl");
+                    bool is_cpu = (actual_lower.find("cpu") != std::string::npos || actual_lower == "cpu" || actual_lower.empty());
+                    
+                    if (requested_accel && is_cpu) {
+                        LOG_WARN("Llama.cpp dependency (%s) is incomplete, falling back to CPU.", intent.c_str());
+                    }
+                }
+            }
+        }
+    }
+
     if (!low_mem_mode_) {
         if (!decoder_.load_model(decoder_onnx_path_, n_threads)) {
             error_msg_ = "Failed to load decoder ONNX: " + decoder_.get_error();

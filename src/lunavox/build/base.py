@@ -84,7 +84,7 @@ class Builder:
         with open(self.ctx.log_file, "a", encoding="utf-8") as f: f.write(log_entry)
         if rc != 0: raise RuntimeError(f"Stage '{stage}' failed. See {self.ctx.log_file}")
 
-    def post_build(self, portable: bool = False):
+    def post_build(self):
         """Platform-specific post-build tasks."""
         pass
 
@@ -126,7 +126,7 @@ class Builder:
         
         return True
 
-    def build(self, resolver: ToolchainResolver, clean: bool = False, parallel: int = 4, verify: bool = False, portable: bool = False, platform_key: str | None = None):
+    def build(self, resolver: ToolchainResolver, clean: bool = False, parallel: int = 4, platform_key: str | None = None):
         # 1. Validation
         self.verify_dependencies(platform_key)
 
@@ -153,20 +153,10 @@ class Builder:
                        "cmake_build", "Compiling Source")
         
         # 6. Post-build
-        self.post_build(portable=portable)
+        self.post_build()
         console.print(" ✅ [bold]Post-build Bundling Completed[/]")
         
-        # 7. Verify
-        if verify:
-            exe_ext = ".exe" if py_platform.system() == "Windows" else ""
-            exe = self.ctx.build_dir / f"qwen3-tts-cli{exe_ext}"
-            if not exe.exists():
-                console.print(f" ⚠️ [yellow]Verification skipped (output not found)[/]")
-            else:
-                self._run_step([str(exe), "--help"], "verify_help", "Verifying Binary", timeout=60)
-                console.print(" 🎉 [bold green]Verification Passed[/]")
-
-        # 8. Summary
+        # 7. Summary
         console.print("\n" + "─"*70)
         console.print(" [bold green]✔ Build Successfully Completed[/]")
         console.print(f" 📂 Artifacts: [underline dim]{self.ctx.build_dir}[/]")

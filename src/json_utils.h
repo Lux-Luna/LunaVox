@@ -4,10 +4,24 @@
 #include <string>
 #include <vector>
 #include <cctype>
+#include <fstream>
+#include <iterator>
 #include <stdexcept>
 #include <algorithm>
 
 namespace qwen3_tts {
+
+/**
+ * Helper: Try to find metadata.json near the binary or in lib/
+ */
+static inline std::string find_metadata_json() {
+    const char* p_list[] = {"metadata.json", "lib/metadata.json", "../lib/metadata.json"};
+    for (const char* p : p_list) {
+        std::ifstream f(p);
+        if (f.good()) return p;
+    }
+    return "";
+}
 
 /**
  * Standard Base64 decoder.

@@ -112,17 +112,13 @@ def _build_internal(
     state: RuntimeState,
     clean: bool,
     j: int,
-    verify: bool,
     toolchain: str,
-    portable: bool,
 ) -> None:
     run_build(
         root=state.project_root,
         clean=clean,
         jobs=j,
-        verify=verify,
         toolchain=toolchain,
-        portable=portable,
         verbose=state.verbose,
     )
 
@@ -227,13 +223,11 @@ def build_command(
     ctx: typer.Context,
     clean: bool = typer.Option(False, "--clean", help="Clean build directory first"),
     j: int = typer.Option(4, "--j", min=1, help="Parallel build jobs"),
-    verify: bool = typer.Option(True, "--verify/--no-verify", help="Run post-build verification"),
     toolchain: str = typer.Option("auto", "--toolchain", help="Force toolchain"),
-    portable: bool = typer.Option(False, "--portable", help="Bundle system runtime dependencies"),
 ) -> None:
     """Build the LunaVox C++ inference engine."""
     state = _state(ctx)
-    _build_internal(state, clean=clean, j=j, verify=verify, toolchain=toolchain, portable=portable)
+    _build_internal(state, clean=clean, j=j, toolchain=toolchain)
     console.print("[success]Build completed successfully.[/success]")
 
 
@@ -245,9 +239,7 @@ def bootstrap_command(
     force: bool = typer.Option(False, "--force", help="Force reconversion"),
     clean: bool = typer.Option(False, "--clean", help="Clean build directory first"),
     j: int = typer.Option(4, "--j", min=1, help="Parallel build jobs"),
-    verify: bool = typer.Option(True, "--verify/--no-verify", help="Run post-build verification"),
     toolchain: str = typer.Option("auto", "--toolchain", help="Force toolchain"),
-    portable: bool = typer.Option(False, "--portable", help="Bundle system runtime dependencies"),
 ) -> None:
     """Guided interactive setup: Pull -> Download Libs -> Build -> Test."""
     state = _state(ctx)
@@ -259,7 +251,7 @@ def bootstrap_command(
     _download_libs_internal(state, platform)
     
     # 3. Build
-    _build_internal(state, clean=clean, j=j, verify=verify, toolchain=toolchain, portable=portable)
+    _build_internal(state, clean=clean, j=j, toolchain=toolchain)
     
     # 4. Interactive Synthesis Test
     _synthesis_test_interactive(state)
