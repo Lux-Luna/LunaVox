@@ -23,6 +23,8 @@ DEPENDENCY_GROUPS: dict[str, list[tuple[str, str]]] = {
         ("onnx", "onnx"),
         ("onnxruntime", "onnxruntime"),
         ("onnxscript", "onnxscript"),
+        ("librosa", "librosa"),
+        ("soundfile", "soundfile"),
     ]
 }
 
@@ -91,19 +93,28 @@ def ensure_dependency_group(group: str, policy: DependencyPolicy, project_root: 
 
     env = os.environ.copy()
     try:
+        # Prioritize local project installation if we are in the project root
+        if fallback_cmd:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", f".[{group}]"],
+                check=True,
+                env=env,
+                cwd=str(project_root),
+            )
+        else:
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", f"lunavox[{group}]"],
+                check=True,
+                env=env,
+            )
+    except subprocess.CalledProcessError:
+        # Fallback to name-based install if local fail (or vice versa if we swapped them)
+        if not fallback_cmd:
+            raise
         subprocess.run(
             [sys.executable, "-m", "pip", "install", f"lunavox[{group}]"],
             check=True,
             env=env,
-        )
-    except subprocess.CalledProcessError:
-        if not fallback_cmd:
-            raise
-        subprocess.run(
-            [sys.executable, "-m", "pip", "install", f".[{group}]"],
-            check=True,
-            env=env,
-            cwd=str(project_root),
         )
 
     still_missing = missing_modules(DEPENDENCY_GROUPS[group])

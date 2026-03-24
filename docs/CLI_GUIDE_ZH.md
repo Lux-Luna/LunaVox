@@ -4,7 +4,8 @@
 
 LunaVox CLI 已收敛为以下命令：
 
-- `lunavox setup`
+- `lunavox convert`
+- `lunavox pull-model`
 - `lunavox build`
 - `lunavox bootstrap`
 - `lunavox download libs`
@@ -37,11 +38,11 @@ pip install "lunavox[convert]"
 pip install -e .
 ```
 
-## 3. Setup 一键转换量化（唯一入口）
+## 3. Convert 模型本地转换 (源权重 -> 运行格式)
 
-`setup` 是模型准备与转换量化的唯一入口，不提供量化策略选择参数。
+`convert` 命令用于从 HuggingFace 原始权重（SafeTensors）转换为 LunaVox 使用的优化格式（ONNX/GGUF）。
 
-固定策略如下：
+固定量化策略如下：
 
 - `embeddings`：`fp16`
 - `speaker encoder`：`fp16`
@@ -53,9 +54,8 @@ pip install -e .
 常用示例：
 
 ```powershell
-lunavox setup --model base_small
-lunavox setup --model base --force
-lunavox setup --model custom_small --models-dir D:\TTS\lunavox\models\custom_small
+lunavox convert --model base_small
+lunavox convert --model base --force
 ```
 
 ### 缺失源模型时的交互
@@ -64,10 +64,22 @@ lunavox setup --model custom_small --models-dir D:\TTS\lunavox\models\custom_sma
 
 `Model '<name>' source files are missing. Download from HuggingFace now?`
 
-- 交互环境：确认后自动下载并继续 `setup`。
+- 交互环境：确认后自动下载并继续 `convert`。
 - 非交互环境：默认不自动确认；需显式加 `--yes`。
 
-## 4. 其他命令
+---
+
+## 4. Pull Model 直接拉取预转换模型
+
+如果您不需要本地进行复杂的转换过程，可以使用 `pull-model` 直接下载已转换好的 GGUF/ONNX 文件：
+
+```powershell
+lunavox pull-model --model base_small
+```
+
+该命令会直接连接至 `wkwong/Lunavox-Qwen3-TTS-GGUF` 仓库并下载对应的模型变体。
+
+## 5. 其他命令
 
 ### build
 
@@ -75,7 +87,7 @@ lunavox setup --model custom_small --models-dir D:\TTS\lunavox\models\custom_sma
 lunavox build --clean --j 4 --verify
 ```
 
-### bootstrap（setup + build）
+### bootstrap（convert + build）
 
 ```powershell
 lunavox bootstrap --model base_small --clean --j 4
@@ -85,6 +97,7 @@ lunavox bootstrap --model base_small --clean --j 4
 
 ```powershell
 lunavox download libs llama win_cuda
+```
 lunavox download libs onnx win_cuda
 ```
 
@@ -94,7 +107,7 @@ lunavox download libs onnx win_cuda
 lunavox doctor
 ```
 
-## 5. 全局参数
+## 6. 全局参数
 
 所有命令支持：
 
@@ -106,10 +119,10 @@ lunavox doctor
 示例：
 
 ```powershell
-lunavox --project-root D:\TTS\lunavox --yes setup --model base_small
+lunavox --project-root D:\TTS\lunavox --yes convert --model base_small
 ```
 
-## 6. 依赖策略
+## 7. 依赖策略
 
 - `setup` 会检查 `convert` 依赖组。
 - `build / bootstrap / download libs / doctor` 不会触发重依赖安装。
@@ -120,7 +133,7 @@ lunavox --project-root D:\TTS\lunavox --yes setup --model base_small
 python -m pip install "lunavox[convert]"
 ```
 
-## 7. 发布流程
+## 8. 发布流程
 
 构建：
 

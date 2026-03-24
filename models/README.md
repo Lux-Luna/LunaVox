@@ -1,11 +1,24 @@
+---
+license: apache-2.0
+base_model: Qwen/Qwen3-TTS
+tags:
+- text-to-speech
+- tts
+- audio
+- cpp
+- quantized
+- lunavox
+- onnx
+---
+
 # LunaVox Runtime Models
 
 This directory contains converted runtime artifacts (ONNX and GGUF) for various Qwen3-TTS model variants. These artifacts are generated from original Hugging Face checkpoints to be used by the LunaVox inference engine.
 
 ## Downloading and Setup
 
-### 1. Automatic Source Download in `setup`
-`lunavox setup` is the only model preparation entrypoint.  
+### 1. Automatic Source Download in `pull-model`
+`lunavox pull-model` is the only model preparation entrypoint.  
 If required Hugging Face source weights are missing, CLI prompts in English and downloads after confirmation.
 
 ### 2. Model Cache

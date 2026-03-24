@@ -12,13 +12,11 @@ _pip_tmp/
 *.so
 *.dylib
 
-# Generated models / runtime artifacts
-models/base/
-models/base_small/
-models/custom/
-models/custom_small/
-models/design/
+# Generated models / libs / runtime artifacts
+models/
 output/
+lib/
+logs/
 
 # Test/debug artifacts
 test_output/
@@ -42,9 +40,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-lib/llama/
-lib/onnx/
-lib/metadata.json
+
 代办.txt
-logs/
 info.txt

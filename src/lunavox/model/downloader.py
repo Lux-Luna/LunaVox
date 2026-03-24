@@ -26,6 +26,27 @@ class ModelDownloader:
         return Path(path)
 
     @staticmethod
+    def download_converted_model(model_name: str, project_root: Path) -> Path:
+        """Download pre-converted GGUF/ONNX artifacts from the community repo."""
+        repo_id = "wkwong/Lunavox-Qwen3-TTS-GGUF"
+        dest_dir = project_root / "models" / model_name
+        
+        print(f"[model_manager:downloader] Pulling converted artifacts for '{model_name}' from {repo_id}...")
+        
+        # We download to the models/<name> directory
+        # Using allow_patterns to only get the specific model's folder if possible, 
+        # but snapshot_download handles local_dir well.
+        path = snapshot_download(
+            repo_id=repo_id,
+            allow_patterns=[f"{model_name}/*"],
+            local_dir=str(project_root / "models"),
+            local_dir_use_symlinks=False,
+        )
+        
+        print(f"[model_manager:downloader] Pull complete: {dest_dir}")
+        return dest_dir
+
+    @staticmethod
     def download_all():
         for name in REPO_MAP:
             try:

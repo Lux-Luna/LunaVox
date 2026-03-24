@@ -42,11 +42,21 @@ pip install -e .[convert]
 
 LunaVox 提供了统一的 `lunavox` CLI 工具来管理整个工作流。
 
-### 1. 模型初始化 (Setup)
+### 1. 模型准备 (Setup & Convert)
+
+您可以通过以下两种方式准备模型：
+
+**方式 A：直接下载预转换模型 (推荐)**
+直接从 HuggingFace 仓库下载已转换好的运行格式：
+```powershell
+lunavox pull-model --model base_small
+```
+
+**方式 B：本地从源权重转换 (Convert)**
 下载 HuggingFace 原始权重并自动转换为 LunaVox 优化格式（GGUF/ONNX）：
 ```powershell
-# 设置指定模型（例如 base_small）
-lunavox setup --model base_small
+# 转换指定模型（会自动检测并下载缺失的源权重）
+lunavox --project-root D:\TTS\lunavox --yes convert --model base_small
 ```
 
 ### 2. 下载运行库 (Download Libs)

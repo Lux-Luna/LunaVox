@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-class ModelSetupPipeline:
+class ModelConvertPipeline:
     def __init__(self, root: Path):
         self.root = root
         self.logs_dir = root / "logs"
@@ -83,8 +83,8 @@ class ModelSetupPipeline:
             )
         self.eprint(f"[ok] model source found: {cfg.source}")
 
-    def setup(self, cfg, models_dir: Path, force: bool = False):
-        self.eprint(f"[pipeline] Setting up model: {cfg.name}")
+    def convert(self, cfg, models_dir: Path, force: bool = False):
+        self.eprint(f"[pipeline] Converting model: {cfg.name}")
         self.ensure_source_exists(cfg)
         
         base_dir = cfg.source.resolve()
@@ -120,7 +120,7 @@ class ModelSetupPipeline:
         else:
             self._ensure_onnx_artifacts(base_dir, models_dir, out_codec_encoder, out_speaker_encoder, out_decoder)
 
-        self.eprint(f"\n[done] Setup complete for: {cfg.name}")
+        self.eprint(f"\n[done] Conversion complete for: {cfg.name}")
         return 0
 
     def _ensure_talker_predictor(self, base_dir: Path, out_talker: Path, out_predictor: Path, out_embeddings_dir: Path) -> None:

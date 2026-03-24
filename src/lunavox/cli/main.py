@@ -17,7 +17,7 @@ from lunavox.build.main import run_build
 from lunavox.core.deps import DEPENDENCY_GROUPS, DependencyPolicy, ensure_dependency_group, missing_modules
 from lunavox.core.project import resolve_project_root
 from lunavox.core.ui import console
-from lunavox.model import ModelDownloader, ModelSetupPipeline, Models
+from lunavox.model import ModelDownloader, ModelConvertPipeline, Models
 
 app = typer.Typer(no_args_is_help=True, help="LunaVox unified CLI")
 
@@ -79,7 +79,7 @@ def main(
     )
 
 
-def _setup_internal(state: RuntimeState, model: str, models_dir: str, force: bool) -> None:
+def _convert_internal(state: RuntimeState, model: str, models_dir: str, force: bool) -> None:
     _ensure_convert_deps(state)
     models = Models(state.project_root)
     cfg = models.by_name(model)
@@ -96,8 +96,8 @@ def _setup_internal(state: RuntimeState, model: str, models_dir: str, force: boo
         cfg.source = ModelDownloader.download(model)
 
     target_dir = Path(models_dir).resolve() if models_dir else cfg.dest.resolve()
-    pipeline = ModelSetupPipeline(state.project_root)
-    pipeline.setup(cfg, target_dir, force=force)
+    pipeline = ModelConvertPipeline(state.project_root)
+    pipeline.convert(cfg, target_dir, force=force)
 
 
 def _build_internal(
@@ -119,16 +119,72 @@ def _build_internal(
     )
 
 
-@app.command("setup")
-def setup_command(
+@app.command("convert")
+def convert_command(
     ctx: typer.Context,
-    model: str = typer.Option("base_small", "--model", help="Model variant"),
+    model: Optional[str] = typer.Option(None, "--model", help="Model variant (id)"),
     models_dir: str = typer.Option("", "--models-dir", help="Override output models directory"),
     force: bool = typer.Option(False, "--force", help="Force reconversion"),
+    all_models: bool = typer.Option(False, "--all", help="Convert all available models"),
 ) -> None:
+    """Convert source model weights into LunaVox runtime artifacts."""
     state = _state(ctx)
-    _setup_internal(state, model=model, models_dir=models_dir, force=force)
-    console.print("[success]Setup completed successfully.[/success]")
+    
+    options = [
+        ("base_small", "Qwen3-TTS-12Hz-0.6B-Base"),
+        ("custom_small", "Qwen3-TTS-12Hz-0.6B-CustomVoice"),
+        ("base", "Qwen3-TTS-12Hz-1.7B-Base"),
+        ("custom", "Qwen3-TTS-12Hz-1.7B-CustomVoice"),
+        ("design", "Qwen3-TTS-12Hz-1.7B-VoiceDesign"),
+    ]
+
+    selected_keys = []
+
+    if all_models:
+        selected_keys = [opt[0] for opt in options]
+    elif model:
+        selected_keys = [model]
+    else:
+        # Interactive selection
+        console.print("\n[bold cyan]═══ Model Selection ═══[/]")
+        for i, (key, display) in enumerate(options, 1):
+            console.print(f"  [bold]{i}) {display}[/]")
+        
+        console.print(f"  [bold]{len(options) + 1}) ALL MODELS[/]")
+        console.print("  [bold]0) Cancel[/]")
+        
+        choice = typer.prompt("\nSelect a model to convert", default="1")
+        if choice == "0":
+            console.print("[warn]Cancelled.[/]")
+            return
+        
+        try:
+            idx = int(choice) - 1
+            if idx == len(options): # All models
+                selected_keys = [opt[0] for opt in options]
+            elif 0 <= idx < len(options):
+                selected_keys = [options[idx][0]]
+            else:
+                raise ValueError()
+        except (ValueError, IndexError):
+            raise RuntimeError("Invalid selection.")
+
+    for key in selected_keys:
+        console.print(Panel(f"Converting Model: [bold]{key}[/]", style="stage", expand=False))
+        _convert_internal(state, model=key, models_dir=models_dir, force=force)
+    
+    console.print("[success]Conversion process completed.[/")
+
+
+@app.command("pull-model")
+def pull_model_command(
+    ctx: typer.Context,
+    model: str = typer.Option("base_small", "--model", help="Model variant"),
+) -> None:
+    """Download pre-converted runtime artifacts (GGUF/ONNX) from HuggingFace."""
+    state = _state(ctx)
+    ModelDownloader.download_converted_model(model, state.project_root)
+    console.print(f"[success]Model '{model}' pulled successfully.[/success]")
 
 
 @app.command("build")
@@ -158,7 +214,7 @@ def bootstrap_command(
     portable: bool = typer.Option(False, "--portable", help="Bundle system runtime dependencies"),
 ) -> None:
     state = _state(ctx)
-    _setup_internal(state, model=model, models_dir=models_dir, force=force)
+    _convert_internal(state, model=model, models_dir=models_dir, force=force)
     _build_internal(state, clean=clean, j=j, verify=verify, toolchain=toolchain, portable=portable)
     console.print("[success]Bootstrap completed successfully.[/success]")
 
