@@ -1,0 +1,81 @@
+{
+  "libraries": {
+    "onnx": {
+      "display_name": "ONNX Runtime v1.24.4",
+      "version": "1.24.4",
+      "backends": {
+        "win_cpu": "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-win-x64-1.24.4.zip",
+        "win_cuda12": "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-win-x64-gpu-1.24.4.zip",
+        "win_cuda13": "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-win-x64-gpu_cuda13-1.24.4.zip",
+        "win_directml": "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime.directml/1.24.4/microsoft.ml.onnxruntime.directml.1.24.4.nupkg",
+        "linux_cpu": "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-x64-1.24.4.tgz",
+        "linux_cuda12": "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-linux-x64-gpu-1.24.4.tgz",
+        "macos_arm64": "https://github.com/microsoft/onnxruntime/releases/download/v1.24.4/onnxruntime-osx-arm64-1.24.4.tgz"
+      }
+    },
+    "llama": {
+      "display_name": "Llama.cpp Runtime b8470",
+      "version": "b8470",
+      "backends": {
+        "win_cpu": "https://github.com/ggml-org/llama.cpp/releases/download/b8470/llama-b8470-bin-win-cpu-x64.zip",
+        "win_cuda12": "https://github.com/ggml-org/llama.cpp/releases/download/b8470/llama-b8470-bin-win-cuda-12.4-x64.zip",
+        "win_cuda13": "https://github.com/ggml-org/llama.cpp/releases/download/b8470/llama-b8470-bin-win-cuda-13.1-x64.zip",
+        "win_vulkan": "https://github.com/ggml-org/llama.cpp/releases/download/b8470/llama-b8470-bin-win-vulkan-x64.zip",
+        "linux_cpu": "https://github.com/ggml-org/llama.cpp/releases/download/b8470/llama-b8470-bin-ubuntu-x64.tar.gz",
+        "linux_cuda12": "https://github.com/ai-dock/llama.cpp-cuda/releases/download/b8493/llama.cpp-b8493-cuda-12.8.tar.gz",
+        "macos_arm64": "https://github.com/ggml-org/llama.cpp/releases/download/b8470/llama-b8470-bin-macos-arm64.tar.gz"
+      }
+    }
+  },
+  "platforms": {
+    "win_cuda13": {
+      "display_name": "Windows (NVIDIA CUDA 13.x)",
+      "components": {
+        "onnx": "win_cuda13",
+        "llama": "win_cuda13"
+      }
+    },
+    "win_cuda12": {
+      "display_name": "Windows (NVIDIA CUDA 12.x)",
+      "components": {
+        "onnx": "win_cuda12",
+        "llama": "win_cuda12"
+      }
+    },
+    "win_vulkan": {
+      "display_name": "Windows (Universal GPU - ORT(DML)/GGML(Vulkan))",
+      "components": {
+        "onnx": "win_directml",
+        "llama": "win_vulkan"
+      }
+    },
+    "win_cpu": {
+      "display_name": "Windows (CPU Only)",
+      "components": {
+        "onnx": "win_cpu",
+        "llama": "win_cpu"
+      }
+    },
+    "linux_cuda12": {
+      "display_name": "Linux (NVIDIA CUDA 12.x)",
+      "components": {
+        "onnx": "linux_cuda12",
+        "llama": "linux_cuda12"
+      }
+    },
+    "linux_cpu": {
+      "display_name": "Linux (CPU Only)",
+      "components": {
+        "onnx": "linux_cpu",
+        "llama": "linux_cpu"
+      }
+    },
+    "macos_arm64": {
+      "display_name": "macOS (Apple Silicon / Metal)",
+      "components": {
+        "onnx": "macos_arm64",
+        "llama": "macos_arm64"
+      }
+    }
+  }
+}
