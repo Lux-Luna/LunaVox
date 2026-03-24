@@ -29,7 +29,10 @@ from safetensors import safe_open
 from tqdm import tqdm
 
 # Add gguf-py to path (if available)
-GGUF_PY_PATH = Path(__file__).resolve().parents[2] / "gguf-py"
+PROJECT_ROOT = Path(
+    os.environ.get("LUNAVOX_PROJECT_ROOT", str(Path(__file__).resolve().parents[4]))
+).resolve()
+GGUF_PY_PATH = PROJECT_ROOT / "gguf-py"
 try:
     if GGUF_PY_PATH.exists():
         sys.path.insert(0, str(GGUF_PY_PATH))
@@ -255,7 +258,7 @@ class Qwen3TTSConverter:
         if self._ggml_quant_lib is not None:
             return
 
-        repo_root = Path(__file__).resolve().parents[2]
+        repo_root = PROJECT_ROOT
         env_path = os.environ.get("QWEN3_TTS_GGML_BASE_LIB", "").strip()
         if not env_path:
             lib_dir = os.environ.get("QWEN3_TTS_LIB_DIR", "").strip()

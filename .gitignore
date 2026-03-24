@@ -5,6 +5,8 @@ cmake-build-*/
 _tmp_build/
 _tmp_onnx_export/
 _tmp_onnx_steps/
+_tmp_tests/
+_pip_tmp/
 .hf_home/
 *.o
 *.a
@@ -42,6 +44,5 @@ __pycache__/
 Thumbs.db
 
 lib/
-docs/
 代办.txt
 logs/

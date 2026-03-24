@@ -13,7 +13,6 @@ from onnxruntime.quantization import QuantType, quantize_dynamic
 from onnxruntime.transformers.float16 import convert_float_to_float16
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = SCRIPT_DIR.parents[1]
 HF_EXPORT_DIR = SCRIPT_DIR / "hf_export"
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 if hasattr(sys.stdout, "reconfigure"):
@@ -25,13 +24,13 @@ if hasattr(sys.stdout, "reconfigure"):
 if str(HF_EXPORT_DIR) not in sys.path:
     sys.path.insert(0, str(HF_EXPORT_DIR))
 
-from onnx_export_wrappers import (  # noqa: E402
+from .onnx_export_wrappers import (  # noqa: E402
     CodecEncoderExportWrapper,
     SpeakerEncoderExportWrapper,
     StatefulDecoderDynamoCombined,
 )
-from speaker_encoder_local import load_speaker_encoder_from_base_dir  # noqa: E402
-from tokenizer_12hz.modeling_qwen3_tts_tokenizer_v2 import (  # noqa: E402
+from .speaker_encoder_local import load_speaker_encoder_from_base_dir  # noqa: E402
+from .hf_export.tokenizer_12hz.modeling_qwen3_tts_tokenizer_v2 import (  # noqa: E402
     Qwen3TTSTokenizerV2Model,
 )
 

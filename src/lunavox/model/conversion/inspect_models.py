@@ -5,6 +5,7 @@ Outputs comprehensive information for GGUF conversion planning.
 """
 
 import json
+import os
 from pathlib import Path
 from safetensors import safe_open
 
@@ -190,7 +191,9 @@ def categorize_tensors(tensor_info: dict, model_name: str):
 
 
 def main():
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = Path(
+        os.environ.get("LUNAVOX_PROJECT_ROOT", str(Path(__file__).resolve().parents[4]))
+    ).resolve()
     base_dir = project_root / "models"
     
     # Model paths

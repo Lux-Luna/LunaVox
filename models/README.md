@@ -4,17 +4,11 @@ This directory contains converted runtime artifacts (ONNX and GGUF) for various 
 
 ## Downloading and Setup
 
-### 1. Manual Download Command
-You can download specific model sources (raw Hugging Face checkpoints) using the following command:
-```bash
-python manage.py download --model <name>  # e.g., base_small, base, custom...
-python manage.py download --all           # Download all supported models
-```
+### 1. Automatic Source Download in `setup`
+`lunavox setup` is the only model preparation entrypoint.  
+If required Hugging Face source weights are missing, CLI prompts in English and downloads after confirmation.
 
-### 2. Automatic Download
-The `manage.py convert` (and `setup`) commands are integrated with an automatic downloader. If the required Hugging Face source weights are missing from your local cache, they will be automatically pulled from the Hugging Face Hub (using `snapshot_download`) before the conversion begins.
-
-### 3. Model Cache
+### 2. Model Cache
 Original model weights are cached in the standard Hugging Face directory:
 `~/.cache/huggingface/hub/models--Qwen--...`
 

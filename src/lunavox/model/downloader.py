@@ -1,15 +1,9 @@
 from __future__ import annotations
 from pathlib import Path
 from huggingface_hub import snapshot_download
+from .config import MODEL_REPOS
 
-# Define model repo mapping (matching model_config.py's repo names)
-REPO_MAP = {
-    "base": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
-    "custom": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
-    "design": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
-    "base_small": "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
-    "custom_small": "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
-}
+REPO_MAP = {name: f"Qwen/{repo}" for name, repo in MODEL_REPOS.items()}
 
 class ModelDownloader:
     """Download a specific model from HF Hub."""

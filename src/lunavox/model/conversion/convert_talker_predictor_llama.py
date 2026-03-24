@@ -21,9 +21,13 @@ import torch
 from safetensors.torch import load_file, save_file
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-HF_EXPORT_DIR = REPO_ROOT / "tools" / "model_manager" / "conversion" / "hf_export"
-LLAMA_QUANT = REPO_ROOT / "lib" / "llama" / "llama-quantize.exe"
+REPO_ROOT = Path(
+    os.environ.get("LUNAVOX_PROJECT_ROOT", str(Path(__file__).resolve().parents[4]))
+).resolve()
+HF_EXPORT_DIR = Path(__file__).resolve().parent / "hf_export"
+LLAMA_QUANT = REPO_ROOT / "lib" / "llama" / (
+    "llama-quantize.exe" if os.name == "nt" else "llama-quantize"
+)
 
 
 def _ensure_hf_export_present() -> None:
