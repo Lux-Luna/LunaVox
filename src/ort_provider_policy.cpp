@@ -32,8 +32,17 @@ bool append_cpu_provider(Ort::SessionOptions & opts, std::string & error_msg) {
 
 bool append_cuda_provider(Ort::SessionOptions & opts, std::string & error_msg) {
     try {
-        // Generic approach if OrtCUDAProviderOptions is problematic
-        opts.AppendExecutionProvider("CUDAExecutionProvider", {});
+        // CUDA is not supported by the generic provider-name API in ORT 1.24.
+        Ort::CUDAProviderOptions cuda_opts;
+        // The decoder graph is convolution-heavy and includes 1D convs. Use the
+        // nc1d padding mode recommended by ORT for better cuDNN coverage.
+        cuda_opts.Update({
+            {"device_id", "0"},
+            {"cudnn_conv_algo_search", "DEFAULT"},
+            {"cudnn_conv_use_max_workspace", "1"},
+            {"cudnn_conv1d_pad_to_nc1d", "1"},
+        });
+        opts.AppendExecutionProvider_CUDA_V2(*cuda_opts);
         return true;
     } catch (const std::exception & e) {
         error_msg = e.what(); return false;
@@ -148,7 +157,7 @@ bool apply_ort_provider_policy(
             std::string target = intent;
             size_t pos = target.find("ExecutionProvider");
             if (pos != std::string::npos) target = target.substr(0, pos);
-            LOG_WARN("ONNX Runtime dependency (%s) is incomplete, falling back to CPU.", target.c_str());
+            LOG_WARN("ONNX Runtime dependency (%s) is incomplete: %s. Falling back to CPU.", target.c_str(), detail.c_str());
         }
         append_cpu_provider(opts, detail);
         policy_summary = "CPUExecutionProvider";
