@@ -1,124 +1,126 @@
-# LunaVox CLI 指令汇总手册
+# 🌌 LunaVox CLI 完整指令手册
 
-本文档汇总了 LunaVox 统一命令行界面 (CLI) 的所有可用指令及其参数说明。
-
-## 全局参数 (Global Options)
-
-这些参数适用于所有 `lunavox` 命令，且应置于子命令之前。
-
-- `--project-root <PATH>`: 手动指定 LunaVox 项目根目录。
-- `--yes`: 自动确认所有安装或下载提示（非交互模式必需）。
-- `--no-install`: 禁用缺失 Python 依赖项的自动安装功能。
-- `--verbose`: 启用详细日志输出，方便排查问题。
+本文档提供 LunaVox 统一命令行界面 (CLI) 的详细说明。按照执行流程排序，您可以根据需求选择一键全自动引导或手动分步配置。
 
 ---
 
-## 指令详情
+## 🛠️ 1. 环境准备与诊断 (Preparation)
 
-### 1. `convert` - 模型本地转换
-从原始模型权重（SafeTensors）转换为 LunaVox 运行所需的优化格式（ONNX/GGUF）。
+在进行任何模型工作之前，建议运行此工具以确保当前系统环境（CMake, C++, Python 依赖）已就绪。
 
-**用法:**
-```powershell
-lunavox convert [OPTIONS]
-```
+### `doctor` - 系统体检
+检查项目结构、工具链路径及运行时库的完整性。
 
-**参数:**
-- `--model <ID>`: 指定要转换的模型变体 ID（如 `base_small`, `base`, `design` 等）。
-- `--models-dir <PATH>`: 覆盖默认的模型输出目录。
-- `--force`: 强制重新转换，即使目标文件已存在。
-- `--all`: 转换所有预定义的模型变体。
-- 若不带参数运行，将进入**交互式模型选择**界面。
-
----
-
-### 2. `pull-model` - 拉取预转换模型
-直接从 HuggingFace 仓库下载已经转换好的分发包（GGUF/ONNX），无需本地进行耗时的转换过程。
-
-**用法:**
-```powershell
-lunavox pull-model [OPTIONS]
-```
-
-**参数:**
-- `--model <ID>`: 指定要下载的模型变体。
-- 若不带参数运行，将进入**交互式拉取选择**界面。
-
----
-
-### 3. `build` - 构建推理引擎
-编译 LunaVox C++ 推理引擎。
-
-**用法:**
-```powershell
-lunavox build [OPTIONS]
-```
-
-**参数:**
-- `--clean`: 在构建前先清理构建目录。
-- `--j <NUM>`: 并行构建任务数量（默认为 4）。
-- `--toolchain <STR>`: 强制指定使用的编译器工具链（默认为 `auto`）。
-
----
-
-### 4. `bootstrap` - 一键引导设置
-引导式交互流程，依次执行：拉取模型 -> 下载二进制依赖 -> 构建引擎 -> 推理测试。适合首次安装。
-
-**用法:**
-```powershell
-lunavox bootstrap [OPTIONS]
-```
-
-**参数:**
-- `--model <ID>`: 指定使用的模型变体。
-- `--platform <KEY>`: 指定目标平台（如 `win_cuda`）。
-- `--force`: 强制重新转换模型。
-- `--clean`: 清理构建目录。
-- `--j <NUM>`: 并行构建任务数。
-- `--toolchain <STR>`: 指定工具链。
-
----
-
-### 5. `download-libs` - 下载库依赖
-下载对应平台的二进制依赖项，如 ONNX Runtime 或 Llama.cpp。
-
-**用法:**
-```powershell
-lunavox download-libs [OPTIONS]
-```
-
-**参数:**
-- `--platform`, `-p <KEY>`: 指定目标平台（如 `win_cuda`, `win_vulkan`, `linux_cpu` 等）。
-- `--lib <NAME>`: 仅下载特定库（`onnx` 或 `llama`）。
-- `--backend <NAME>`: 为特定库指定后端驱动。
-- 若不指定平台，将进入**交互式平台选择**界面。
-
----
-
-### 6. `doctor` - 环境诊断
-检查当前开发环境和依赖项状态，并尝试修复常见问题。
-
-**用法:**
-```powershell
+**命令示例:**
+```bash
 lunavox doctor
 ```
 
-**功能:**
-- 检查项目目录结构。
-- 探测 `cmake` 工具。
-- 验证运行时库（Llama/ONNX）是否缺失。
-- 检查 Python 转换依赖包是否安装完整。
+**检查项包括:**
+- 项目根目录及其关键子目录（`src`, `lib`, `models`）是否存在。
+- `cmake` 是否在系统 PATH 中。
+- ONNX Runtime SDK 头文件与 Llama.cpp 运行时库是否缺失。
+- `[convert]` 选装包是否已通过 pip 安装。
 
 ---
 
-## 模型变体 ID 参考表
+## 🚀 2. 核心全自动引导 (The One-Key Solution)
 
-在执行 `convert`, `pull-model` 或 `bootstrap` 时，可使用以下 `--model` ID：
+对于首次安装 LunaVox 或想要快速开始推理的用户，建议使用此命令。
 
-| 模型 ID | 说明 |
-| :--- | :--- |
-| `base_small` | Qwen3-TTS 0.6B 基础版 |
-| `custom_small` | Qwen3-TTS 0.6B 定制音色版 |
-| `base` | Qwen3-TTS 1.7B 基础版 |
-| `custom` | Qwen3-TTS 1.7B 定制音色版 |
-| `design` | Qwen3-TTS 1.7B 音色设计版 |
+### `bootstrap` - 一键引导设置
+这是一个高度自动化的复合指令，它会顺序执行以下任务：
+1. **Pull Model**: 从 HuggingFace 下载选定的模型。
+2. **Download Libs**: 根据您的系统自动检测并下载 ONNX/Llama 运行库。
+3. **Build**: 自动配置并编译 C++ 进入推理引擎。
+4. **Interactive Test**: 完成后开启交互式测试，让您立刻听到声音。
+
+**用法示例:**
+```bash
+# 进入全自动互动引导
+lunavox bootstrap
+
+# 或指定特定参数
+lunavox bootstrap --model base_small --platform win_cuda12
+```
+
+---
+
+## 📦 3. 模型获取方式 (Model Management)
+
+您可以选择直接下载转换好的模型（推荐），或者从原始权重进行本地转换。
+
+### `pull-model` - 拉取预转换模型 (推荐)
+直接从官方仓库同步经过 LunaVox 深度优化的运行格式（GGUF/ONNX）。
+
+**用法示例:**
+```bash
+# 开启交互式选择下载
+lunavox pull-model
+
+# 下载指定模型
+lunavox pull-model --model base_small
+```
+
+### `convert` - 模型本地转换
+如果您已经拥有 Qwen3-TTS 的原始权重（`.safetensors`），或者需要自定义转换参数，请使用此命令。
+
+**用法示例:**
+```bash
+# 本地转换
+lunavox convert --model base_small --force
+```
+*注：本地转换可能需要数分钟时间，并且需要额外部署 Python 转换环境。*
+
+---
+
+## ⚙️ 4. 手动构建流程 (Manual Setup)
+
+如果您不想使用 `bootstrap`，可以通过以下步骤手动完成环境搭建。
+
+### `download-libs` - 下载运行库
+下载特定平台的二进制核心（ONNX Runtime / Llama.cpp）。
+
+**用法示例:**
+```bash
+# 智能下载（推荐进入选择界面）
+lunavox download-libs
+
+# 手动指定平台下载
+lunavox download-libs --platform win_cuda12
+```
+
+### `build` - 编译 C++ 推理引擎
+基于 CMake 进行本地编译，生成最终的 `qwen3-tts-cli` 执行程序。
+
+**用法示例:**
+```bash
+# 极简构建
+lunavox build
+
+# 高效清理并加速构建
+lunavox build --clean --j 8
+```
+
+---
+
+## 📝 附录：模型 ID 参考表
+
+| 模型 ID | 模型全称 | 推理能力 |
+| :--- | :--- | :--- |
+| `base_small` | Qwen3-TTS 0.6B Base | 极速均衡，适合低资源设备 |
+| `custom_small` | Qwen3-TTS 0.6B Custom | 支持固定发音人 ID 切换 |
+| `base` | Qwen3-TTS 1.7B Base | 高保真度，建议使用 GPU 加速 |
+| `custom` | Qwen3-TTS 1.7B Custom | 大尺寸发音人定制模型 |
+| `design` | Qwen3-TTS 1.7B Design | 支持纯文字描述设计声音 (Prompt-to-Voice) |
+
+---
+
+## 🌍 全局参数
+
+这些参数适用于上述**所有** `lunavox` 命令：
+
+- `--project-root <PATH>`: 手动指定根目录（常用于开发环境）。
+- `--yes`: 自动确认所有风险操作和下载提示（非交互式/CI 执行必备）。
+- `--no-install`: 强制不检测/自动修复 Python 模块缺失。
+- `--verbose`: 显示构建和网络下载的详细原始输出。

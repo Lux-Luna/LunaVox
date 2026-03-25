@@ -292,8 +292,6 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
     const std::string required[] = {
         talker_model_path_,
         predictor_model_path_,
-        speaker_onnx_path_,
-        codec_encoder_onnx_path_,
         decoder_onnx_path_,
         text_emb,
         codec_emb0,
@@ -304,6 +302,15 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
             error_msg_ = "Model layout missing required file: " + p;
             return false;
         }
+    }
+
+    // Optional encoders (only needed for on-the-fly .wav voice cloning)
+    bool has_speaker_enc = file_exists_readable(speaker_onnx_path_);
+    bool has_codec_enc = file_exists_readable(codec_encoder_onnx_path_);
+    if (!has_speaker_enc || !has_codec_enc) {
+        LOG_INFO("  Encoders: missing or partial (%s/%s). .wav cloning will be disabled.", 
+                  has_speaker_enc ? "speaker_ok" : "speaker_missing",
+                  has_codec_enc ? "codec_ok" : "codec_missing");
     }
 
     if (!assets_.load(model_dir)) {

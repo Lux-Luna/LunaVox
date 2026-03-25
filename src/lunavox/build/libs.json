@@ -28,18 +28,11 @@
     }
   },
   "platforms": {
-    "win_cuda13": {
-      "display_name": "Windows (NVIDIA CUDA 13.x)",
+    "win_cpu": {
+      "display_name": "Windows (CPU Only)",
       "components": {
-        "onnx": "win_cuda13",
-        "llama": "win_cuda13"
-      }
-    },
-    "win_cuda12": {
-      "display_name": "Windows (NVIDIA CUDA 12.x)",
-      "components": {
-        "onnx": "win_cuda12",
-        "llama": "win_cuda12"
+        "onnx": "win_cpu",
+        "llama": "win_cpu"
       }
     },
     "win_vulkan": {
@@ -49,11 +42,18 @@
         "llama": "win_vulkan"
       }
     },
-    "win_cpu": {
-      "display_name": "Windows (CPU Only)",
+    "win_cuda12": {
+      "display_name": "Windows (NVIDIA CUDA 12.x)",
       "components": {
-        "onnx": "win_cpu",
-        "llama": "win_cpu"
+        "onnx": "win_cuda12",
+        "llama": "win_cuda12"
+      }
+    },
+    "win_cuda13": {
+      "display_name": "Windows (NVIDIA CUDA 13.x)",
+      "components": {
+        "onnx": "win_cuda13",
+        "llama": "win_cuda13"
       }
     },
     "linux_cuda12": {
