@@ -28,7 +28,9 @@ struct RuntimeModelProfile {
     bool instruct_support = false;
 
     // Talker runtime limits / token semantics.
+    // talker_n_ctx is runtime cap, talker_n_ctx_train is model training limit.
     int32_t talker_n_ctx = 0;
+    int32_t talker_n_ctx_train = 0;
     int32_t predictor_n_ctx = 0;
     int32_t codec_id_start = 0;
     int32_t codec_id_end = 2048; // exclusive
@@ -80,6 +82,12 @@ struct RuntimeModelProfile {
         }
         if (talker_n_ctx <= 0) {
             return fail("talker_n_ctx must be positive");
+        }
+        if (talker_n_ctx_train <= 0) {
+            return fail("talker_n_ctx_train must be positive");
+        }
+        if (talker_n_ctx > talker_n_ctx_train) {
+            return fail("talker_n_ctx must be <= talker_n_ctx_train");
         }
         if (predictor_n_ctx <= 0) {
             return fail("predictor_n_ctx must be positive");

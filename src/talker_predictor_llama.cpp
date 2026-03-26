@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstring>
+#include <limits>
 
 namespace qwen3_tts {
 
@@ -76,19 +78,32 @@ bool TalkerPredictorLlama::load(
         return false;
     }
 
-    const int32_t talker_n_ctx = profile_.talker_n_ctx;
-    if (talker_n_ctx <= 0) {
+    talker_ctx_cap_ = profile_.talker_n_ctx;
+    talker_ctx_train_ = profile_.talker_n_ctx_train;
+    n_threads_ = n_threads > 0 ? n_threads : 4;
+    if (talker_ctx_cap_ <= 0) {
         error_msg_ = "Talker context size is invalid in runtime profile";
         return false;
     }
-    if (talker_model_.n_ctx_train() > 0 && talker_model_.n_ctx_train() < talker_n_ctx) {
-        error_msg_ = "Talker context in profile exceeds model metadata";
+    if (talker_ctx_train_ <= 0) {
+        error_msg_ = "Talker train context size is invalid in runtime profile";
         return false;
+    }
+    if (talker_ctx_cap_ > talker_ctx_train_) {
+        error_msg_ = "talker_n_ctx in profile exceeds talker_n_ctx_train";
+        return false;
+    }
+    if (talker_model_.n_ctx_train() > 0) {
+        if (talker_model_.n_ctx_train() < talker_ctx_cap_) {
+            error_msg_ = "Talker context cap in profile exceeds model metadata";
+            return false;
+        }
+        if (talker_model_.n_ctx_train() < talker_ctx_train_) {
+            error_msg_ = "Talker train context in profile exceeds model metadata";
+            return false;
+        }
     }
 
-    if (!talker_ctx_.init(talker_model_, talker_n_ctx, n_threads, true, error_msg_)) {
-        return false;
-    }
     const int32_t predictor_n_ctx = profile_.predictor_n_ctx;
     if (predictor_n_ctx <= 0) {
         error_msg_ = "Predictor context size is invalid in runtime profile";
@@ -99,13 +114,18 @@ bool TalkerPredictorLlama::load(
         return false;
     }
 
-    if (!predictor_ctx_.init(predictor_model_, predictor_n_ctx, n_threads, false, error_msg_)) {
+    if (!predictor_ctx_.init(
+            predictor_model_,
+            predictor_n_ctx,
+            n_threads_,
+            false,
+            64,
+            64,
+            "predictor",
+            error_msg_)) {
         return false;
     }
 
-    if (!talker_batch_.init(talker_n_ctx, hidden_dim_, 1, error_msg_)) {
-        return false;
-    }
     if (!predictor_batch_.init(2, predictor_dim_, 1, error_msg_)) {
         return false;
     }
@@ -113,6 +133,10 @@ bool TalkerPredictorLlama::load(
     loaded_ = true;
     cur_pos_ = 0;
     last_eos_step_ = -1;
+    last_ctx_required_ = 0;
+    last_ctx_allocated_ = 0;
+    last_ctx_cap_ = talker_ctx_cap_;
+    last_ctx_overflow_ = false;
     return true;
 }
 
@@ -131,7 +155,100 @@ void TalkerPredictorLlama::unload() {
     hidden_dim_ = 0;
     predictor_dim_ = 0;
     codebook_vocab_size_ = 2048;
+    n_threads_ = 4;
+    talker_ctx_cap_ = 0;
+    talker_ctx_train_ = 0;
+    talker_batch_cap_ = 0;
+    last_ctx_required_ = 0;
+    last_ctx_allocated_ = 0;
+    last_ctx_cap_ = 0;
+    last_ctx_overflow_ = false;
     profile_ = RuntimeModelProfile{};
+}
+
+int32_t TalkerPredictorLlama::estimate_prompt_tokens(
+    const std::vector<int32_t> & text_tokens,
+    const std::vector<int32_t> & ref_text_tokens,
+    const std::vector<int32_t> & role_prefix_tokens,
+    const std::vector<int32_t> & instruct_tokens,
+    bool has_speaker_embedding,
+    bool use_clone_icl,
+    int32_t n_ref_frames,
+    int32_t language_id) const {
+    int64_t total = 0;
+    total += (int64_t) instruct_tokens.size();
+    total += (int64_t) role_prefix_tokens.size();
+    total += (language_id >= 0) ? 4 : 3; // protocol tokens
+    total += has_speaker_embedding ? 1 : 0;
+    total += 1; // tts_bos + codec_pad bridge
+
+    if (use_clone_icl) {
+        total += (int64_t) ref_text_tokens.size();
+        total += (int64_t) text_tokens.size();
+        total += 1; // tts_eos + codec_pad
+        total += 1; // tts_pad + codec_bos
+        total += std::max(0, n_ref_frames);
+    } else {
+        total += (int64_t) text_tokens.size();
+        total += 1; // tts_eos + codec_pad
+        total += 1; // tts_pad + codec_bos
+    }
+
+    if (total <= 0) {
+        return 0;
+    }
+    if (total > (int64_t) std::numeric_limits<int32_t>::max()) {
+        return std::numeric_limits<int32_t>::max();
+    }
+    return (int32_t) total;
+}
+
+bool TalkerPredictorLlama::ensure_talker_runtime(int32_t request_ctx) {
+    if (request_ctx <= 0) {
+        error_msg_ = "Invalid talker request context";
+        return false;
+    }
+    if (talker_ctx_cap_ <= 0) {
+        error_msg_ = "Invalid talker context cap";
+        return false;
+    }
+    if (request_ctx > talker_ctx_cap_) {
+        error_msg_ = "Requested talker context exceeds configured cap";
+        return false;
+    }
+
+    const bool need_new_ctx = !talker_ctx_.is_ready() || talker_ctx_.n_ctx() < request_ctx;
+    if (need_new_ctx) {
+        talker_batch_.free();
+        talker_batch_cap_ = 0;
+        talker_ctx_.free();
+        if (!talker_ctx_.init(
+                talker_model_,
+                request_ctx,
+                n_threads_,
+                true,
+                2048,
+                512,
+                "talker",
+                error_msg_)) {
+            return false;
+        }
+    }
+
+    const int64_t desired_batch_cap64 = (int64_t) talker_ctx_.n_ctx() * 4LL;
+    if (desired_batch_cap64 <= 0 || desired_batch_cap64 > (int64_t) std::numeric_limits<int32_t>::max()) {
+        error_msg_ = "Talker batch capacity overflow";
+        return false;
+    }
+    const int32_t desired_batch_cap = (int32_t) desired_batch_cap64;
+    if (!talker_batch_.is_ready() || talker_batch_cap_ < desired_batch_cap) {
+        talker_batch_.free();
+        if (!talker_batch_.init(desired_batch_cap, hidden_dim_, 1, error_msg_)) {
+            return false;
+        }
+        talker_batch_cap_ = desired_batch_cap;
+    }
+    return true;
 }
 
 bool TalkerPredictorLlama::sample_with_mask(
@@ -550,6 +667,11 @@ bool TalkerPredictorLlama::generate(
     int32_t predictor_seed,
     std::vector<int32_t> & output_codes) {
     output_codes.clear();
+    last_ctx_required_ = 0;
+    last_ctx_allocated_ = 0;
+    last_ctx_cap_ = talker_ctx_cap_;
+    last_ctx_overflow_ = false;
+
     if (!loaded_) {
         error_msg_ = "TalkerPredictorLlama is not loaded";
         return false;
@@ -571,6 +693,65 @@ bool TalkerPredictorLlama::generate(
         return false;
     }
 
+    const bool use_clone_icl = ref_codes && n_ref_frames > 0 && !ref_text_tokens.empty();
+    const int32_t prompt_tokens = estimate_prompt_tokens(
+        text_tokens,
+        ref_text_tokens,
+        role_prefix_tokens,
+        instruct_tokens,
+        speaker_embedding != nullptr,
+        use_clone_icl,
+        n_ref_frames,
+        language_id);
+    if (prompt_tokens <= 0) {
+        error_msg_ = "Failed to estimate prompt token budget";
+        return false;
+    }
+    const int64_t required_ctx64 = (int64_t) prompt_tokens + (int64_t) max_frames + 32LL;
+    if (required_ctx64 > (int64_t) std::numeric_limits<int32_t>::max()) {
+        error_msg_ = "Context requirement overflow";
+        return false;
+    }
+    const int32_t required_ctx = (int32_t) required_ctx64;
+    last_ctx_required_ = required_ctx;
+    last_ctx_cap_ = talker_ctx_cap_;
+    if (required_ctx > talker_ctx_cap_) {
+        last_ctx_overflow_ = true;
+        char buf[256];
+        std::snprintf(
+            buf,
+            sizeof(buf),
+            "Talker context overflow: required=%d exceeds cap=%d (prompt=%d, requested_max_frames=%d)",
+            required_ctx,
+            talker_ctx_cap_,
+            prompt_tokens,
+            max_frames);
+        error_msg_ = buf;
+        return false;
+    }
+
+    int32_t request_ctx = ((required_ctx + 255) / 256) * 256;
+    request_ctx = std::max(512, request_ctx);
+    request_ctx = std::min(talker_ctx_cap_, request_ctx);
+    if (request_ctx < required_ctx) {
+        last_ctx_overflow_ = true;
+        char buf[256];
+        std::snprintf(
+            buf,
+            sizeof(buf),
+            "Talker context allocation failed to satisfy request: allocated=%d required=%d cap=%d",
+            request_ctx,
+            required_ctx,
+            talker_ctx_cap_);
+        error_msg_ = buf;
+        return false;
+    }
+
+    if (!ensure_talker_runtime(request_ctx)) {
+        return false;
+    }
+    last_ctx_allocated_ = talker_ctx_.n_ctx();
+
     talker_ctx_.clear_kv_cache();
     predictor_ctx_.clear_kv_cache();
     cur_pos_ = 0;
@@ -590,13 +771,22 @@ bool TalkerPredictorLlama::generate(
         return false;
     }
 
-    const int32_t ctx_cap = talker_ctx_.n_ctx();
-    const int32_t decode_budget = ctx_cap - cur_pos_;
+    const int32_t decode_budget = talker_ctx_.n_ctx() - cur_pos_;
     if (decode_budget <= 0) {
         error_msg_ = "No decode budget left after prompt prefill";
         return false;
     }
-    const int32_t effective_max_frames = std::min(max_frames, decode_budget);
+    if (max_frames > decode_budget) {
+        char buf[256];
+        std::snprintf(
+            buf,
+            sizeof(buf),
+            "Talker decode budget overflow: requested_max_frames=%d exceeds remaining_ctx=%d",
+            max_frames,
+            decode_budget);
+        error_msg_ = buf;
+        return false;
+    }
 
     std::string sampler_err;
     const uint32_t talker_rng_seed = choose_seed(talker_seed);
@@ -655,7 +845,7 @@ bool TalkerPredictorLlama::generate(
     }
 
     int32_t generated_frames = 0;
-    for (int32_t step = 0; step < effective_max_frames; ++step) {
+    for (int32_t step = 0; step < max_frames; ++step) {
         int32_t code0_token = -1;
         const int32_t * allow_tokens = (generated_frames >= min_new_frames_before_eos) ? allow_special : nullptr;
         const int32_t n_allow = (generated_frames >= min_new_frames_before_eos) ? n_allow_special : 0;

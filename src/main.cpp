@@ -714,6 +714,12 @@ int main(int argc, char ** argv) {
                     "      \"pcm_peak\": %.6f,\n"
                     "      \"pcm_rms\": %.6f\n"
                     "    },\n"
+                    "    \"ctx\": {\n"
+                    "      \"ctx_required\": %d,\n"
+                    "      \"ctx_allocated\": %d,\n"
+                    "      \"ctx_cap\": %d,\n"
+                    "      \"ctx_overflow\": %s\n"
+                    "    },\n"
                     "    \"gen\": {\n"
                     "      \"code_frames\": %d,\n"
                     "      \"codebooks\": %d,\n"
@@ -742,6 +748,10 @@ int main(int argc, char ** argv) {
                     (unsigned long long) r.mem_phys_peak_bytes,
                     r.pcm_peak,
                     r.pcm_rms,
+                    r.ctx_required,
+                    r.ctx_allocated,
+                    r.ctx_cap,
+                    r.ctx_overflow ? "true" : "false",
                     r.gen_code_frames,
                     r.gen_codebooks,
                     r.gen_code_min,

@@ -226,17 +226,19 @@ class ModelConvertPipeline:
         predictor_vocab_size = codec_vocab_size * max(1, codec_num_codebooks - 1)
         talker_vocab_size = int(talker_cfg.get("vocab_size", 3072))
 
-        predictor_max_pos = int(code_pred_cfg.get("max_position_embeddings", 32768))
-        # Predictor generation uses <= codec_num_codebooks tokens per frame.
-        # Keep runtime KV budget compact and deterministic.
-        predictor_runtime_ctx = 64 if predictor_max_pos >= 64 else max(1, predictor_max_pos)
+        talker_train_ctx = int(talker_cfg.get("max_position_embeddings", 32768))
+        # Runtime cap is intentionally much smaller than training context to reduce KV memory.
+        talker_runtime_cap = min(2048, max(1, talker_train_ctx))
+        # Predictor generation uses <= codec_num_codebooks tokens per frame; keep fixed runtime ctx.
+        predictor_runtime_ctx = 256
 
         profile = {
             "version": 1,
             "model_type": model_type,
             "model_size": model_size,
             "instruct_support": self._instruct_support(model_type, model_size),
-            "talker_n_ctx": int(talker_cfg.get("max_position_embeddings", 32768)),
+            "talker_n_ctx": talker_runtime_cap,
+            "talker_n_ctx_train": talker_train_ctx,
             "predictor_n_ctx": predictor_runtime_ctx,
             "codec_id_start": 0,
             "codec_id_end": codec_vocab_size,

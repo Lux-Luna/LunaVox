@@ -166,7 +166,9 @@ LunaVox 自动下载 `lib/` 下合作 ONNX Runtime 与 Llama.cpp。若要手动�
 
 - `model_profile.json` is now a strict runtime contract. Missing required fields will fail model load.
 - New required profile fields include:
-  - `predictor_n_ctx`
+  - `talker_n_ctx` (runtime context cap, default `2048`)
+  - `talker_n_ctx_train` (model training context limit from source metadata)
+  - `predictor_n_ctx` (runtime context, default `256`)
   - `codec_num_codebooks` (must be `16` in current runtime)
   - `predictor_vocab_size`
 - `--mode` is optional. If omitted, runtime auto-selects mode from `model_profile.model_type`:

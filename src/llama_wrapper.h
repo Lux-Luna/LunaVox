@@ -194,7 +194,15 @@ public:
     LlamaContext() = default;
     ~LlamaContext();
 
-    bool init(LlamaModel & model, int32_t n_ctx, int32_t n_threads, bool embeddings, std::string & err);
+    bool init(
+        LlamaModel & model,
+        int32_t n_ctx,
+        int32_t n_threads,
+        bool embeddings,
+        int32_t n_batch_cap,
+        int32_t n_ubatch_cap,
+        const char * tag,
+        std::string & err);
     void free();
     bool is_ready() const { return ctx_ != nullptr; }
 
@@ -233,6 +241,7 @@ public:
 
     llama_batch & raw() { return batch_; }
     const llama_batch & raw() const { return batch_; }
+    int32_t capacity() const { return max_tokens_; }
 
 private:
     llama_batch batch_{};

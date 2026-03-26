@@ -1,6 +1,7 @@
 #include "llama_wrapper.h"
 #include "logger.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 
@@ -224,13 +225,27 @@ LlamaContext::~LlamaContext() {
     free();
 }
 
-bool LlamaContext::init(LlamaModel & model, int32_t n_ctx, int32_t n_threads, bool embeddings, std::string & err) {
+bool LlamaContext::init(
+    LlamaModel & model,
+    int32_t n_ctx,
+    int32_t n_threads,
+    bool embeddings,
+    int32_t n_batch_cap,
+    int32_t n_ubatch_cap,
+    const char * tag,
+    std::string & err) {
     free();
     auto & lib = LlamaLibrary::instance();
     llama_context_params params = lib.llama_context_default_params();
-    params.n_ctx = (uint32_t) n_ctx;
-    params.n_batch = (uint32_t) n_ctx;
-    params.n_ubatch = (uint32_t) (n_ctx > 512 ? 512 : n_ctx);
+    const int32_t safe_ctx = std::max(1, n_ctx);
+    const int32_t safe_batch_cap = std::max(1, n_batch_cap);
+    const int32_t safe_ubatch_cap = std::max(1, n_ubatch_cap);
+    const int32_t actual_batch = std::min(safe_ctx, safe_batch_cap);
+    const int32_t actual_ubatch = std::min(actual_batch, safe_ubatch_cap);
+
+    params.n_ctx = (uint32_t) safe_ctx;
+    params.n_batch = (uint32_t) actual_batch;
+    params.n_ubatch = (uint32_t) actual_ubatch;
     params.n_seq_max = 1;
     params.embeddings = embeddings;
     params.flash_attn_type = 1;
@@ -243,8 +258,15 @@ bool LlamaContext::init(LlamaModel & model, int32_t n_ctx, int32_t n_threads, bo
         err = "llama_init_from_model failed";
         return false;
     }
-    n_ctx_ = n_ctx;
+    n_ctx_ = safe_ctx;
     n_embd_ = model.n_embd();
+    LOG_INFO(
+        "Llama context [%s]: n_ctx=%d, n_batch=%d, n_ubatch=%d, embeddings=%s",
+        tag ? tag : "default",
+        safe_ctx,
+        actual_batch,
+        actual_ubatch,
+        embeddings ? "true" : "false");
     return true;
 }
 

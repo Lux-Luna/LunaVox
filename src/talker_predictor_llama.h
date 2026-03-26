@@ -48,8 +48,23 @@ public:
         std::vector<int32_t> & output_codes);
 
     int32_t last_eos_step() const { return last_eos_step_; } // -1 means reached max_frames without EOS
+    int32_t last_ctx_required() const { return last_ctx_required_; }
+    int32_t last_ctx_allocated() const { return last_ctx_allocated_; }
+    int32_t last_ctx_cap() const { return last_ctx_cap_; }
+    bool last_ctx_overflow() const { return last_ctx_overflow_; }
 
 private:
+    bool ensure_talker_runtime(int32_t request_ctx);
+    int32_t estimate_prompt_tokens(
+        const std::vector<int32_t> & text_tokens,
+        const std::vector<int32_t> & ref_text_tokens,
+        const std::vector<int32_t> & role_prefix_tokens,
+        const std::vector<int32_t> & instruct_tokens,
+        bool has_speaker_embedding,
+        bool use_clone_icl,
+        int32_t n_ref_frames,
+        int32_t language_id) const;
+
     bool run_prefill(
         const std::vector<int32_t> & text_tokens,
         const std::vector<int32_t> & ref_text_tokens,
@@ -86,6 +101,14 @@ private:
     int32_t codebook_vocab_size_ = 2048;
     int32_t cur_pos_ = 0;
     int32_t last_eos_step_ = -1;
+    int32_t n_threads_ = 4;
+    int32_t talker_ctx_cap_ = 0;
+    int32_t talker_ctx_train_ = 0;
+    int32_t talker_batch_cap_ = 0;
+    int32_t last_ctx_required_ = 0;
+    int32_t last_ctx_allocated_ = 0;
+    int32_t last_ctx_cap_ = 0;
+    bool last_ctx_overflow_ = false;
 
     const AssetsManager * assets_ = nullptr;
     RuntimeModelProfile profile_;

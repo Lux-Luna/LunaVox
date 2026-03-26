@@ -122,6 +122,10 @@ struct tts_result {
     int32_t gen_code_max = -1;
     uint64_t gen_codes_hash = 0;
     int32_t eos_step = -1;
+    int32_t ctx_required = 0;
+    int32_t ctx_allocated = 0;
+    int32_t ctx_cap = 0;
+    bool ctx_overflow = false;
 
     float pcm_peak = 0.0f;
     float pcm_rms = 0.0f;

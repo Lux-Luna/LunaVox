@@ -455,6 +455,7 @@ bool Qwen3TTS::load_model_profile(const std::string & path) {
     if (!json_extract_int(json, "version", p.version) ||
         !json_extract_bool(json, "instruct_support", p.instruct_support) ||
         !json_extract_int(json, "talker_n_ctx", p.talker_n_ctx) ||
+        !json_extract_int(json, "talker_n_ctx_train", p.talker_n_ctx_train) ||
         !json_extract_int(json, "predictor_n_ctx", p.predictor_n_ctx) ||
         !json_extract_int(json, "codec_id_start", p.codec_id_start) ||
         !json_extract_int(json, "codec_id_end", p.codec_id_end) ||
@@ -1334,7 +1335,7 @@ tts_result Qwen3TTS::synthesize_internal(
         result.error_msg = "Talker/predictor runtime is not loaded";
         return result;
     }
-    if (!talker_predictor_.generate(
+    const bool gen_ok = talker_predictor_.generate(
             text_tokens,
             ref_text_tokens,
             role_prefix_tokens,
@@ -1354,7 +1355,12 @@ tts_result Qwen3TTS::synthesize_internal(
             params.predictor_top_k,
             params.seed,
             params.predictor_seed,
-            speech_codes)) {
+            speech_codes);
+    result.ctx_required = talker_predictor_.last_ctx_required();
+    result.ctx_allocated = talker_predictor_.last_ctx_allocated();
+    result.ctx_cap = talker_predictor_.last_ctx_cap();
+    result.ctx_overflow = talker_predictor_.last_ctx_overflow();
+    if (!gen_ok) {
         result.error_msg = "Failed to generate speech codes: " + talker_predictor_.get_error();
         return result;
     }
