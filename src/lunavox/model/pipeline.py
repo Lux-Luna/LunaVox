@@ -260,17 +260,18 @@ class ModelConvertPipeline:
             "speaker_dialects": speaker_dialects,
             "language_names": language_names,
             "language_ids": language_ids,
-            # Keep runtime defaults close to qwen3-tts-gguf inference behavior.
-            # Large unchecked values (e.g. 8k) dramatically increase risk of over-generation.
-            "default_max_new_tokens": max(1, min(int(gen_cfg.get("max_new_tokens", 300)), 400)),
-            "default_temperature": float(gen_cfg.get("temperature", 0.9)),
+            # Keep deterministic quality defaults aligned with LunaVox runtime policy.
+            "default_max_new_tokens": 400,
+            "default_temperature": 0.6,
             "default_top_p": float(gen_cfg.get("top_p", 1.0)),
             "default_top_k": int(gen_cfg.get("top_k", 50)),
             "default_repetition_penalty": float(gen_cfg.get("repetition_penalty", 1.05)),
             "default_predictor_do_sample": bool(gen_cfg.get("subtalker_dosample", True)),
-            "default_predictor_temperature": float(gen_cfg.get("subtalker_temperature", 0.9)),
+            "default_predictor_temperature": 0.6,
             "default_predictor_top_p": float(gen_cfg.get("subtalker_top_p", 1.0)),
             "default_predictor_top_k": int(gen_cfg.get("subtalker_top_k", 50)),
+            "default_seed": 42,
+            "default_predictor_seed": 45,
         }
 
         out_path.parent.mkdir(parents=True, exist_ok=True)

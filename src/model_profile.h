@@ -52,15 +52,17 @@ struct RuntimeModelProfile {
     int32_t suppress_to = 3072; // exclusive
 
     // Generation defaults from official generation_config semantics.
-    int32_t default_max_new_tokens = 2048;
-    float default_temperature = 0.9f;
+    int32_t default_max_new_tokens = 400;
+    float default_temperature = 0.6f;
     float default_top_p = 1.0f;
     int32_t default_top_k = 50;
     float default_repetition_penalty = 1.05f;
     bool default_predictor_do_sample = true;
-    float default_predictor_temperature = 0.9f;
+    float default_predictor_temperature = 0.6f;
     float default_predictor_top_p = 1.0f;
     int32_t default_predictor_top_k = 50;
+    int32_t default_seed = 42;
+    int32_t default_predictor_seed = 45;
 
     // Canonical maps (all keys lower-cased).
     std::unordered_map<std::string, int32_t> language_map;
@@ -120,6 +122,9 @@ struct RuntimeModelProfile {
         }
         if (default_repetition_penalty <= 0.0f) {
             return fail("default_repetition_penalty must be positive");
+        }
+        if (default_seed < 0 || default_predictor_seed < 0) {
+            return fail("default seeds must be non-negative");
         }
         return true;
     }

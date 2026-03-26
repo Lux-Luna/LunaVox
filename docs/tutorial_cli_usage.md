@@ -30,11 +30,10 @@
 ### 2.1 使用参考音频 (Reference Audio)
 提供原始 WAV 文件，系统会实时提取其声学特征和 Speaker Embedding。
 ```bash
-./build/qwen3-tts-cli \
-  --mode clone \
-  -m models/base_small \
-  -r ref/ref.wav \
-  -t "Hello world." \
+./build/qwen3-tts-cli `
+  -m models/base_small `
+  -r ref/ref.wav `
+  -t "Hello world." `
   -o out.wav
 ```
 

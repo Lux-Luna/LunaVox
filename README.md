@@ -169,8 +169,18 @@ LunaVox 自动下载 `lib/` 下合作 ONNX Runtime 与 Llama.cpp。若要手动�
   - `predictor_n_ctx`
   - `codec_num_codebooks` (must be `16` in current runtime)
   - `predictor_vocab_size`
+- `--mode` is optional. If omitted, runtime auto-selects mode from `model_profile.model_type`:
+  - `base -> base` (auto-switch to `clone` when `--reference` is provided)
+  - `custom -> custom`
+  - `design -> design`
 - `base + --instruct` and `0.6B models + --instruct` are hard errors (no silent ignore path).
 - Talker runtime uses `qwen3_tts_talker.q5_k.gguf` as the only supported artifact.
+- Default quality-oriented sampling policy is profile-driven with reproducible defaults:
+  - `temperature=0.6`
+  - `predictor_temperature=0.6`
+  - `max_new_tokens<=400`
+  - `seed=42`
+  - `predictor_seed=45`
 
 ### Quality Gate (Manual Verification First)
 

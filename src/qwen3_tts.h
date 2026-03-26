@@ -21,7 +21,7 @@ struct tts_params {
     int32_t max_audio_tokens = 0;
     
     // Temperature for sampling (0 = greedy)
-    float temperature = 0.9f;
+    float temperature = 0.6f;
     
     // Top-p sampling
     float top_p = 1.0f;
@@ -31,13 +31,13 @@ struct tts_params {
 
     // Predictor stage sampling controls (Q1..Q15 generation).
     bool predictor_do_sample = true;
-    float predictor_temperature = 0.9f;
+    float predictor_temperature = 0.6f;
     float predictor_top_p = 1.0f;
     int32_t predictor_top_k = 50;
 
-    // Sampling seeds (-1 means random seed from clock).
-    int32_t seed = -1;
-    int32_t predictor_seed = -1;
+    // Sampling seeds (deterministic defaults; callers can override).
+    int32_t seed = 42;
+    int32_t predictor_seed = 45;
     
     // Number of threads
     int32_t n_threads = 4;

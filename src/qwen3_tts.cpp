@@ -481,7 +481,9 @@ bool Qwen3TTS::load_model_profile(const std::string & path) {
         !json_extract_bool(json, "default_predictor_do_sample", p.default_predictor_do_sample) ||
         !json_extract_float(json, "default_predictor_temperature", p.default_predictor_temperature) ||
         !json_extract_float(json, "default_predictor_top_p", p.default_predictor_top_p) ||
-        !json_extract_int(json, "default_predictor_top_k", p.default_predictor_top_k)) {
+        !json_extract_int(json, "default_predictor_top_k", p.default_predictor_top_k) ||
+        !json_extract_int(json, "default_seed", p.default_seed) ||
+        !json_extract_int(json, "default_predictor_seed", p.default_predictor_seed)) {
         error_msg_ = "model_profile.json missing required numeric/boolean fields";
         return false;
     }
@@ -1267,19 +1269,6 @@ tts_result Qwen3TTS::synthesize_internal(
     }
 
     int64_t t_tok = get_time_ms();
-    auto has_prefix_suffix = [](
-                                 const std::vector<int32_t> & toks,
-                                 const std::vector<int32_t> & prefix,
-                                 const std::vector<int32_t> & suffix) -> bool {
-        if (toks.size() < prefix.size() + suffix.size()) {
-            return false;
-        }
-        if (!std::equal(prefix.begin(), prefix.end(), toks.begin())) {
-            return false;
-        }
-        return std::equal(suffix.rbegin(), suffix.rend(), toks.rbegin());
-    };
-
     const std::vector<int32_t> assistant_prefix_tokens = tokenizer_.encode("<|im_start|>assistant\n");
     const std::vector<int32_t> user_prefix_tokens = tokenizer_.encode("<|im_start|>user\n");
     const std::vector<int32_t> end_newline_tokens = tokenizer_.encode("<|im_end|>\n");
@@ -1287,50 +1276,24 @@ tts_result Qwen3TTS::synthesize_internal(
         result.error_msg = "Failed to build ChatML boundary tokens from tokenizer";
         return result;
     }
-    std::vector<int32_t> assistant_suffix_tokens = end_newline_tokens;
-    assistant_suffix_tokens.insert(
-        assistant_suffix_tokens.end(), assistant_prefix_tokens.begin(), assistant_prefix_tokens.end());
-
-    std::vector<int32_t> text_tokens;
-    {
-        const std::string wrapped = "<|im_start|>assistant\n" + text + "<|im_end|>\n<|im_start|>assistant\n";
-        const std::vector<int32_t> wrapped_tokens = tokenizer_.encode(wrapped);
-        if (has_prefix_suffix(wrapped_tokens, assistant_prefix_tokens, assistant_suffix_tokens)) {
-            text_tokens.assign(
-                wrapped_tokens.begin() + (int64_t) assistant_prefix_tokens.size(),
-                wrapped_tokens.end() - (int64_t) assistant_suffix_tokens.size());
-        } else {
-            text_tokens = tokenizer_.encode(text);
-        }
-    }
+    // Match qwen3-tts-gguf semantics: raw text/ref_text are encoded directly.
+    std::vector<int32_t> text_tokens = tokenizer_.encode(text);
 
     std::vector<int32_t> ref_text_tokens;
     if (!params.ref_text.empty()) {
-        const std::string wrapped_ref = "<|im_start|>assistant\n" + params.ref_text + "<|im_end|>\n";
-        const std::vector<int32_t> wrapped_ref_tokens = tokenizer_.encode(wrapped_ref);
-        if (has_prefix_suffix(wrapped_ref_tokens, assistant_prefix_tokens, end_newline_tokens)) {
-            ref_text_tokens.assign(
-                wrapped_ref_tokens.begin() + (int64_t) assistant_prefix_tokens.size(),
-                wrapped_ref_tokens.end() - (int64_t) end_newline_tokens.size());
-        } else {
-            ref_text_tokens = tokenizer_.encode(params.ref_text);
-        }
+        ref_text_tokens = tokenizer_.encode(params.ref_text);
     }
     std::vector<int32_t> role_prefix_tokens = assistant_prefix_tokens;
 
-    // Tokenize instruct block for Custom Voice / Voice Design modes
+    // Build instruct block explicitly via ChatML boundaries:
+    // <|im_start|>user\n + encode(instruct) + <|im_end|>\n
     std::vector<int32_t> instruct_tokens;
     if (!params.instruct.empty()) {
-        const std::string wrapped_instruct = "<|im_start|>user\n" + params.instruct + "<|im_end|>\n";
-        instruct_tokens = tokenizer_.encode(wrapped_instruct);
-        if (!has_prefix_suffix(instruct_tokens, user_prefix_tokens, end_newline_tokens)) {
-            instruct_tokens.clear();
-            std::vector<int32_t> inner = tokenizer_.encode(params.instruct);
-            instruct_tokens.reserve(user_prefix_tokens.size() + inner.size() + end_newline_tokens.size());
-            instruct_tokens.insert(instruct_tokens.end(), user_prefix_tokens.begin(), user_prefix_tokens.end());
-            instruct_tokens.insert(instruct_tokens.end(), inner.begin(), inner.end());
-            instruct_tokens.insert(instruct_tokens.end(), end_newline_tokens.begin(), end_newline_tokens.end());
-        }
+        std::vector<int32_t> inner = tokenizer_.encode(params.instruct);
+        instruct_tokens.reserve(user_prefix_tokens.size() + inner.size() + end_newline_tokens.size());
+        instruct_tokens.insert(instruct_tokens.end(), user_prefix_tokens.begin(), user_prefix_tokens.end());
+        instruct_tokens.insert(instruct_tokens.end(), inner.begin(), inner.end());
+        instruct_tokens.insert(instruct_tokens.end(), end_newline_tokens.begin(), end_newline_tokens.end());
 
         if (params.print_timing) {
             LOG_DEBUG("Instruct tokens: %d tokens for block: %s",

@@ -98,7 +98,7 @@ void print_usage(const char * program) {
     fprintf(stderr, "  -o, --output <file>    Output WAV file (default: output.wav)\n");
     fprintf(stderr, "  -r, --reference <file> Reference audio for voice cloning\n");
     fprintf(stderr, "  --ref-text <text>      Reference text for voice cloning\n");
-    fprintf(stderr, "  --mode <mode>          Synthesis mode: base(default), clone, custom, design\n");
+    fprintf(stderr, "  --mode <mode>          Optional mode override: base, clone, custom, design\n");
     fprintf(stderr, "  --instruct <text>      Instruct text for custom/design mode\n");
     fprintf(stderr, "  --speaker <name>       Speaker name for custom mode (Vivian,Ryan,Aiden,...)\n");
     fprintf(stderr, "  --temperature <val>    Sampling temperature (default: model_profile, 0=greedy)\n");
@@ -108,8 +108,8 @@ void print_usage(const char * program) {
     fprintf(stderr, "  --predictor-temperature <val> Predictor stage temperature (default: model_profile)\n");
     fprintf(stderr, "  --predictor-top-k <n>  Predictor stage top-k (default: model_profile)\n");
     fprintf(stderr, "  --predictor-top-p <val> Predictor stage top-p (default: model_profile)\n");
-    fprintf(stderr, "  --seed <n>            Talker sampler seed (default: random)\n");
-    fprintf(stderr, "  --predictor-seed <n>  Predictor sampler seed (default: random)\n");
+    fprintf(stderr, "  --seed <n>            Talker sampler seed (default: model_profile)\n");
+    fprintf(stderr, "  --predictor-seed <n>  Predictor sampler seed (default: model_profile)\n");
     fprintf(stderr, "  --max-tokens <n>       Maximum audio tokens (default: model_profile)\n");
     fprintf(stderr, "  --repetition-penalty <val> Repetition penalty (default: model_profile)\n");
     fprintf(stderr, "  --ort-debug-log        Enable ORT warning logs (default: error-only)\n");
@@ -149,7 +149,8 @@ int main(int argc, char ** argv) {
     std::string output_file = "output.wav";
     std::string reference_audio;
     std::string stats_json_file;
-    std::string mode = "base";
+    std::string mode;
+    bool mode_explicit = false;
     std::string instruct_text;
     std::string speaker_name;
     std::string language_name = "none";
@@ -169,6 +170,7 @@ int main(int argc, char ** argv) {
     bool user_set_predictor_top_k = false;
     bool user_set_predictor_top_p = false;
     bool user_set_seed = false;
+    bool user_set_predictor_seed = false;
     
     // Parse arguments
     for (int i = 1; i < (int)args.size(); i++) {
@@ -267,6 +269,7 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             params.predictor_seed = std::stoi(args[i]);
+            user_set_predictor_seed = true;
         } else if (arg == "--max-tokens") {
             if (++i >= (int)args.size()) {
                 LOG_ERROR("Error: missing max-tokens value");
@@ -322,6 +325,7 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             mode = to_lower_ascii(args[i]);
+            mode_explicit = true;
             if (mode != "base" && mode != "clone" && mode != "custom" && mode != "design") {
                 LOG_ERROR("Error: unknown mode '%s'. Use: base, clone, custom, design", mode.c_str());
                 return 1;
@@ -385,12 +389,27 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "\rGenerating: %d/%d tokens   ", tokens, max_tokens);
     });
     
-    // Keep only base->clone convenience when reference is provided.
-    if (!reference_audio.empty() && mode == "base") {
-        mode = "clone";
-    }
-
     const auto & profile = tts.profile();
+
+    // Mode auto-routing when --mode is omitted:
+    // base -> base (auto-upgrade to clone when reference audio is given)
+    // custom -> custom
+    // design -> design
+    if (!mode_explicit) {
+        if (profile.model_type == "base") {
+            mode = "base";
+        } else if (profile.model_type == "custom") {
+            mode = "custom";
+        } else if (profile.model_type == "design") {
+            mode = "design";
+        } else {
+            LOG_ERROR("Error: unsupported model_type '%s' in model_profile.json", profile.model_type.c_str());
+            return 1;
+        }
+        if (!reference_audio.empty() && mode == "base") {
+            mode = "clone";
+        }
+    }
 
     // Use model profile defaults unless explicitly overridden by CLI args.
     if (!user_set_max_tokens) {
@@ -421,7 +440,10 @@ int main(int argc, char ** argv) {
         params.predictor_top_p = profile.default_predictor_top_p;
     }
     if (!user_set_seed) {
-        params.seed = -1;
+        params.seed = profile.default_seed;
+    }
+    if (!user_set_predictor_seed) {
+        params.predictor_seed = profile.default_predictor_seed;
     }
 
     if (language_explicit) {
