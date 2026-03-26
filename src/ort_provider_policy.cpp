@@ -30,16 +30,17 @@ bool append_cpu_provider(Ort::SessionOptions & opts, std::string & error_msg) {
     }
 }
 
-bool append_cuda_provider(Ort::SessionOptions & opts, std::string & error_msg) {
+bool append_cuda_provider(Ort::SessionOptions & opts, bool low_mem_mode, std::string & error_msg) {
     try {
         // CUDA is not supported by the generic provider-name API in ORT 1.24.
         Ort::CUDAProviderOptions cuda_opts;
         // The decoder graph is convolution-heavy and includes 1D convs. Use the
         // nc1d padding mode recommended by ORT for better cuDNN coverage.
+        const char * max_workspace = low_mem_mode ? "0" : "1";
         cuda_opts.Update({
             {"device_id", "0"},
             {"cudnn_conv_algo_search", "DEFAULT"},
-            {"cudnn_conv_use_max_workspace", "1"},
+            {"cudnn_conv_use_max_workspace", max_workspace},
             {"cudnn_conv1d_pad_to_nc1d", "1"},
         });
         opts.AppendExecutionProvider_CUDA_V2(*cuda_opts);
@@ -137,7 +138,7 @@ bool apply_ort_provider_policy(
 
     // 2. Load requested provider
     if (intent == "CUDAExecutionProvider") {
-        success = append_cuda_provider(opts, detail);
+        success = append_cuda_provider(opts, role == ort_session_role::decoder, detail);
     } else if (intent == "DmlExecutionProvider") {
         success = append_dml_provider(opts, detail);
     } else if (intent == "ROCmExecutionProvider") {
