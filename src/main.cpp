@@ -707,7 +707,11 @@ int main(int argc, char ** argv) {
                     "    },\n"
                     "    \"rtf\": %.6f,\n"
                     "    \"mem\": {\n"
+                    "      \"rss_start\": %llu,\n"
+                    "      \"rss_end\": %llu,\n"
                     "      \"rss_peak\": %llu,\n"
+                    "      \"phys_start\": %llu,\n"
+                    "      \"phys_end\": %llu,\n"
                     "      \"phys_peak\": %llu\n"
                     "    },\n"
                     "    \"diag\": {\n"
@@ -744,7 +748,11 @@ int main(int argc, char ** argv) {
                     (long long) r.t_decode_ms,
                     (long long) r.t_total_ms,
                     rtf,
+                    (unsigned long long) r.mem_rss_start_bytes,
+                    (unsigned long long) r.mem_rss_end_bytes,
                     (unsigned long long) r.mem_rss_peak_bytes,
+                    (unsigned long long) r.mem_phys_start_bytes,
+                    (unsigned long long) r.mem_phys_end_bytes,
                     (unsigned long long) r.mem_phys_peak_bytes,
                     r.pcm_peak,
                     r.pcm_rms,

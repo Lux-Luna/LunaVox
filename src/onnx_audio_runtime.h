@@ -106,7 +106,8 @@ private:
     int32_t num_layers_ = 0;
     int32_t num_heads_ = 0;
     int32_t head_dim_ = 0;
-    // Smaller decode chunk lowers peak ONNX workspace usage at the cost of some latency.
+    // Keep chunk moderately sized to avoid onset artifacts at very small chunking,
+    // while still controlling peak ONNX workspace usage.
     int32_t decode_chunk_frames_ = 8;
     int32_t pre_conv_channels_ = 512;
     int32_t latent_channels_ = 1024;

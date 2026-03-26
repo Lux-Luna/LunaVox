@@ -997,6 +997,8 @@ tts_result Qwen3TTS::synthesize_with_voice(
         return result;
     }
 
+    const bool clone_wants_icl = !params.ref_text.empty();
+
     int64_t t_encode = get_time_ms();
     if (!speaker_encoder_loaded_) {
         if (!speaker_encoder_.load_model(speaker_onnx_path_, params.n_threads)) {
@@ -1005,14 +1007,6 @@ tts_result Qwen3TTS::synthesize_with_voice(
         }
         speaker_encoder_loaded_ = true;
         LOG_INFO("  Speaker encoder providers: %s", speaker_encoder_.provider_summary().c_str());
-    }
-    if (!codec_encoder_loaded_) {
-        if (!codec_encoder_.load_model(codec_encoder_onnx_path_, params.n_threads)) {
-            result.error_msg = "Failed to load codec encoder ONNX: " + codec_encoder_.get_error();
-            return result;
-        }
-        codec_encoder_loaded_ = true;
-        LOG_INFO("  Codec encoder providers: %s", codec_encoder_.provider_summary().c_str());
     }
 
     std::vector<float> speaker_embedding;
@@ -1045,34 +1039,60 @@ tts_result Qwen3TTS::synthesize_with_voice(
 
     std::vector<int32_t> ref_codes;
     int32_t n_ref_frames = 0;
-    if (!codec_encoder_.encode(ref_samples, n_ref_samples, ref_codes, n_ref_frames)) {
-        result.error_msg = "[clone/codec_encoder] Failed to encode reference audio codes: " + codec_encoder_.get_error();
-        return result;
-    }
-    result.ref_code_frames = n_ref_frames;
-    result.ref_codebooks = profile_.codec_num_codebooks;
-    minmax_i32(ref_codes.data(), (int32_t) ref_codes.size(), result.ref_code_min, result.ref_code_max);
-    if (n_ref_frames <= 0 || ref_codes.empty() ||
-        (int32_t) ref_codes.size() != n_ref_frames * profile_.codec_num_codebooks) {
-        result.error_msg = "[clone/codec_encoder] Invalid ref_codes shape; expected T x codec_num_codebooks";
-        return result;
-    }
-    for (int32_t c : ref_codes) {
-        if (c < profile_.codec_id_start || c >= profile_.codec_id_end) {
-            result.error_msg = "[clone/codec_encoder] Invalid ref code id out of codec range from model_profile.json";
+    result.ort_provider_speaker_encoder = speaker_encoder_.provider_summary();
+    // Clone speaker/codec encoders are preprocess-only; release immediately
+    // after feature extraction so they do not remain resident during decode.
+    speaker_encoder_.unload_model();
+    speaker_encoder_loaded_ = false;
+
+    if (clone_wants_icl) {
+        if (!codec_encoder_loaded_) {
+            if (!codec_encoder_.load_model(codec_encoder_onnx_path_, params.n_threads)) {
+                result.error_msg = "Failed to load codec encoder ONNX: " + codec_encoder_.get_error();
+                return result;
+            }
+            codec_encoder_loaded_ = true;
+            LOG_INFO("  Codec encoder providers: %s", codec_encoder_.provider_summary().c_str());
+        }
+        if (!codec_encoder_.encode(ref_samples, n_ref_samples, ref_codes, n_ref_frames)) {
+            result.error_msg = "[clone/codec_encoder] Failed to encode reference audio codes: " + codec_encoder_.get_error();
             return result;
         }
+        result.ort_provider_codec_encoder = codec_encoder_.provider_summary();
+        codec_encoder_.unload_model();
+        codec_encoder_loaded_ = false;
+
+        result.ref_code_frames = n_ref_frames;
+        result.ref_codebooks = profile_.codec_num_codebooks;
+        minmax_i32(ref_codes.data(), (int32_t) ref_codes.size(), result.ref_code_min, result.ref_code_max);
+        if (n_ref_frames <= 0 || ref_codes.empty() ||
+            (int32_t) ref_codes.size() != n_ref_frames * profile_.codec_num_codebooks) {
+            result.error_msg = "[clone/codec_encoder] Invalid ref_codes shape; expected T x codec_num_codebooks";
+            return result;
+        }
+        for (int32_t c : ref_codes) {
+            if (c < profile_.codec_id_start || c >= profile_.codec_id_end) {
+                result.error_msg = "[clone/codec_encoder] Invalid ref code id out of codec range from model_profile.json";
+                return result;
+            }
+        }
+    } else {
+        if (codec_encoder_loaded_) {
+            codec_encoder_.unload_model();
+            codec_encoder_loaded_ = false;
+        }
+        result.ort_provider_codec_encoder = "not_used(xvector_only)";
     }
     result.t_encode_ms = get_time_ms() - t_encode;
 
-    if (params.print_progress) {
+    if (params.print_progress && clone_wants_icl) {
         LOG_INFO("Reference features extracted: spk_dim=%d, ref_codes=%d frames x %d",
                 (int) speaker_embedding.size(),
                 n_ref_frames,
                 profile_.codec_num_codebooks);
     }
 
-    const bool use_clone_icl = !params.ref_text.empty() && !ref_codes.empty() && n_ref_frames > 0;
+    const bool use_clone_icl = clone_wants_icl && !ref_codes.empty() && n_ref_frames > 0;
     const int32_t * ref_codes_ptr = use_clone_icl ? ref_codes.data() : nullptr;
     const int32_t ref_frames_for_gen = (ref_codes_ptr != nullptr) ? n_ref_frames : 0;
     if (params.print_progress && !use_clone_icl) {
@@ -1230,9 +1250,15 @@ tts_result Qwen3TTS::synthesize_internal(
     const tts_params & params,
     tts_result & result) {
     int64_t t_total_start = get_time_ms();
-    result.ort_provider_speaker_encoder = speaker_encoder_loaded_ ? speaker_encoder_.provider_summary() : "not_loaded";
-    result.ort_provider_codec_encoder = codec_encoder_loaded_ ? codec_encoder_.provider_summary() : "not_loaded";
-    result.ort_provider_decoder = decoder_loaded_ ? decoder_.provider_summary() : "not_loaded";
+    if (result.ort_provider_speaker_encoder == "not_loaded") {
+        result.ort_provider_speaker_encoder = speaker_encoder_loaded_ ? speaker_encoder_.provider_summary() : "not_loaded";
+    }
+    if (result.ort_provider_codec_encoder == "not_loaded") {
+        result.ort_provider_codec_encoder = codec_encoder_loaded_ ? codec_encoder_.provider_summary() : "not_loaded";
+    }
+    if (result.ort_provider_decoder == "not_loaded") {
+        result.ort_provider_decoder = decoder_loaded_ ? decoder_.provider_summary() : "not_loaded";
+    }
 
     auto sample_memory = [&](const char * stage) {
         process_memory_snapshot mem;
