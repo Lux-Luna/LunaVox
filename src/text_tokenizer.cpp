@@ -621,26 +621,112 @@ std::vector<int32_t> TextTokenizer::encode(const std::string & text) const {
         return {};
     }
     std::vector<int32_t> tokens;
-    std::vector<std::string> raw_words = split_regex_equivalent(text);
-
-    for (const auto & raw_word : raw_words) {
-        std::string word = bytes_to_unicode(raw_word);
-        auto pieces = bpe(word);
-        for (const auto & p : pieces) {
-            auto it = vocab_.find(p);
-            if (it != vocab_.end()) {
-                tokens.push_back(it->second);
-                continue;
+    auto encode_plain_segment = [&](const std::string & segment) {
+        if (segment.empty()) {
+            return;
+        }
+        auto is_all_spaces = [](const std::string & s) -> bool {
+            if (s.empty()) {
+                return false;
             }
-            for (unsigned char c : p) {
-                std::string byte_tok = BYTE_TO_UNICODE[c];
-                auto bit = vocab_.find(byte_tok);
-                if (bit != vocab_.end()) {
-                    tokens.push_back(bit->second);
+            for (unsigned char ch : s) {
+                if (!std::isspace(ch)) {
+                    return false;
                 }
             }
+            return true;
+        };
+        auto append_bpe_token = [&](const std::string & raw_word) {
+            if (raw_word.empty()) {
+                return;
+            }
+            std::string word = bytes_to_unicode(raw_word);
+            auto pieces = bpe(word);
+            for (const auto & p : pieces) {
+                auto it = vocab_.find(p);
+                if (it != vocab_.end()) {
+                    tokens.push_back(it->second);
+                    continue;
+                }
+                for (unsigned char c : p) {
+                    std::string byte_tok = BYTE_TO_UNICODE[c];
+                    auto bit = vocab_.find(byte_tok);
+                    if (bit != vocab_.end()) {
+                        tokens.push_back(bit->second);
+                    }
+                }
+            }
+        };
+
+        std::vector<std::string> raw_words = split_regex_equivalent(segment);
+        std::string pending_leading_space;
+        for (const auto & raw_word : raw_words) {
+            if (is_all_spaces(raw_word)) {
+                if (!raw_word.empty()) {
+                    if (raw_word.size() > 1) {
+                        append_bpe_token(raw_word.substr(0, raw_word.size() - 1));
+                    }
+                    pending_leading_space = " ";
+                }
+                continue;
+            }
+
+            std::string merged = pending_leading_space;
+            merged += raw_word;
+            pending_leading_space.clear();
+            append_bpe_token(merged);
         }
+        if (!pending_leading_space.empty()) {
+            append_bpe_token(pending_leading_space);
+        }
+    };
+
+    // Keep official ChatML boundary markers as atomic special tokens.
+    // This avoids degrading "<|im_start|>/<|im_end|>" into byte-level pieces.
+    struct special_token {
+        const char * text;
+        int32_t id;
+    };
+    const special_token specials[] = {
+        {"<|im_start|>", config_.bos_token_id},
+        {"<|im_end|>", config_.eos_token_id},
+        {"<|endoftext|>", config_.pad_token_id},
+    };
+
+    size_t cursor = 0;
+    while (cursor < text.size()) {
+        size_t best_pos = std::string::npos;
+        size_t best_len = 0;
+        int32_t best_id = -1;
+
+        for (const auto & sp : specials) {
+            if (sp.id < 0) {
+                continue;
+            }
+            const std::string needle(sp.text);
+            const size_t p = text.find(needle, cursor);
+            if (p == std::string::npos) {
+                continue;
+            }
+            if (best_pos == std::string::npos || p < best_pos || (p == best_pos && needle.size() > best_len)) {
+                best_pos = p;
+                best_len = needle.size();
+                best_id = sp.id;
+            }
+        }
+
+        if (best_id < 0 || best_pos == std::string::npos) {
+            encode_plain_segment(text.substr(cursor));
+            break;
+        }
+
+        if (best_pos > cursor) {
+            encode_plain_segment(text.substr(cursor, best_pos - cursor));
+        }
+        tokens.push_back(best_id);
+        cursor = best_pos + best_len;
     }
+
     return tokens;
 }
 

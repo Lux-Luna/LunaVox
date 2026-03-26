@@ -26,23 +26,6 @@ static std::string to_lower_ascii(std::string s) {
     return s;
 }
 
-static bool parse_language_id(const std::string & language, int32_t & language_id_out) {
-    const std::string lang = to_lower_ascii(language);
-    if (lang == "en" || lang == "english")       language_id_out = 2050;
-    else if (lang == "ru" || lang == "russian")  language_id_out = 2069;
-    else if (lang == "zh" || lang == "chinese")  language_id_out = 2055;
-    else if (lang == "ja" || lang == "japanese") language_id_out = 2058;
-    else if (lang == "ko" || lang == "korean")   language_id_out = 2064;
-    else if (lang == "de" || lang == "german")   language_id_out = 2053;
-    else if (lang == "fr" || lang == "french")   language_id_out = 2061;
-    else if (lang == "es" || lang == "spanish")  language_id_out = 2054;
-    else if (lang == "it" || lang == "italian")  language_id_out = 2070;
-    else if (lang == "pt" || lang == "portuguese") language_id_out = 2071;
-    else if (lang == "none" || lang == "unspecified") language_id_out = -1;
-    else return false;
-    return true;
-}
-
 static std::string json_escape(const std::string & s) {
     std::string out;
     out.reserve(s.size() + 8);
@@ -118,23 +101,23 @@ void print_usage(const char * program) {
     fprintf(stderr, "  --mode <mode>          Synthesis mode: base(default), clone, custom, design\n");
     fprintf(stderr, "  --instruct <text>      Instruct text for custom/design mode\n");
     fprintf(stderr, "  --speaker <name>       Speaker name for custom mode (Vivian,Ryan,Aiden,...)\n");
-    fprintf(stderr, "  --temperature <val>    Sampling temperature (default: 0.9, 0=greedy)\n");
-    fprintf(stderr, "  --top-k <n>            Top-k sampling (default: 50, 0=disabled)\n");
-    fprintf(stderr, "  --top-p <val>          Top-p sampling (default: 1.0)\n");
+    fprintf(stderr, "  --temperature <val>    Sampling temperature (default: model_profile, 0=greedy)\n");
+    fprintf(stderr, "  --top-k <n>            Top-k sampling (default: model_profile, 0=disabled)\n");
+    fprintf(stderr, "  --top-p <val>          Top-p sampling (default: model_profile)\n");
     fprintf(stderr, "  --predictor-greedy     Use greedy decoding for predictor stage\n");
-    fprintf(stderr, "  --predictor-temperature <val> Predictor stage temperature (default: 0.9)\n");
-    fprintf(stderr, "  --predictor-top-k <n>  Predictor stage top-k (default: 50)\n");
-    fprintf(stderr, "  --predictor-top-p <val> Predictor stage top-p (default: 1.0)\n");
+    fprintf(stderr, "  --predictor-temperature <val> Predictor stage temperature (default: model_profile)\n");
+    fprintf(stderr, "  --predictor-top-k <n>  Predictor stage top-k (default: model_profile)\n");
+    fprintf(stderr, "  --predictor-top-p <val> Predictor stage top-p (default: model_profile)\n");
     fprintf(stderr, "  --seed <n>            Talker sampler seed (default: random)\n");
     fprintf(stderr, "  --predictor-seed <n>  Predictor sampler seed (default: random)\n");
-    fprintf(stderr, "  --max-tokens <n>       Maximum audio tokens (default: 4096)\n");
-    fprintf(stderr, "  --repetition-penalty <val> Repetition penalty (default: 1.05)\n");
+    fprintf(stderr, "  --max-tokens <n>       Maximum audio tokens (default: model_profile)\n");
+    fprintf(stderr, "  --repetition-penalty <val> Repetition penalty (default: model_profile)\n");
     fprintf(stderr, "  --ort-debug-log        Enable ORT warning logs (default: error-only)\n");
     fprintf(stderr, "  --stats-json <file>    Write timing/runtime stats JSON report\n");
     fprintf(stderr, "  --warmup <n>           Warm-up runs (default: 0)\n");
     fprintf(stderr, "  --repeat <n>           Benchmark runs (default: 1)\n");
-    fprintf(stderr, "  -l, --language <lang>  Force language: en,ru,zh,ja,ko,de,fr,es,it,pt,none\n");
-    fprintf(stderr, "  --no-auto-language     Disable language auto-detection (uses --language or en)\n");
+    fprintf(stderr, "  -l, --language <lang>  Explicit language from model profile aliases (or 'none')\n");
+    fprintf(stderr, "  --no-auto-language     Deprecated no-op (default already Auto(None))\n");
     fprintf(stderr, "  -j, --threads <n>      Number of threads (default: 4)\n");
     fprintf(stderr, "  -v, --verbose          Show detailed debug logs\n");
     fprintf(stderr, "  -h, --help             Show this help\n");
@@ -169,12 +152,23 @@ int main(int argc, char ** argv) {
     std::string mode = "base";
     std::string instruct_text;
     std::string speaker_name;
+    std::string language_name = "none";
+    bool language_explicit = false;
     int warmup = 0;
     int repeat = 1;
     bool verbose = false;
-    
+
     qwen3_tts::tts_params params;
-    params.auto_language = true;
+    bool user_set_max_tokens = false;
+    bool user_set_temperature = false;
+    bool user_set_top_k = false;
+    bool user_set_top_p = false;
+    bool user_set_repetition_penalty = false;
+    bool user_set_predictor_mode = false;
+    bool user_set_predictor_temperature = false;
+    bool user_set_predictor_top_k = false;
+    bool user_set_predictor_top_p = false;
+    bool user_set_seed = false;
     
     // Parse arguments
     for (int i = 1; i < (int)args.size(); i++) {
@@ -219,20 +213,24 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             params.temperature = std::stof(args[i]);
+            user_set_temperature = true;
         } else if (arg == "--top-k") {
             if (++i >= (int)args.size()) {
                 LOG_ERROR("Error: missing top-k value");
                 return 1;
             }
             params.top_k = std::stoi(args[i]);
+            user_set_top_k = true;
         } else if (arg == "--top-p") {
             if (++i >= (int)args.size()) {
                 LOG_ERROR("Error: missing top-p value");
                 return 1;
             }
             params.top_p = std::stof(args[i]);
+            user_set_top_p = true;
         } else if (arg == "--predictor-greedy") {
             params.predictor_do_sample = false;
+            user_set_predictor_mode = true;
         } else if (arg == "--predictor-temperature") {
             if (++i >= (int)args.size()) {
                 LOG_ERROR("Error: missing predictor-temperature value");
@@ -240,24 +238,29 @@ int main(int argc, char ** argv) {
             }
             params.predictor_temperature = std::stof(args[i]);
             params.predictor_do_sample = params.predictor_temperature > 0.0f;
+            user_set_predictor_mode = true;
+            user_set_predictor_temperature = true;
         } else if (arg == "--predictor-top-k") {
             if (++i >= (int)args.size()) {
                 LOG_ERROR("Error: missing predictor-top-k value");
                 return 1;
             }
             params.predictor_top_k = std::stoi(args[i]);
+            user_set_predictor_top_k = true;
         } else if (arg == "--predictor-top-p") {
             if (++i >= (int)args.size()) {
                 LOG_ERROR("Error: missing predictor-top-p value");
                 return 1;
             }
             params.predictor_top_p = std::stof(args[i]);
+            user_set_predictor_top_p = true;
         } else if (arg == "--seed") {
             if (++i >= (int)args.size()) {
                 LOG_ERROR("Error: missing seed value");
                 return 1;
             }
             params.seed = std::stoi(args[i]);
+            user_set_seed = true;
         } else if (arg == "--predictor-seed") {
             if (++i >= (int)args.size()) {
                 LOG_ERROR("Error: missing predictor-seed value");
@@ -270,12 +273,14 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             params.max_audio_tokens = std::stoi(args[i]);
+            user_set_max_tokens = true;
         } else if (arg == "--repetition-penalty") {
             if (++i >= (int)args.size()) {
                 LOG_ERROR("Error: missing repetition-penalty value");
                 return 1;
             }
             params.repetition_penalty = std::stof(args[i]);
+            user_set_repetition_penalty = true;
         } else if (arg == "--ort-debug-log") {
             params.ort_debug_log = true;
         } else if (arg == "--stats-json") {
@@ -301,16 +306,10 @@ int main(int argc, char ** argv) {
                 LOG_ERROR("Error: missing language value");
                 return 1;
             }
-            std::string lang = args[i];
-            int32_t parsed_language_id = 2050;
-            if (!parse_language_id(lang, parsed_language_id)) {
-                LOG_ERROR("Error: unknown language '%s'. Supported: en,ru,zh,ja,ko,de,fr,es,it,pt,none", lang.c_str());
-                return 1;
-            }
-            params.language_id = parsed_language_id;
-            params.auto_language = false;
+            language_name = to_lower_ascii(args[i]);
+            language_explicit = true;
         } else if (arg == "--no-auto-language") {
-            params.auto_language = false;
+            params.language_id = -1;
         } else if (arg == "-j" || arg == "--threads") {
             if (++i >= (int)args.size()) {
                 LOG_ERROR("Error: missing threads value");
@@ -386,14 +385,110 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "\rGenerating: %d/%d tokens   ", tokens, max_tokens);
     });
     
-    // Infer mode from --reference if provided and mode is still "base"
+    // Keep only base->clone convenience when reference is provided.
     if (!reference_audio.empty() && mode == "base") {
         mode = "clone";
+    }
+
+    const auto & profile = tts.profile();
+
+    // Use model profile defaults unless explicitly overridden by CLI args.
+    if (!user_set_max_tokens) {
+        params.max_audio_tokens = std::max(1, profile.default_max_new_tokens);
+    }
+    if (!user_set_temperature) {
+        params.temperature = profile.default_temperature;
+    }
+    if (!user_set_top_k) {
+        params.top_k = profile.default_top_k;
+    }
+    if (!user_set_top_p) {
+        params.top_p = profile.default_top_p;
+    }
+    if (!user_set_repetition_penalty) {
+        params.repetition_penalty = profile.default_repetition_penalty;
+    }
+    if (!user_set_predictor_mode) {
+        params.predictor_do_sample = profile.default_predictor_do_sample;
+    }
+    if (!user_set_predictor_temperature) {
+        params.predictor_temperature = profile.default_predictor_temperature;
+    }
+    if (!user_set_predictor_top_k) {
+        params.predictor_top_k = profile.default_predictor_top_k;
+    }
+    if (!user_set_predictor_top_p) {
+        params.predictor_top_p = profile.default_predictor_top_p;
+    }
+    if (!user_set_seed) {
+        params.seed = -1;
+    }
+
+    if (language_explicit) {
+        int32_t resolved_language_id = -1;
+        if (!tts.resolve_language_id(language_name, resolved_language_id)) {
+            const auto langs = tts.supported_languages();
+            std::string supported;
+            for (size_t i = 0; i < langs.size(); ++i) {
+                if (i > 0) supported += ", ";
+                supported += langs[i];
+            }
+            LOG_ERROR("Error: unknown language '%s'. Supported aliases from model_profile.json: %s, none",
+                      language_name.c_str(),
+                      supported.c_str());
+            return 1;
+        }
+        params.language_id = resolved_language_id;
+    } else {
+        params.language_id = -1;
+    }
+
+    if (!tts.supports_mode(mode)) {
+        LOG_ERROR("Error: mode '%s' is incompatible with model_type '%s' from model_profile.json",
+                  mode.c_str(),
+                  profile.model_type.c_str());
+        return 1;
+    }
+    if (mode == "base" && !instruct_text.empty()) {
+        LOG_ERROR("Error: --instruct is forbidden in base mode by runtime policy.");
+        return 1;
+    }
+    if (!profile.instruct_support && !instruct_text.empty()) {
+        LOG_ERROR("Error: this model does not support --instruct (model_profile.instruct_support=false).");
+        return 1;
+    }
+    if (mode == "clone" && reference_audio.empty()) {
+        LOG_ERROR("Error: clone mode requires --reference");
+        return 1;
+    }
+    if (mode == "custom") {
+        if (speaker_name.empty()) {
+            LOG_ERROR("Error: custom mode requires --speaker");
+            return 1;
+        }
+        if (profile.resolve_speaker_id(speaker_name) < 0) {
+            const auto speakers = tts.supported_speakers();
+            std::string supported;
+            for (size_t i = 0; i < speakers.size(); ++i) {
+                if (i > 0) supported += ", ";
+                supported += speakers[i];
+            }
+            LOG_ERROR("Error: unknown speaker '%s'. Supported from model_profile.json: %s",
+                      speaker_name.c_str(),
+                      supported.c_str());
+            return 1;
+        }
+    }
+    if (mode == "design" && instruct_text.empty()) {
+        LOG_ERROR("Error: design mode requires --instruct");
+        return 1;
     }
 
     LOG_USER("[PARA] Mode: %s", mode.c_str());
     if (mode == "clone") LOG_USER("[PARA] Reference: %s", reference_audio.c_str());
     if (mode == "custom") LOG_USER("[PARA] Speaker: %s", speaker_name.c_str());
+    if (language_explicit) LOG_USER("[PARA] Language: %s", language_name.c_str());
+    else LOG_USER("[PARA] Language: Auto(None)");
     if (!instruct_text.empty()) LOG_USER("[PARA] Instruct: %s", instruct_text.c_str());
 
     // Warm-up
@@ -594,9 +689,16 @@ int main(int argc, char ** argv) {
                     "      \"phys_peak\": %llu\n"
                     "    },\n"
                     "    \"diag\": {\n"
-                    "      \"trailing_consumed\": %d,\n"
                     "      \"pcm_peak\": %.6f,\n"
                     "      \"pcm_rms\": %.6f\n"
+                    "    },\n"
+                    "    \"gen\": {\n"
+                    "      \"code_frames\": %d,\n"
+                    "      \"codebooks\": %d,\n"
+                    "      \"code_min\": %d,\n"
+                    "      \"code_max\": %d,\n"
+                    "      \"eos_step\": %d,\n"
+                    "      \"codes_hash\": %llu\n"
                     "    },\n"
                     "    \"ort_providers\": {\n"
                     "      \"speaker_encoder\": \"%s\",\n"
@@ -616,9 +718,14 @@ int main(int argc, char ** argv) {
                     rtf,
                     (unsigned long long) r.mem_rss_peak_bytes,
                     (unsigned long long) r.mem_phys_peak_bytes,
-                    (int) r.trailing_consumed,
                     r.pcm_peak,
                     r.pcm_rms,
+                    r.gen_code_frames,
+                    r.gen_codebooks,
+                    r.gen_code_min,
+                    r.gen_code_max,
+                    r.eos_step,
+                    (unsigned long long) r.gen_codes_hash,
                     spk_ep_json.c_str(),
                     codec_ep_json.c_str(),
                     decoder_ep_json.c_str(),

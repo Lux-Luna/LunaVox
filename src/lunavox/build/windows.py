@@ -73,6 +73,8 @@ class WindowsResolver(ToolchainResolver):
     def sanitize_env(self, toolchain: str) -> None:
         self.ctx.env["PYTHONUTF8"] = "1"
         self.ctx.env["PYTHONIOENCODING"] = "utf-8"
+        # Force MSVC tool output to English so CMake /showIncludes parsing stays deterministic.
+        self.ctx.env["VSLANG"] = "1033"
         self.ctx.env["PROMPT"] = "$P$G" 
         for key in self.COMPILER_ENV_VARS:
             self.ctx.env.pop(key, None)

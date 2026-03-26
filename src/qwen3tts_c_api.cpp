@@ -57,8 +57,6 @@ struct Qwen3Tts {
 static qwen3_tts::tts_params to_cpp_params(const Qwen3TtsParams * p) {
     qwen3_tts::tts_params params;
     if (p) {
-        // C API keeps legacy behavior: language_id is explicit when params are provided.
-        params.auto_language      = false;
         params.max_audio_tokens  = p->max_audio_tokens;
         params.temperature       = p->temperature;
         params.top_p             = p->top_p;
@@ -95,13 +93,13 @@ extern "C" {
 
 void qwen3_tts_default_params(Qwen3TtsParams * params) {
     if (!params) return;
-    params->max_audio_tokens  = 4096;
+    params->max_audio_tokens  = 0;
     params->temperature       = 0.9f;
     params->top_p             = 1.0f;
     params->top_k             = 50;
     params->n_threads         = 4;
     params->repetition_penalty = 1.05f;
-    params->language_id       = 2050; // en
+    params->language_id       = -1; // Auto(None)
     params->ref_text          = nullptr;
 }
 

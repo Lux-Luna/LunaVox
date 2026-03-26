@@ -2,6 +2,7 @@
 
 #include "assets_manager.h"
 #include "llama_wrapper.h"
+#include "model_profile.h"
 
 #include <cstdint>
 #include <string>
@@ -16,6 +17,7 @@ public:
         const std::string & talker_model_path,
         const std::string & predictor_model_path,
         const AssetsManager & assets,
+        const RuntimeModelProfile & profile,
         int32_t n_threads);
 
     void unload();
@@ -25,6 +27,7 @@ public:
 
     bool generate(
         const std::vector<int32_t> & text_tokens,
+        const std::vector<int32_t> & ref_text_tokens,
         const std::vector<int32_t> & role_prefix_tokens,
         const std::vector<int32_t> & instruct_tokens,
         const float * speaker_embedding,
@@ -45,12 +48,11 @@ public:
         std::vector<int32_t> & output_codes);
 
     int32_t last_eos_step() const { return last_eos_step_; } // -1 means reached max_frames without EOS
-    int32_t last_trailing_count() const { return last_trailing_count_; }
-    int32_t last_trailing_consumed() const { return last_trailing_consumed_; }
 
 private:
     bool run_prefill(
         const std::vector<int32_t> & text_tokens,
+        const std::vector<int32_t> & ref_text_tokens,
         const std::vector<int32_t> & role_prefix_tokens,
         const std::vector<int32_t> & instruct_tokens,
         const float * speaker_embedding,
@@ -81,15 +83,12 @@ private:
     std::string error_msg_;
     int32_t hidden_dim_ = 0;
     int32_t predictor_dim_ = 0;
+    int32_t codebook_vocab_size_ = 2048;
     int32_t cur_pos_ = 0;
-    int32_t step_idx_ = 0;
-    int32_t trailing_count_ = 0;
     int32_t last_eos_step_ = -1;
-    int32_t last_trailing_count_ = 0;
-    int32_t last_trailing_consumed_ = 0;
 
     const AssetsManager * assets_ = nullptr;
-    std::vector<float> trailing_text_pool_;
+    RuntimeModelProfile profile_;
 
     LlamaModel talker_model_;
     LlamaModel predictor_model_;

@@ -5,10 +5,10 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
-#include <climits>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -32,94 +32,13 @@ namespace qwen3_tts {
 
 namespace {
 
-static bool utf8_next_codepoint(const std::string & text, size_t & i, uint32_t & cp) {
-    if (i >= text.size()) return false;
-    const unsigned char c0 = (unsigned char) text[i];
-    if (c0 < 0x80) {
-        cp = c0;
-        ++i;
-        return true;
+static std::string join_csv(const std::vector<std::string> & items) {
+    std::string out;
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (i > 0) out += ", ";
+        out += items[i];
     }
-    if ((c0 & 0xE0) == 0xC0 && i + 1 < text.size()) {
-        cp = ((uint32_t) (c0 & 0x1F) << 6) | (uint32_t) ((unsigned char) text[i + 1] & 0x3F);
-        i += 2;
-        return true;
-    }
-    if ((c0 & 0xF0) == 0xE0 && i + 2 < text.size()) {
-        cp = ((uint32_t) (c0 & 0x0F) << 12) |
-             ((uint32_t) ((unsigned char) text[i + 1] & 0x3F) << 6) |
-             (uint32_t) ((unsigned char) text[i + 2] & 0x3F);
-        i += 3;
-        return true;
-    }
-    if ((c0 & 0xF8) == 0xF0 && i + 3 < text.size()) {
-        cp = ((uint32_t) (c0 & 0x07) << 18) |
-             ((uint32_t) ((unsigned char) text[i + 1] & 0x3F) << 12) |
-             ((uint32_t) ((unsigned char) text[i + 2] & 0x3F) << 6) |
-             (uint32_t) ((unsigned char) text[i + 3] & 0x3F);
-        i += 4;
-        return true;
-    }
-    cp = c0;
-    ++i;
-    return true;
-}
-
-static bool is_cjk_ideograph(uint32_t cp) {
-    return (cp >= 0x4E00 && cp <= 0x9FFF) ||
-           (cp >= 0x3400 && cp <= 0x4DBF) ||
-           (cp >= 0x20000 && cp <= 0x2A6DF) ||
-           (cp >= 0xF900 && cp <= 0xFAFF) ||
-           (cp >= 0x2F800 && cp <= 0x2FA1F);
-}
-
-static int32_t detect_language_id_from_text(const std::string & text) {
-    int64_t n_han = 0, n_kana = 0, n_hangul = 0, n_cyrillic = 0, n_latin = 0;
-    size_t i = 0;
-    uint32_t cp = 0;
-    while (utf8_next_codepoint(text, i, cp)) {
-        if ((cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z') || (cp >= 0x00C0 && cp <= 0x024F)) {
-            ++n_latin;
-            continue;
-        }
-        if ((cp >= 0x3040 && cp <= 0x309F) || (cp >= 0x30A0 && cp <= 0x30FF) || (cp >= 0x31F0 && cp <= 0x31FF)) {
-            ++n_kana;
-            continue;
-        }
-        if ((cp >= 0xAC00 && cp <= 0xD7AF) || (cp >= 0x1100 && cp <= 0x11FF) || (cp >= 0x3130 && cp <= 0x318F)) {
-            ++n_hangul;
-            continue;
-        }
-        if ((cp >= 0x0400 && cp <= 0x04FF) || (cp >= 0x0500 && cp <= 0x052F)) {
-            ++n_cyrillic;
-            continue;
-        }
-        if (is_cjk_ideograph(cp)) {
-            ++n_han;
-        }
-    }
-    if (n_kana > 0) return 2058;
-    if (n_hangul > 0) return 2064;
-    if (n_cyrillic > 0) return 2069;
-    if (n_han > 0) return 2055;
-    if (n_latin > 0) return 2050;
-    return 2050;
-}
-
-static const char * language_name_from_id(int32_t language_id) {
-    switch (language_id) {
-        case 2050: return "en";
-        case 2069: return "ru";
-        case 2055: return "zh";
-        case 2058: return "ja";
-        case 2064: return "ko";
-        case 2053: return "de";
-        case 2061: return "fr";
-        case 2054: return "es";
-        case 2070: return "it";
-        case 2071: return "pt";
-        default: return "unknown";
-    }
+    return out;
 }
 
 static int64_t get_time_ms() {
@@ -189,18 +108,217 @@ static bool file_exists_readable(const std::string & path) {
     return true;
 }
 
-static bool env_flag_true(const char * name, bool default_value = false) {
-    const char * v = std::getenv(name);
-    if (!v || !v[0]) {
-        return default_value;
+static std::string to_lower_ascii(std::string s) {
+    for (char & c : s) {
+        c = (char) std::tolower((unsigned char) c);
     }
-    if (v[0] == '1' || v[0] == 'y' || v[0] == 'Y' || v[0] == 't' || v[0] == 'T') {
-        return true;
+    return s;
+}
+
+static bool starts_with(const std::string & s, const std::string & prefix) {
+    return s.size() >= prefix.size() && std::equal(prefix.begin(), prefix.end(), s.begin());
+}
+
+static bool ends_with(const std::string & s, const std::string & suffix) {
+    return s.size() >= suffix.size() &&
+           std::equal(suffix.rbegin(), suffix.rend(), s.rbegin());
+}
+
+static int artifact_score(const std::string & name_lc) {
+    // Prefer stable runtime artifacts when multiple files coexist.
+    if (name_lc.find(".q8_0.") != std::string::npos) return 500;
+    if (name_lc.find(".q5_k.") != std::string::npos) return 420;
+    if (name_lc.find(".q4_k.") != std::string::npos) return 380;
+    if (name_lc.find(".f16.") != std::string::npos) return 320;
+    if (name_lc.find(".fp16.") != std::string::npos) return 320;
+    if (name_lc.find(".fp32.") != std::string::npos) return 300;
+    return 100;
+}
+
+static bool resolve_artifact_path(
+    const std::string & model_dir,
+    const std::vector<std::string> & preferred_names,
+    const std::string & prefix_lc,
+    const std::string & ext_lc,
+    std::string & out_path) {
+    for (const std::string & name : preferred_names) {
+        const std::string path = model_dir + "/" + name;
+        if (file_exists_readable(path)) {
+            out_path = path;
+            return true;
+        }
     }
-    if (v[0] == '0' || v[0] == 'n' || v[0] == 'N' || v[0] == 'f' || v[0] == 'F') {
+
+    std::error_code ec;
+    fs::directory_iterator it(fs::path(model_dir), fs::directory_options::skip_permission_denied, ec);
+    fs::directory_iterator end;
+    if (ec) {
         return false;
     }
-    return default_value;
+
+    int best_score = std::numeric_limits<int>::min();
+    std::string best_name;
+    std::string best_path;
+    for (; it != end; it.increment(ec)) {
+        if (ec) {
+            break;
+        }
+        const auto & entry = *it;
+        if (!entry.is_regular_file(ec) || ec) {
+            ec.clear();
+            continue;
+        }
+        const std::string name = entry.path().filename().string();
+        const std::string name_lc = to_lower_ascii(name);
+        if (!starts_with(name_lc, prefix_lc) || !ends_with(name_lc, ext_lc)) {
+            continue;
+        }
+
+        int score = artifact_score(name_lc);
+        for (size_t i = 0; i < preferred_names.size(); ++i) {
+            if (name_lc == to_lower_ascii(preferred_names[i])) {
+                score = 10000 - (int) i;
+                break;
+            }
+        }
+
+        if (score > best_score || (score == best_score && name_lc < best_name)) {
+            best_score = score;
+            best_name = name_lc;
+            best_path = entry.path().string();
+        }
+    }
+
+    if (!best_path.empty()) {
+        out_path = best_path;
+        return true;
+    }
+    return false;
+}
+
+static bool dir_exists(const fs::path & p) {
+    std::error_code ec;
+    return fs::exists(p, ec) && fs::is_directory(p, ec);
+}
+
+static bool try_pick_existing_dir(const fs::path & p, std::string & out) {
+    if (dir_exists(p)) {
+        out = p.lexically_normal().string();
+        return true;
+    }
+    return false;
+}
+
+static bool resolve_model_dir(const std::string & requested, std::string & resolved, std::string & err) {
+    fs::path req_path(requested);
+
+    // 1) as-is (works when cwd is project root)
+    if (try_pick_existing_dir(req_path, resolved)) {
+        return true;
+    }
+
+    if (!req_path.is_relative()) {
+        err = "Model directory does not exist: " + requested;
+        return false;
+    }
+
+    std::error_code ec;
+    const fs::path cwd = fs::current_path(ec);
+    if (!ec) {
+        // 2) cwd / requested
+        if (try_pick_existing_dir(cwd / req_path, resolved)) {
+            return true;
+        }
+        // 3) cwd / lunavox / requested (common when launching from workspace parent)
+        if (try_pick_existing_dir(cwd / "lunavox" / req_path, resolved)) {
+            return true;
+        }
+        // 4) parent(cwd) / requested
+        if (try_pick_existing_dir(cwd.parent_path() / req_path, resolved)) {
+            return true;
+        }
+    }
+
+    // 5) light-weight recursive fallback by leaf directory name
+    const std::string target_leaf = req_path.filename().string();
+    if (target_leaf.empty()) {
+        err = "Invalid model directory: " + requested;
+        return false;
+    }
+
+    std::vector<std::string> hits;
+    auto scan_root = [&](const fs::path & root) {
+        std::error_code sec;
+        if (!dir_exists(root)) {
+            return;
+        }
+        fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, sec);
+        fs::recursive_directory_iterator end;
+        for (; it != end; it.increment(sec)) {
+            if (sec) {
+                sec.clear();
+                continue;
+            }
+            if (it.depth() > 4) {
+                it.disable_recursion_pending();
+                continue;
+            }
+            const auto & entry = *it;
+            std::error_code eec;
+            if (!entry.is_directory(eec) || eec) {
+                continue;
+            }
+            if (entry.path().filename().string() == target_leaf && dir_exists(entry.path())) {
+                hits.push_back(entry.path().lexically_normal().string());
+            }
+        }
+    };
+
+    if (!ec) {
+        scan_root(cwd);
+        scan_root(cwd / "lunavox");
+    }
+
+    std::sort(hits.begin(), hits.end());
+    hits.erase(std::unique(hits.begin(), hits.end()), hits.end());
+    if (hits.size() == 1) {
+        resolved = hits[0];
+        return true;
+    }
+    if (hits.size() > 1) {
+        err = "Model directory '" + requested + "' is ambiguous; candidates: " + hits[0];
+        for (size_t i = 1; i < hits.size() && i < 3; ++i) {
+            err += ", " + hits[i];
+        }
+        return false;
+    }
+
+    err = "Model directory does not exist: " + requested;
+    return false;
+}
+
+static std::string sanitize_model_dir_arg(std::string s) {
+    auto is_trim_char = [](char c) {
+        return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\"' || c == '\'';
+    };
+
+    while (!s.empty() && is_trim_char(s.front())) {
+        s.erase(s.begin());
+    }
+    while (!s.empty() && is_trim_char(s.back())) {
+        s.pop_back();
+    }
+
+    // PowerShell multiline continuation mistakes can leave a trailing backtick
+    // in the literal argument (e.g. "models/custom`"). Normalize it away.
+    while (!s.empty() && s.back() == '`') {
+        s.pop_back();
+    }
+    while (!s.empty() && is_trim_char(s.back())) {
+        s.pop_back();
+    }
+
+    return s;
 }
 
 static uint64_t fnv1a_u64(const int32_t * data, size_t n) {
@@ -277,14 +395,186 @@ static void pcm_peak_rms(const std::vector<float> & audio, float & peak, float &
 Qwen3TTS::Qwen3TTS() = default;
 Qwen3TTS::~Qwen3TTS() = default;
 
+bool Qwen3TTS::supports_mode(const std::string & mode) const {
+    const std::string m = to_lower_ascii(mode);
+    if (profile_.model_type == "base") {
+        return m == "base" || m == "clone";
+    }
+    if (profile_.model_type == "custom") {
+        return m == "custom";
+    }
+    if (profile_.model_type == "design") {
+        return m == "design";
+    }
+    return false;
+}
+
+bool Qwen3TTS::resolve_language_id(const std::string & name_or_alias, int32_t & language_id_out) const {
+    const int32_t id = profile_.resolve_language_id(name_or_alias);
+    if (id == -2) {
+        return false;
+    }
+    language_id_out = id;
+    return true;
+}
+
+std::vector<std::string> Qwen3TTS::supported_speakers() const {
+    return profile_.speaker_names_sorted();
+}
+
+std::vector<std::string> Qwen3TTS::supported_languages() const {
+    std::vector<std::string> names;
+    names.reserve(profile_.language_map.size());
+    for (const auto & kv : profile_.language_map) {
+        names.push_back(kv.first);
+    }
+    std::sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
+    return names;
+}
+
+bool Qwen3TTS::load_model_profile(const std::string & path) {
+    std::ifstream fin(path, std::ios::binary);
+    if (!fin) {
+        error_msg_ = "Failed to open model profile: " + path;
+        return false;
+    }
+    const std::string json((std::istreambuf_iterator<char>(fin)), std::istreambuf_iterator<char>());
+
+    RuntimeModelProfile p;
+    std::string model_type;
+    std::string model_size;
+    if (!json_extract_string(json, "model_type", model_type) ||
+        !json_extract_string(json, "model_size", model_size)) {
+        error_msg_ = "model_profile.json missing model_type/model_size";
+        return false;
+    }
+    p.model_type = profile_to_lower_ascii(model_type);
+    p.model_size = profile_to_lower_ascii(model_size);
+
+    if (!json_extract_int(json, "version", p.version) ||
+        !json_extract_bool(json, "instruct_support", p.instruct_support) ||
+        !json_extract_int(json, "talker_n_ctx", p.talker_n_ctx) ||
+        !json_extract_int(json, "predictor_n_ctx", p.predictor_n_ctx) ||
+        !json_extract_int(json, "codec_id_start", p.codec_id_start) ||
+        !json_extract_int(json, "codec_id_end", p.codec_id_end) ||
+        !json_extract_int(json, "codec_num_codebooks", p.codec_num_codebooks) ||
+        !json_extract_int(json, "predictor_vocab_size", p.predictor_vocab_size) ||
+        !json_extract_int(json, "codec_pad_id", p.codec_pad_id) ||
+        !json_extract_int(json, "codec_bos_id", p.codec_bos_id) ||
+        !json_extract_int(json, "codec_eos_id", p.codec_eos_id) ||
+        !json_extract_int(json, "codec_think_id", p.codec_think_id) ||
+        !json_extract_int(json, "codec_nothink_id", p.codec_nothink_id) ||
+        !json_extract_int(json, "codec_think_bos_id", p.codec_think_bos_id) ||
+        !json_extract_int(json, "codec_think_eos_id", p.codec_think_eos_id) ||
+        !json_extract_int(json, "tts_pad_id", p.tts_pad_id) ||
+        !json_extract_int(json, "tts_bos_id", p.tts_bos_id) ||
+        !json_extract_int(json, "tts_eos_id", p.tts_eos_id) ||
+        !json_extract_int(json, "min_new_tokens", p.min_new_tokens) ||
+        !json_extract_int(json, "suppress_from", p.suppress_from) ||
+        !json_extract_int(json, "suppress_to", p.suppress_to) ||
+        !json_extract_int(json, "default_max_new_tokens", p.default_max_new_tokens) ||
+        !json_extract_float(json, "default_temperature", p.default_temperature) ||
+        !json_extract_float(json, "default_top_p", p.default_top_p) ||
+        !json_extract_int(json, "default_top_k", p.default_top_k) ||
+        !json_extract_float(json, "default_repetition_penalty", p.default_repetition_penalty) ||
+        !json_extract_bool(json, "default_predictor_do_sample", p.default_predictor_do_sample) ||
+        !json_extract_float(json, "default_predictor_temperature", p.default_predictor_temperature) ||
+        !json_extract_float(json, "default_predictor_top_p", p.default_predictor_top_p) ||
+        !json_extract_int(json, "default_predictor_top_k", p.default_predictor_top_k)) {
+        error_msg_ = "model_profile.json missing required numeric/boolean fields";
+        return false;
+    }
+
+    std::vector<std::string> speaker_names;
+    std::vector<std::string> speaker_dialects;
+    std::vector<std::string> language_names;
+    std::vector<int32_t> speaker_ids;
+    std::vector<int32_t> language_ids;
+
+    if (!json_extract_string_array(json, "speaker_names", speaker_names) ||
+        !json_extract_flat_int_array(json, "speaker_ids", speaker_ids) ||
+        !json_extract_string_array(json, "speaker_dialects", speaker_dialects) ||
+        !json_extract_string_array(json, "language_names", language_names) ||
+        !json_extract_flat_int_array(json, "language_ids", language_ids)) {
+        error_msg_ = "model_profile.json missing required speaker/language maps";
+        return false;
+    }
+
+    if (speaker_names.size() != speaker_ids.size() || speaker_names.size() != speaker_dialects.size()) {
+        error_msg_ = "model_profile.json speaker map lengths do not match";
+        return false;
+    }
+    if (language_names.size() != language_ids.size()) {
+        error_msg_ = "model_profile.json language map lengths do not match";
+        return false;
+    }
+
+    for (size_t i = 0; i < speaker_names.size(); ++i) {
+        const std::string name = profile_to_lower_ascii(speaker_names[i]);
+        p.speaker_map[name] = speaker_ids[i];
+        p.speaker_dialect_map[name] = profile_to_lower_ascii(speaker_dialects[i]);
+    }
+    for (size_t i = 0; i < language_names.size(); ++i) {
+        p.language_map[profile_to_lower_ascii(language_names[i])] = language_ids[i];
+    }
+
+    std::string reason;
+    if (!p.is_valid(&reason)) {
+        error_msg_ = "Invalid model_profile.json: " + reason;
+        return false;
+    }
+
+    profile_ = std::move(p);
+    return true;
+}
+
 bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_threads) {
     talker_model_path_ = model_dir + "/qwen3_tts_talker.q5_k.gguf";
-    predictor_model_path_ = model_dir + "/qwen3_tts_predictor.q8_0.gguf";
-    speaker_onnx_path_ = model_dir + "/qwen3_tts_speaker_encoder.fp16.onnx";
-    codec_encoder_onnx_path_ = model_dir + "/qwen3_tts_codec_encoder.fp16.onnx";
-    decoder_onnx_path_ = model_dir + "/qwen3_tts_decoder.fp16.onnx";
+    if (!file_exists_readable(talker_model_path_)) {
+        error_msg_ = "Model layout missing Talker GGUF in: " + model_dir;
+        return false;
+    }
+    if (!resolve_artifact_path(
+            model_dir,
+            {"qwen3_tts_predictor.q8_0.gguf", "qwen3_tts_predictor.q5_k.gguf", "qwen3_tts_predictor.f16.gguf"},
+            "qwen3_tts_predictor",
+            ".gguf",
+            predictor_model_path_)) {
+        error_msg_ = "Model layout missing Predictor GGUF in: " + model_dir;
+        return false;
+    }
+    if (!resolve_artifact_path(
+            model_dir,
+            {"qwen3_tts_decoder.fp16.onnx", "qwen3_tts_decoder.fp32.onnx"},
+            "qwen3_tts_decoder",
+            ".onnx",
+            decoder_onnx_path_)) {
+        error_msg_ = "Model layout missing decoder ONNX in: " + model_dir;
+        return false;
+    }
+
+    // Optional encoders
+    if (!resolve_artifact_path(
+            model_dir,
+            {"qwen3_tts_speaker_encoder.fp16.onnx", "qwen3_tts_speaker_encoder.fp32.onnx"},
+            "qwen3_tts_speaker_encoder",
+            ".onnx",
+            speaker_onnx_path_)) {
+        speaker_onnx_path_ = model_dir + "/qwen3_tts_speaker_encoder.fp16.onnx";
+    }
+    if (!resolve_artifact_path(
+            model_dir,
+            {"qwen3_tts_codec_encoder.fp16.onnx", "qwen3_tts_codec_encoder.fp32.onnx"},
+            "qwen3_tts_codec_encoder",
+            ".onnx",
+            codec_encoder_onnx_path_)) {
+        codec_encoder_onnx_path_ = model_dir + "/qwen3_tts_codec_encoder.fp16.onnx";
+    }
+
     embeddings_dir_path_ = model_dir + "/embeddings";
     tokenizer_json_path_ = model_dir + "/tokenizer.json";
+    model_profile_json_path_ = model_dir + "/model_profile.json";
 
     const std::string text_emb = embeddings_dir_path_ + "/text_embedding_projected.npy";
     const std::string codec_emb0 = embeddings_dir_path_ + "/codec_embedding_0.npy";
@@ -296,12 +586,17 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
         text_emb,
         codec_emb0,
         tokenizer_json_path_,
+        model_profile_json_path_,
     };
     for (const auto & p : required) {
         if (!file_exists_readable(p)) {
             error_msg_ = "Model layout missing required file: " + p;
             return false;
         }
+    }
+
+    if (!load_model_profile(model_profile_json_path_)) {
+        return false;
     }
 
     // Optional encoders (only needed for on-the-fly .wav voice cloning)
@@ -313,7 +608,7 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
                   has_codec_enc ? "codec_ok" : "codec_missing");
     }
 
-    if (!assets_.load(model_dir)) {
+    if (!assets_.load(model_dir, profile_.codec_num_codebooks)) {
         error_msg_ = "Failed to load embedding assets: " + assets_.get_error();
         return false;
     }
@@ -330,7 +625,7 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
 
     const char * lib_dir_env = std::getenv("QWEN3_TTS_LIB_DIR");
     std::string lib_dir = lib_dir_env && lib_dir_env[0] ? std::string(lib_dir_env) : std::string("lib/llama");
-    if (!talker_predictor_.load(lib_dir, talker_model_path_, predictor_model_path_, assets_, n_threads)) {
+    if (!talker_predictor_.load(lib_dir, talker_model_path_, predictor_model_path_, assets_, profile_, n_threads)) {
         error_msg_ = "Failed to initialize llama talker/predictor runtime: " + talker_predictor_.get_error();
         return false;
     }
@@ -397,6 +692,8 @@ bool Qwen3TTS::load_models(const std::string & model_dir, int32_t n_threads) {
     embeddings_dir_path_.clear();
     decoder_onnx_path_.clear();
     tokenizer_json_path_.clear();
+    model_profile_json_path_.clear();
+    profile_ = RuntimeModelProfile{};
 
     talker_predictor_.unload();
     assets_.clear();
@@ -410,8 +707,27 @@ bool Qwen3TTS::load_models(const std::string & model_dir, int32_t n_threads) {
         LOG_DEBUG("  Low-memory mode enabled (lazy decoder + deferred encoders)");
     }
 
+    const std::string model_dir_sanitized = sanitize_model_dir_arg(model_dir);
+    if (model_dir_sanitized.empty()) {
+        error_msg_ = "Model directory is empty after argument normalization";
+        return false;
+    }
+    if (model_dir_sanitized != model_dir) {
+        LOG_WARN("Normalized model_dir argument: '%s' -> '%s'", model_dir.c_str(), model_dir_sanitized.c_str());
+    }
+
+    std::string resolved_model_dir;
+    std::string resolve_err;
+    if (!resolve_model_dir(model_dir_sanitized, resolved_model_dir, resolve_err)) {
+        error_msg_ = resolve_err;
+        return false;
+    }
+    if (resolved_model_dir != model_dir_sanitized) {
+        LOG_INFO("Resolved model_dir: %s -> %s", model_dir_sanitized.c_str(), resolved_model_dir.c_str());
+    }
+
     const int32_t effective_threads = std::max(1, n_threads);
-    if (!load_models_new_layout(model_dir, effective_threads)) {
+    if (!load_models_new_layout(resolved_model_dir, effective_threads)) {
         return false;
     }
 
@@ -447,40 +763,53 @@ bool Qwen3TTS::preload_hot_embedding_rows() {
         return true;
     };
 
-    static const int32_t kHotTextRows[] = {
-        198,    // \n
-        872,    // user
-        151644, // <|im_start|>
-        151645, // <|im_end|>
-        151671, // tts_pad
-        151672, // tts_bos
-        151673, // tts_eos
-        77091,  // assistant
+    std::vector<int32_t> hot_text_rows = {
+        profile_.tts_pad_id,
+        profile_.tts_bos_id,
+        profile_.tts_eos_id,
     };
-
-    static const int32_t kHotCodecQ0Rows[] = {
-        // Protocol rows
-        2148, 2149, 2150, 2154, 2155, 2156, 2157,
-        // Common language IDs
-        2050, 2053, 2054, 2055, 2058, 2061, 2064, 2069, 2070, 2071,
-        // Common built-in speakers
-        2861, 2864, 2873, 2875, 2878, 3010, 3061, 3065, 3066,
+    auto append_hot_text_tokens = [&](const std::string & marker) {
+        const std::vector<int32_t> marker_tokens = tokenizer_.encode(marker);
+        hot_text_rows.insert(hot_text_rows.end(), marker_tokens.begin(), marker_tokens.end());
     };
+    append_hot_text_tokens("<|im_start|>assistant\n");
+    append_hot_text_tokens("<|im_start|>user\n");
+    append_hot_text_tokens("<|im_end|>\n");
+    std::sort(hot_text_rows.begin(), hot_text_rows.end());
+    hot_text_rows.erase(std::unique(hot_text_rows.begin(), hot_text_rows.end()), hot_text_rows.end());
 
-    for (int32_t tid : kHotTextRows) {
+    std::vector<int32_t> hot_codec_q0_rows = {
+        profile_.codec_pad_id,
+        profile_.codec_bos_id,
+        profile_.codec_eos_id,
+        profile_.codec_think_id,
+        profile_.codec_nothink_id,
+        profile_.codec_think_bos_id,
+        profile_.codec_think_eos_id,
+    };
+    for (const auto & kv : profile_.language_map) {
+        hot_codec_q0_rows.push_back(kv.second);
+    }
+    for (const auto & kv : profile_.speaker_map) {
+        hot_codec_q0_rows.push_back(kv.second);
+    }
+    std::sort(hot_codec_q0_rows.begin(), hot_codec_q0_rows.end());
+    hot_codec_q0_rows.erase(std::unique(hot_codec_q0_rows.begin(), hot_codec_q0_rows.end()), hot_codec_q0_rows.end());
+
+    for (int32_t tid : hot_text_rows) {
         if (!touch_row(assets_.text_row(tid), "hot text row")) {
             return false;
         }
     }
 
-    for (int32_t cid : kHotCodecQ0Rows) {
+    for (int32_t cid : hot_codec_q0_rows) {
         if (!touch_row(assets_.codec_row(0, cid), "hot codec q0 row")) {
             return false;
         }
     }
 
     // Touch one row from each codec table to reduce first-access page faults.
-    for (int32_t q = 0; q < 16; ++q) {
+    for (int32_t q = 0; q < profile_.codec_num_codebooks; ++q) {
         if (!touch_row(assets_.codec_row(q, 0), "codec table first row")) {
             return false;
         }
@@ -498,6 +827,10 @@ tts_result Qwen3TTS::synthesize(const std::string & text, const tts_params & par
         result.error_msg = "Models not loaded";
         return result;
     }
+    if (!supports_mode("base")) {
+        result.error_msg = "Current model does not support base mode synthesis";
+        return result;
+    }
     return synthesize_internal(text, nullptr, nullptr, 0, params, result);
 }
 
@@ -507,6 +840,10 @@ tts_result Qwen3TTS::synthesize_with_voice(
     const tts_params & params) {
     tts_result result;
     tts_params params_copy = params;
+    if (!supports_mode("clone")) {
+        result.error_msg = "Current model does not support clone mode synthesis";
+        return result;
+    }
     
     // Check if reference_audio is a .json file
     if (reference_audio.length() >= 5 && 
@@ -531,7 +868,8 @@ tts_result Qwen3TTS::synthesize_with_voice(
         }
         
         std::string ref_text_json;
-        if (json_extract_string(json_content, "text", ref_text_json)) {
+        if (json_extract_string(json_content, "ref-text", ref_text_json) ||
+            json_extract_string(json_content, "text", ref_text_json)) {
             params_copy.ref_text = ref_text_json;
         }
         
@@ -550,7 +888,11 @@ tts_result Qwen3TTS::synthesize_with_voice(
             result.error_msg = "Failed to parse codes from reference JSON";
             return result;
         }
-        n_ref_frames = (int32_t)ref_codes.size() / 16;
+        if (ref_codes.empty() || ((int32_t) ref_codes.size() % profile_.codec_num_codebooks) != 0) {
+            result.error_msg = "[clone/JSON] Invalid ref_codes shape; expected T x codec_num_codebooks";
+            return result;
+        }
+        n_ref_frames = (int32_t) ref_codes.size() / profile_.codec_num_codebooks;
         
         result.spk_emb_dim = (int32_t) speaker_embedding.size();
         result.spk_emb_l2 = l2_norm(speaker_embedding.data(), (int32_t) speaker_embedding.size());
@@ -572,29 +914,32 @@ tts_result Qwen3TTS::synthesize_with_voice(
         }
         
         result.ref_code_frames = n_ref_frames;
+        result.ref_codebooks = profile_.codec_num_codebooks;
         minmax_i32(ref_codes.data(), (int32_t) ref_codes.size(), result.ref_code_min, result.ref_code_max);
-        if (n_ref_frames > 0 && (ref_codes.empty() || (int32_t) ref_codes.size() != n_ref_frames * 16)) {
-            result.error_msg = "[clone/JSON] Invalid ref_codes shape; expected T x 16";
+        if (n_ref_frames <= 0 ||
+            (int32_t) ref_codes.size() != n_ref_frames * profile_.codec_num_codebooks) {
+            result.error_msg = "[clone/JSON] Invalid ref_codes shape; expected T x codec_num_codebooks";
             return result;
         }
         for (int32_t c : ref_codes) {
-            if (c < 0 || c >= 2048) {
-                result.error_msg = "[clone/JSON] Invalid ref code id out of [0, 2047]";
+            if (c < profile_.codec_id_start || c >= profile_.codec_id_end) {
+                result.error_msg = "[clone/JSON] Invalid ref code id out of codec range from model_profile.json";
                 return result;
             }
         }
         
         if (params.print_progress) {
-            LOG_INFO("Reference features extracted from JSON: spk_dim=%d, ref_codes=%d frames x 16",
+            LOG_INFO("Reference features extracted from JSON: spk_dim=%d, ref_codes=%d frames x %d",
                     (int) speaker_embedding.size(),
-                    n_ref_frames);
+                    n_ref_frames,
+                    profile_.codec_num_codebooks);
         }
 
-        const bool use_clone_icl = env_flag_true("QWEN3_TTS_CLONE_USE_ICL", false);
-        const int32_t * ref_codes_ptr = (use_clone_icl && !ref_codes.empty()) ? ref_codes.data() : nullptr;
+        const bool use_clone_icl = !params_copy.ref_text.empty() && !ref_codes.empty() && n_ref_frames > 0;
+        const int32_t * ref_codes_ptr = use_clone_icl ? ref_codes.data() : nullptr;
         const int32_t ref_frames_for_gen = (ref_codes_ptr != nullptr) ? n_ref_frames : 0;
         if (params.print_progress && !use_clone_icl) {
-            LOG_INFO("Clone mode: using x-vector-only prompt from JSON (set QWEN3_TTS_CLONE_USE_ICL=1 to enable ICL)");
+            LOG_INFO("Clone mode: using x-vector-only prompt (missing ref_text for ICL)");
         }
 
         int64_t t_encode = get_time_ms();
@@ -640,6 +985,10 @@ tts_result Qwen3TTS::synthesize_with_voice(
         result.error_msg = "Models not loaded";
         return result;
     }
+    if (!supports_mode("clone")) {
+        result.error_msg = "Current model does not support clone mode synthesis";
+        return result;
+    }
     if (!ref_samples || n_ref_samples <= 0) {
         result.error_msg = "Invalid reference audio samples";
         return result;
@@ -663,32 +1012,8 @@ tts_result Qwen3TTS::synthesize_with_voice(
         LOG_INFO("  Codec encoder providers: %s", codec_encoder_.provider_summary().c_str());
     }
 
-    // Default behavior aligns with Qwen3-TTS-GGUF: keep full reference audio.
-    // Optional cap can be enabled via env QWEN3_TTS_CLONE_MAX_REF_SAMPLES (>0).
-    std::vector<float> clone_ref_buffer;
-    const float * clone_ref_ptr = ref_samples;
-    int32_t clone_ref_samples = n_ref_samples;
-    const char * clone_cap_env = std::getenv("QWEN3_TTS_CLONE_MAX_REF_SAMPLES");
-    if (clone_cap_env && clone_cap_env[0] != '\0') {
-        char * end_ptr = nullptr;
-        const long parsed = std::strtol(clone_cap_env, &end_ptr, 10);
-        if (end_ptr != clone_cap_env && parsed > 0 && parsed < INT32_MAX) {
-            const int32_t cap_samples = (int32_t) parsed;
-            if (clone_ref_samples > cap_samples) {
-                clone_ref_buffer.assign(ref_samples, ref_samples + (size_t) cap_samples);
-                clone_ref_ptr = clone_ref_buffer.data();
-                clone_ref_samples = cap_samples;
-                if (params.print_progress || params.print_timing) {
-                    LOG_INFO("Clone reference capped by QWEN3_TTS_CLONE_MAX_REF_SAMPLES=%d (original=%d)",
-                             cap_samples,
-                             n_ref_samples);
-                }
-            }
-        }
-    }
-
     std::vector<float> speaker_embedding;
-    if (!speaker_encoder_.encode(clone_ref_ptr, clone_ref_samples, speaker_embedding)) {
+    if (!speaker_encoder_.encode(ref_samples, n_ref_samples, speaker_embedding)) {
         result.error_msg = "[clone/speaker] Failed to extract speaker embedding: " + speaker_encoder_.get_error();
         return result;
     }
@@ -717,39 +1042,38 @@ tts_result Qwen3TTS::synthesize_with_voice(
 
     std::vector<int32_t> ref_codes;
     int32_t n_ref_frames = 0;
-    if (!codec_encoder_.encode(clone_ref_ptr, clone_ref_samples, ref_codes, n_ref_frames)) {
+    if (!codec_encoder_.encode(ref_samples, n_ref_samples, ref_codes, n_ref_frames)) {
         result.error_msg = "[clone/codec_encoder] Failed to encode reference audio codes: " + codec_encoder_.get_error();
         return result;
     }
     result.ref_code_frames = n_ref_frames;
+    result.ref_codebooks = profile_.codec_num_codebooks;
     minmax_i32(ref_codes.data(), (int32_t) ref_codes.size(), result.ref_code_min, result.ref_code_max);
-    if (n_ref_frames <= 0 || ref_codes.empty() || (int32_t) ref_codes.size() != n_ref_frames * 16) {
-        result.error_msg = "[clone/codec_encoder] Invalid ref_codes shape; expected T x 16";
+    if (n_ref_frames <= 0 || ref_codes.empty() ||
+        (int32_t) ref_codes.size() != n_ref_frames * profile_.codec_num_codebooks) {
+        result.error_msg = "[clone/codec_encoder] Invalid ref_codes shape; expected T x codec_num_codebooks";
         return result;
     }
     for (int32_t c : ref_codes) {
-        if (c < 0 || c >= 2048) {
-            result.error_msg = "[clone/codec_encoder] Invalid ref code id out of [0, 2047]";
+        if (c < profile_.codec_id_start || c >= profile_.codec_id_end) {
+            result.error_msg = "[clone/codec_encoder] Invalid ref code id out of codec range from model_profile.json";
             return result;
         }
     }
     result.t_encode_ms = get_time_ms() - t_encode;
 
     if (params.print_progress) {
-        LOG_INFO("Reference features extracted: spk_dim=%d, ref_codes=%d frames x 16",
+        LOG_INFO("Reference features extracted: spk_dim=%d, ref_codes=%d frames x %d",
                 (int) speaker_embedding.size(),
-                n_ref_frames);
+                n_ref_frames,
+                profile_.codec_num_codebooks);
     }
 
-    // Keep clone stable when no reference transcript is available:
-    // by default, use x-vector-only cloning (speaker embedding only).
-    // Enable ICL ref-code fusion explicitly via env:
-    //   QWEN3_TTS_CLONE_USE_ICL=1
-    const bool use_clone_icl = env_flag_true("QWEN3_TTS_CLONE_USE_ICL", false);
-    const int32_t * ref_codes_ptr = (use_clone_icl && !ref_codes.empty()) ? ref_codes.data() : nullptr;
+    const bool use_clone_icl = !params.ref_text.empty() && !ref_codes.empty() && n_ref_frames > 0;
+    const int32_t * ref_codes_ptr = use_clone_icl ? ref_codes.data() : nullptr;
     const int32_t ref_frames_for_gen = (ref_codes_ptr != nullptr) ? n_ref_frames : 0;
     if (params.print_progress && !use_clone_icl) {
-        LOG_INFO("Clone mode: using x-vector-only prompt (set QWEN3_TTS_CLONE_USE_ICL=1 to enable ICL)");
+        LOG_INFO("Clone mode: using x-vector-only prompt (missing ref_text for ICL)");
     }
 
     return synthesize_internal(
@@ -816,27 +1140,6 @@ tts_result Qwen3TTS::synthesize_with_embedding(
     return synthesize_internal(text, embedding, nullptr, 0, params, result);
 }
 
-// Speaker name -> ID mapping (matches SPEAKER_MAP in Qwen3-TTS-GGUF constants.py)
-int32_t Qwen3TTS::speaker_id_from_name(const std::string & name) {
-    // Build lowercase name
-    std::string lower;
-    lower.reserve(name.size());
-    for (char c : name) {
-        lower.push_back((char)std::tolower((unsigned char)c));
-    }
-    // Official speaker map
-    if (lower == "vivian")    return 3065;
-    if (lower == "serena")    return 3066;
-    if (lower == "uncle_fu")  return 3010;
-    if (lower == "ryan")      return 3061;
-    if (lower == "aiden")     return 2861;
-    if (lower == "ono_anna")  return 2873;
-    if (lower == "sohee")     return 2864;
-    if (lower == "eric")      return 2875;
-    if (lower == "dylan")     return 2878;
-    return -1;
-}
-
 tts_result Qwen3TTS::synthesize_custom(
     const std::string & text,
     const std::string & speaker,
@@ -847,12 +1150,19 @@ tts_result Qwen3TTS::synthesize_custom(
         result.error_msg = "Models not loaded";
         return result;
     }
+    if (!supports_mode("custom")) {
+        result.error_msg = "Current model does not support custom mode synthesis";
+        return result;
+    }
+    if (!profile_.instruct_support && !instruct.empty()) {
+        result.error_msg = "This model does not support instruct in custom mode";
+        return result;
+    }
 
-    // Map speaker name to ID
-    int32_t spk_id = speaker_id_from_name(speaker);
+    const int32_t spk_id = profile_.resolve_speaker_id(speaker);
     if (spk_id < 0) {
-        result.error_msg = "Unknown speaker name: " + speaker +
-            ". Available: Vivian, Serena, Uncle_Fu, Ryan, Aiden, Ono_Anna, Sohee, Eric, Dylan";
+        const auto speakers = supported_speakers();
+        result.error_msg = "Unknown speaker name: " + speaker + ". Available: " + join_csv(speakers);
         return result;
     }
 
@@ -882,6 +1192,14 @@ tts_result Qwen3TTS::synthesize_design(
     tts_result result;
     if (!models_loaded_) {
         result.error_msg = "Models not loaded";
+        return result;
+    }
+    if (!supports_mode("design")) {
+        result.error_msg = "Current model does not support design mode synthesis";
+        return result;
+    }
+    if (!profile_.instruct_support && !instruct.empty()) {
+        result.error_msg = "This model does not support instruct in design mode";
         return result;
     }
 
@@ -934,33 +1252,86 @@ tts_result Qwen3TTS::synthesize_internal(
 
     sample_memory("synth/start");
 
+    if (profile_.model_type == "base" && !params.instruct.empty()) {
+        result.error_msg = "Base model forbids instruct in synthesis path";
+        return result;
+    }
+    if (!profile_.instruct_support && !params.instruct.empty()) {
+        result.error_msg = "This model does not support instruct";
+        return result;
+    }
+
     if (!preload_hot_embedding_rows()) {
         result.error_msg = "Failed to preload embedding hot rows: " + error_msg_;
         return result;
     }
 
     int64_t t_tok = get_time_ms();
-    std::string full_text = params.ref_text.empty() ? text : params.ref_text + text;
-    std::vector<int32_t> text_tokens = tokenizer_.encode(full_text);
-    std::vector<int32_t> role_prefix_tokens = tokenizer_.encode("<|im_start|>assistant\n");
-    if (role_prefix_tokens.size() != 3 || role_prefix_tokens[0] != 151644 || role_prefix_tokens[1] != 77091 ||
-        role_prefix_tokens[2] != 198) {
-        role_prefix_tokens = {151644, 77091, 198};
+    auto has_prefix_suffix = [](
+                                 const std::vector<int32_t> & toks,
+                                 const std::vector<int32_t> & prefix,
+                                 const std::vector<int32_t> & suffix) -> bool {
+        if (toks.size() < prefix.size() + suffix.size()) {
+            return false;
+        }
+        if (!std::equal(prefix.begin(), prefix.end(), toks.begin())) {
+            return false;
+        }
+        return std::equal(suffix.rbegin(), suffix.rend(), toks.rbegin());
+    };
+
+    const std::vector<int32_t> assistant_prefix_tokens = tokenizer_.encode("<|im_start|>assistant\n");
+    const std::vector<int32_t> user_prefix_tokens = tokenizer_.encode("<|im_start|>user\n");
+    const std::vector<int32_t> end_newline_tokens = tokenizer_.encode("<|im_end|>\n");
+    if (assistant_prefix_tokens.empty() || user_prefix_tokens.empty() || end_newline_tokens.empty()) {
+        result.error_msg = "Failed to build ChatML boundary tokens from tokenizer";
+        return result;
     }
+    std::vector<int32_t> assistant_suffix_tokens = end_newline_tokens;
+    assistant_suffix_tokens.insert(
+        assistant_suffix_tokens.end(), assistant_prefix_tokens.begin(), assistant_prefix_tokens.end());
+
+    std::vector<int32_t> text_tokens;
+    {
+        const std::string wrapped = "<|im_start|>assistant\n" + text + "<|im_end|>\n<|im_start|>assistant\n";
+        const std::vector<int32_t> wrapped_tokens = tokenizer_.encode(wrapped);
+        if (has_prefix_suffix(wrapped_tokens, assistant_prefix_tokens, assistant_suffix_tokens)) {
+            text_tokens.assign(
+                wrapped_tokens.begin() + (int64_t) assistant_prefix_tokens.size(),
+                wrapped_tokens.end() - (int64_t) assistant_suffix_tokens.size());
+        } else {
+            text_tokens = tokenizer_.encode(text);
+        }
+    }
+
+    std::vector<int32_t> ref_text_tokens;
+    if (!params.ref_text.empty()) {
+        const std::string wrapped_ref = "<|im_start|>assistant\n" + params.ref_text + "<|im_end|>\n";
+        const std::vector<int32_t> wrapped_ref_tokens = tokenizer_.encode(wrapped_ref);
+        if (has_prefix_suffix(wrapped_ref_tokens, assistant_prefix_tokens, end_newline_tokens)) {
+            ref_text_tokens.assign(
+                wrapped_ref_tokens.begin() + (int64_t) assistant_prefix_tokens.size(),
+                wrapped_ref_tokens.end() - (int64_t) end_newline_tokens.size());
+        } else {
+            ref_text_tokens = tokenizer_.encode(params.ref_text);
+        }
+    }
+    std::vector<int32_t> role_prefix_tokens = assistant_prefix_tokens;
 
     // Tokenize instruct block for Custom Voice / Voice Design modes
     std::vector<int32_t> instruct_tokens;
     if (!params.instruct.empty()) {
-        instruct_tokens.push_back(151644); // <|im_start|>
-        instruct_tokens.push_back(872);    // user
-        instruct_tokens.push_back(198);    // \n
-        
-        std::vector<int32_t> inner = tokenizer_.encode(params.instruct);
-        instruct_tokens.insert(instruct_tokens.end(), inner.begin(), inner.end());
-        
-        instruct_tokens.push_back(151645); // <|im_end|>
-        instruct_tokens.push_back(198);    // \n
-        
+        const std::string wrapped_instruct = "<|im_start|>user\n" + params.instruct + "<|im_end|>\n";
+        instruct_tokens = tokenizer_.encode(wrapped_instruct);
+        if (!has_prefix_suffix(instruct_tokens, user_prefix_tokens, end_newline_tokens)) {
+            instruct_tokens.clear();
+            std::vector<int32_t> inner = tokenizer_.encode(params.instruct);
+            instruct_tokens.reserve(user_prefix_tokens.size() + inner.size() + end_newline_tokens.size());
+            instruct_tokens.insert(instruct_tokens.end(), user_prefix_tokens.begin(), user_prefix_tokens.end());
+            instruct_tokens.insert(instruct_tokens.end(), inner.begin(), inner.end());
+            instruct_tokens.insert(instruct_tokens.end(), end_newline_tokens.begin(), end_newline_tokens.end());
+        }
+
         if (params.print_timing) {
             LOG_DEBUG("Instruct tokens: %d tokens for block: %s",
                     (int)instruct_tokens.size(), params.instruct.c_str());
@@ -979,14 +1350,19 @@ tts_result Qwen3TTS::synthesize_internal(
         return result;
     }
 
-    int32_t effective_language_id = params.auto_language ? detect_language_id_from_text(text) : params.language_id;
+    int32_t effective_language_id = params.language_id;
     result.effective_language_id = effective_language_id;
-    result.used_auto_language = params.auto_language;
+    result.used_auto_language = false;
     if (params.print_timing || params.print_progress) {
-        LOG_INFO("Language selection: %s -> %s (%d)",
-                params.auto_language ? "auto" : "manual",
-                language_name_from_id(effective_language_id),
-                effective_language_id);
+        const std::string lang_desc = (effective_language_id < 0)
+                                          ? std::string("Auto(None): no language token")
+                                          : (std::string("explicit codec id=") + std::to_string(effective_language_id));
+        LOG_INFO("Language selection: %s", lang_desc.c_str());
+    }
+
+    int32_t effective_max_audio_tokens = params.max_audio_tokens;
+    if (effective_max_audio_tokens <= 0) {
+        effective_max_audio_tokens = profile_.default_max_new_tokens;
     }
 
     int64_t t_generate = get_time_ms();
@@ -997,12 +1373,13 @@ tts_result Qwen3TTS::synthesize_internal(
     }
     if (!talker_predictor_.generate(
             text_tokens,
+            ref_text_tokens,
             role_prefix_tokens,
             instruct_tokens,
             speaker_embedding,
             ref_codes,
             n_ref_frames,
-            params.max_audio_tokens,
+            effective_max_audio_tokens,
             effective_language_id,
             params.repetition_penalty,
             params.temperature,
@@ -1019,27 +1396,29 @@ tts_result Qwen3TTS::synthesize_internal(
         return result;
     }
     result.eos_step = talker_predictor_.last_eos_step();
-    result.trailing_count = talker_predictor_.last_trailing_count();
-    result.trailing_consumed = talker_predictor_.last_trailing_consumed();
-    result.gen_code_frames = (int32_t) speech_codes.size() / 16;
+    result.gen_code_frames = (int32_t) speech_codes.size() / profile_.codec_num_codebooks;
+    result.gen_codebooks = profile_.codec_num_codebooks;
     minmax_i32(speech_codes.data(), (int32_t) speech_codes.size(), result.gen_code_min, result.gen_code_max);
     result.gen_codes_hash = fnv1a_u64(speech_codes.data(), speech_codes.size());
     result.t_generate_ms = get_time_ms() - t_generate;
     sample_memory("synth/after-generate");
 
-    const int n_codebooks = 16;
+    const int n_codebooks = profile_.codec_num_codebooks;
     int n_frames = (int) speech_codes.size() / n_codebooks;
     if (n_frames <= 0) {
         result.error_msg = "No speech codes generated";
         return result;
     }
     if ((int32_t) speech_codes.size() != n_frames * n_codebooks) {
-        result.error_msg = "[generate] Invalid generated codes shape; expected T x 16";
+        result.error_msg = "[generate] Invalid generated codes shape; expected T x codec_num_codebooks";
         return result;
     }
+    const int32_t generated_code_upper_bound =
+        (profile_.suppress_to > profile_.codec_id_end) ? profile_.suppress_to : profile_.codec_id_end;
     for (int32_t c : speech_codes) {
-        if (c < 0 || c >= 2048) {
-            result.error_msg = "[generate] Invalid generated code id out of [0, 2047]";
+        if (c < profile_.codec_id_start || c >= generated_code_upper_bound) {
+            result.error_msg =
+                "[generate] Invalid generated code id out of runtime codec/special range from model_profile.json";
             return result;
         }
     }

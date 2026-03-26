@@ -58,7 +58,7 @@ struct npy_matrix {
 
 class AssetsManager {
 public:
-    bool load(const std::string & model_dir);
+    bool load(const std::string & model_dir, int32_t codec_num_codebooks);
     void clear();
 
     bool is_loaded() const { return loaded_; }
@@ -89,6 +89,7 @@ private:
     npy_matrix text_table_;
     npy_matrix proj_weight_;
     npy_matrix proj_bias_;
+    int32_t codec_num_codebooks_ = 0;
     npy_matrix codec_table_[16];
 };
 

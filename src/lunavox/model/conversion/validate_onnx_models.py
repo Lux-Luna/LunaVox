@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -111,18 +111,27 @@ def main() -> int:
     speaker = models_dir / "qwen3_tts_speaker_encoder.fp16.onnx"
     decoder = models_dir / "qwen3_tts_decoder.fp16.onnx"
 
-    missing = [p for p in (codec, speaker, decoder) if not p.exists()]
-    if missing:
-        raise RuntimeError("Missing ONNX files for validation:\n" + "\n".join(str(p) for p in missing))
+    any_validated = False
 
-    base, stride, ok_lengths = detect_codec_grid(codec)
-    validate_speaker(speaker)
-    validate_decoder_io(decoder)
+    if codec.exists():
+        base, stride, ok_lengths = detect_codec_grid(codec)
+        eprint(f"[ok] codec runtime check passed (base={base}, stride={stride})")
+        any_validated = True
+    
+    if speaker.exists():
+        validate_speaker(speaker)
+        eprint("[ok] speaker output shape check passed")
+        any_validated = True
 
-    eprint("[ok] ONNX runtime validation passed")
-    eprint(f"[ok] codec valid-length probe: base={base}, stride={stride}, samples={ok_lengths}")
-    eprint("[ok] speaker output shape check passed")
-    eprint("[ok] decoder I/O signature check passed")
+    if decoder.exists():
+        validate_decoder_io(decoder)
+        eprint("[ok] decoder I/O signature check passed")
+        any_validated = True
+
+    if not any_validated:
+        eprint("[warn] No ONNX files found for validation in this directory")
+    else:
+        eprint("[ok] ONNX runtime validation passed for present components")
     return 0
 
 

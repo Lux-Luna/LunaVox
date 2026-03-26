@@ -43,6 +43,10 @@ static bool file_exists(const std::string & path) {
     return true;
 }
 
+static bool storage_is_f32(const npy_matrix & m) {
+    return m.storage == npy_storage_kind::mmap_f32 || m.storage == npy_storage_kind::owned_f32;
+}
+
 static float fp16_to_f32(uint16_t h) {
     const uint32_t sign = (uint32_t) (h & 0x8000) << 16;
     const uint32_t exp = (h >> 10) & 0x1F;
@@ -185,8 +189,13 @@ void npy_matrix::clear() {
     }
 }
 
-bool AssetsManager::load(const std::string & model_dir) {
+bool AssetsManager::load(const std::string & model_dir, int32_t codec_num_codebooks) {
     clear();
+    if (codec_num_codebooks <= 0 || codec_num_codebooks > 16) {
+        error_msg_ = "codec_num_codebooks must be in [1, 16]";
+        return false;
+    }
+    codec_num_codebooks_ = codec_num_codebooks;
     model_dir_ = model_dir;
 
     const std::string emb_dir = model_dir + "/embeddings";
@@ -196,10 +205,15 @@ bool AssetsManager::load(const std::string & model_dir) {
         return false;
     }
 
-    for (int i = 0; i < 16; ++i) {
+    for (int32_t i = 0; i < codec_num_codebooks_; ++i) {
         const std::string path = emb_dir + "/codec_embedding_" + std::to_string(i) + ".npy";
         if (!load_npy_mmap_2d(path, codec_table_[i])) {
             error_msg_ = "Failed to load codec embedding table: " + path + " : " + error_msg_;
+            return false;
+        }
+        if (!storage_is_f32(codec_table_[i])) {
+            error_msg_ =
+                "Codec embedding dtype must be float32 (run model conversion again to regenerate embeddings)";
             return false;
         }
     }
@@ -213,6 +227,11 @@ bool AssetsManager::load(const std::string & model_dir) {
         }
         if (!load_npy_mmap_2d(proj_b, proj_bias_)) {
             error_msg_ = "Failed to load projection bias: " + error_msg_;
+            return false;
+        }
+        if (!storage_is_f32(proj_weight_) || !storage_is_f32(proj_bias_)) {
+            error_msg_ =
+                "Projection dtype must be float32 (run model conversion again to regenerate embeddings)";
             return false;
         }
         if (proj_bias_.rows != 1 || proj_bias_.cols != proj_weight_.rows) {
@@ -237,10 +256,11 @@ void AssetsManager::clear() {
     for (auto & t : codec_table_) {
         t.clear();
     }
+    codec_num_codebooks_ = 0;
 }
 
 const float * AssetsManager::codec_row(int32_t q, int32_t code) const {
-    if (q < 0 || q >= 16) return nullptr;
+    if (q < 0 || q >= codec_num_codebooks_) return nullptr;
     return codec_table_[q].row(code);
 }
 

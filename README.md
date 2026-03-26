@@ -160,3 +160,23 @@ LunaVox 自动下载 `lib/` 下合作 ONNX Runtime 与 Llama.cpp。若要手动�
 - **[onnxruntime](https://github.com/microsoft/onnxruntime)**: 驱动高性能音频解码后端。
 - **[llama.cpp](https://github.com/ggml-org/llama.cpp)**: 驱动 LLM 序列预测核心。
 
+---
+
+## Runtime Notes (Strict Profile Contract)
+
+- `model_profile.json` is now a strict runtime contract. Missing required fields will fail model load.
+- New required profile fields include:
+  - `predictor_n_ctx`
+  - `codec_num_codebooks` (must be `16` in current runtime)
+  - `predictor_vocab_size`
+- `base + --instruct` and `0.6B models + --instruct` are hard errors (no silent ignore path).
+- Talker runtime uses `qwen3_tts_talker.q5_k.gguf` as the only supported artifact.
+
+### Quality Gate (Manual Verification First)
+
+```powershell
+./build/qwen3-tts-cli.exe --help
+```
+
+- Per-run timeout for manual checks should stay within 20 seconds.
+- Do manual listening verification before any data-level metric comparison.

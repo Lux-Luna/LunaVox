@@ -138,6 +138,7 @@ bool LlamaLibrary::load_symbol_table(std::string & err) {
     if (!load_fn(handle_llama_, "llama_model_free", llama_model_free, err)) return false;
     if (!load_fn(handle_llama_, "llama_model_get_vocab", llama_model_get_vocab, err)) return false;
     if (!load_fn(handle_llama_, "llama_model_n_embd", llama_model_n_embd, err)) return false;
+    if (!load_fn(handle_llama_, "llama_model_n_ctx_train", llama_model_n_ctx_train, err)) return false;
 
     if (!load_fn(handle_llama_, "llama_context_default_params", llama_context_default_params, err)) return false;
     if (!load_fn(handle_llama_, "llama_init_from_model", llama_init_from_model, err)) return false;
@@ -149,6 +150,7 @@ bool LlamaLibrary::load_symbol_table(std::string & err) {
     if (!load_fn(handle_llama_, "llama_decode", llama_decode, err)) return false;
     if (!load_fn(handle_llama_, "llama_get_logits_ith", llama_get_logits_ith, err)) return false;
     if (!load_fn(handle_llama_, "llama_get_embeddings", llama_get_embeddings, err)) return false;
+    try_load_fn(handle_llama_, "llama_get_embeddings_ith", llama_get_embeddings_ith);
     if (!load_fn(handle_llama_, "llama_vocab_n_tokens", llama_vocab_n_tokens, err)) return false;
     if (!load_fn(handle_llama_, "llama_vocab_eos", llama_vocab_eos, err)) return false;
     if (!load_fn(handle_llama_, "llama_get_memory", llama_get_memory, err)) return false;
@@ -202,6 +204,7 @@ bool LlamaModel::load(const std::string & path, int32_t n_gpu_layers, std::strin
     n_embd_ = lib.llama_model_n_embd(model_);
     n_vocab_ = lib.llama_vocab_n_tokens(vocab_);
     eos_id_ = (int32_t) lib.llama_vocab_eos(vocab_);
+    n_ctx_train_ = lib.llama_model_n_ctx_train(model_);
     return true;
 }
 
@@ -214,6 +217,7 @@ void LlamaModel::free() {
     n_embd_ = 0;
     n_vocab_ = 0;
     eos_id_ = -1;
+    n_ctx_train_ = 0;
 }
 
 LlamaContext::~LlamaContext() {
@@ -239,6 +243,8 @@ bool LlamaContext::init(LlamaModel & model, int32_t n_ctx, int32_t n_threads, bo
         err = "llama_init_from_model failed";
         return false;
     }
+    n_ctx_ = n_ctx;
+    n_embd_ = model.n_embd();
     return true;
 }
 
@@ -247,6 +253,8 @@ void LlamaContext::free() {
         LlamaLibrary::instance().llama_free(ctx_);
         ctx_ = nullptr;
     }
+    n_ctx_ = 0;
+    n_embd_ = 0;
 }
 
 int32_t LlamaContext::decode(llama_batch batch) const {
@@ -259,6 +267,21 @@ float * LlamaContext::get_logits_ith(int32_t i) const {
 
 float * LlamaContext::get_embeddings() const {
     return LlamaLibrary::instance().llama_get_embeddings(ctx_);
+}
+
+float * LlamaContext::get_embeddings_ith(int32_t i) const {
+    auto & lib = LlamaLibrary::instance();
+    if (lib.llama_get_embeddings_ith) {
+        return lib.llama_get_embeddings_ith(ctx_, i);
+    }
+    if (i < 0 || n_embd_ <= 0) {
+        return nullptr;
+    }
+    float * all = lib.llama_get_embeddings(ctx_);
+    if (!all) {
+        return nullptr;
+    }
+    return all + (size_t) i * (size_t) n_embd_;
 }
 
 void LlamaContext::clear_kv_cache() const {
@@ -300,7 +323,7 @@ bool LlamaBatch::set_embeddings(
     int32_t n_tokens,
     int32_t embd_dim,
     const int32_t * pos,
-    int32_t n_pos,
+    int32_t pos_count,
     int32_t seq_id,
     std::string & err) {
     if (!inited_) {
@@ -315,17 +338,20 @@ bool LlamaBatch::set_embeddings(
         err = "n_tokens out of range";
         return false;
     }
+    if (pos_count <= 0) {
+        err = "pos_count out of range";
+        return false;
+    }
+    if (pos_count > max_tokens_) {
+        err = "pos_count exceeds batch capacity";
+        return false;
+    }
     if (embd_dim != embd_dim_) {
         err = "Embedding dim mismatch";
         return false;
     }
-    if (n_pos <= 0) {
-        err = "Position length must be positive";
-        return false;
-    }
-
     std::memcpy(batch_.embd, embd, (size_t) n_tokens * (size_t) embd_dim * sizeof(float));
-    std::memcpy(batch_.pos, pos, (size_t) n_pos * sizeof(int32_t));
+    std::memcpy(batch_.pos, pos, (size_t) pos_count * sizeof(int32_t));
 
     batch_.n_tokens = n_tokens;
     for (int32_t i = 0; i < n_tokens; ++i) {
