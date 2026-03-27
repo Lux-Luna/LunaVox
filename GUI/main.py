@@ -12,12 +12,14 @@ from i18n import TRANSLATIONS
 from components.header import HeaderFrame
 from components.report import ReportFrame
 
-class LunaVoxGUI(ctk.CTk):
+class LunaVoxTTS(ctk.CTk):
     def __init__(self):
         super().__init__()
 
         self.lang = "en"
-        self.engine = LunaVoxEngine(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # Intelligent pathing: Support both project root and dist root
+        self.root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.engine = LunaVoxEngine(self.root_dir)
         self.models = self.engine.discover_models()
         self.current_model = None
         self.platform = "Windows"
@@ -34,7 +36,13 @@ class LunaVoxGUI(ctk.CTk):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
-        self.header = HeaderFrame(self, self.t, self.toggle_language, self.on_platform_change)
+        # Header: show_setup=False, setup gear is replaced by language toggle
+        self.header = HeaderFrame(
+            self, self.t, 
+            on_lang_change=self.on_lang_toggle, 
+            on_platform_change=self.on_platform_change,
+            show_setup=False
+        )
         self.header.grid(row=0, column=0, padx=20, pady=(15, 5), sticky="ew")
 
         self.scroll_frame = ctk.CTkScrollableFrame(self)
@@ -60,7 +68,6 @@ class LunaVoxGUI(ctk.CTk):
         self.audio_cfg_frame = ctk.CTkFrame(self.scroll_frame, fg_color="transparent")
         self.audio_cfg_frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
         
-        # Language (direct grid — no sub-frame, for vertical alignment with other columns)
         self.lang_sel_label = ctk.CTkLabel(self.audio_cfg_frame, text="Language", font=ctk.CTkFont(size=12, weight="bold"))
         self.lang_sel_dropdown = ctk.CTkOptionMenu(self.audio_cfg_frame, values=["auto"], command=lambda _: self.update_command_preview(), width=160)
 
@@ -104,11 +111,11 @@ class LunaVoxGUI(ctk.CTk):
         self.adv_visible = False
         self._setup_advanced_fields()
 
-        # 5. Report Section (above command preview)
+        # 5. Report Section
         self.report = ReportFrame(self.scroll_frame, self.t)
         self.report.grid(row=5, column=0, padx=15, pady=15, sticky="ew")
 
-        # 6. Command Preview (bottom of page)
+        # 6. Command Preview
         self.cmd_preview_frame = ctk.CTkFrame(self.scroll_frame)
         self.cmd_preview_frame.grid(row=6, column=0, padx=15, pady=10, sticky="ew")
         self.cmd_preview_frame.grid_columnconfigure(0, weight=1)
@@ -137,7 +144,6 @@ class LunaVoxGUI(ctk.CTk):
 
     def _setup_advanced_fields(self):
         self.adv_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
-        # Sliders
         self.temp_label = ctk.CTkLabel(self.adv_frame, text="Temperature: 0.6")
         self.temp_slider = ctk.CTkSlider(self.adv_frame, from_=0.1, to=1.5, number_of_steps=14, command=self._on_temp_change)
         self.temp_slider.set(0.6)
@@ -149,7 +155,6 @@ class LunaVoxGUI(ctk.CTk):
         self.pred_temp_label.grid(row=0, column=2, columnspan=2, padx=10, pady=(10, 0), sticky="w")
         self.pred_temp_slider.grid(row=1, column=2, columnspan=2, padx=10, pady=(0, 10), sticky="ew")
 
-        # Basic
         self.seed_label = ctk.CTkLabel(self.adv_frame, text="Seed")
         self.seed_input = ctk.CTkEntry(self.adv_frame)
         self.seed_input.insert(0, "42")
@@ -161,7 +166,6 @@ class LunaVoxGUI(ctk.CTk):
         self.tokens_label.grid(row=2, column=1, padx=10, sticky="w")
         self.tokens_input.grid(row=3, column=1, padx=10, pady=(0, 10), sticky="ew")
 
-        # Sampling
         self.top_k_label = ctk.CTkLabel(self.adv_frame, text="Top-K")
         self.top_k_input = ctk.CTkEntry(self.adv_frame, width=80) 
         self.top_k_input.insert(0, "50")
@@ -189,15 +193,12 @@ class LunaVoxGUI(ctk.CTk):
     def t(self, key):
         return TRANSLATIONS[self.lang].get(key, key)
 
-    def toggle_language(self):
-        self.lang = "zh" if self.lang == "en" else "en"
+    def on_lang_toggle(self, value):
+        new_lang = "zh" if value == "中文" else "en"
+        self.lang = new_lang
         self.update_texts()
         self.header.update_texts()
         self.report.update_texts()
-
-    def on_platform_change(self, val):
-        self.platform = val
-        self.update_command_preview()
 
     def update_texts(self):
         self.title(self.t("title"))
@@ -207,7 +208,7 @@ class LunaVoxGUI(ctk.CTk):
         self.ref_label.configure(text=self.t("reference"))
         self.ref_text_label.configure(text=self.t("ref_text"))
         self.speaker_label.configure(text=self.t("speaker"))
-        # Update instruct label based on current model type
+        
         if self.current_model:
             mtype = self.current_model.get("type", "base")
             if mtype == "design":
@@ -216,7 +217,7 @@ class LunaVoxGUI(ctk.CTk):
                 self.instruct_label.configure(text=self.t("instruct_optional"))
         else:
             self.instruct_label.configure(text=self.t("instruct"))
-        # Update model description
+            
         self._update_model_desc()
         self.adv_btn.configure(text=f"{'+' if not self.adv_visible else '-'} {self.t('advanced_parameters')}")
         self.generate_btn.configure(text=self.t("generate"))
@@ -224,6 +225,7 @@ class LunaVoxGUI(ctk.CTk):
         self.ref_browse_btn.configure(text=self.t("browse"))
         self._on_temp_change(self.temp_slider.get())
         self._on_pred_temp_change(self.pred_temp_slider.get())
+        self.header.set_lang_dropdown(self.lang)
 
     def _on_temp_change(self, v):
         self.temp_label.configure(text=f"{self.t('temperature')}: {round(v, 2)}")
@@ -245,7 +247,6 @@ class LunaVoxGUI(ctk.CTk):
             self.update_command_preview()
 
     def _update_model_desc(self):
-        """Update the model description subtitle based on current model type."""
         if not self.current_model:
             self.model_desc_label.configure(text="")
             return
@@ -257,31 +258,22 @@ class LunaVoxGUI(ctk.CTk):
         self.current_model = next(m for m in self.models if m["name"] == name)
         profile = self.current_model.get("profile", {})
         mtype = self.current_model.get("type", "base")
-        print(f"DEBUG: Switching to {name}, detected type: {mtype}")
-
-        # Update model description
         self._update_model_desc()
         
-        # Hide all optional widgets first
         widgets = [self.lang_sel_label, self.lang_sel_dropdown, self.speaker_label, self.speaker_dropdown,
                    self.ref_label, self.ref_action_frame, self.ref_text_label, self.ref_text_input,
                    self.instruct_label, self.instruct_input]
         for w in widgets: w.grid_forget()
 
-        # Consistent padding
         cp = 10
-
-        # Language column (always shown, row 0 = label, row 1 = dropdown)
         self.lang_sel_label.configure(text=self.t("language"))
         self.lang_sel_label.grid(row=0, column=0, padx=cp, pady=(5, 0), sticky="w")
         self.lang_sel_dropdown.grid(row=1, column=0, padx=cp, pady=(0, 5), sticky="ew")
 
         if mtype == "base":
             self.audio_cfg_frame.grid_columnconfigure((0, 1, 2), weight=1)
-            
             self.ref_label.grid(row=0, column=1, padx=cp, pady=(5, 0), sticky="w")
             self.ref_action_frame.grid(row=1, column=1, padx=cp, pady=(0, 5), sticky="ew")
-            
             self.ref_text_label.grid(row=0, column=2, padx=cp, pady=(5, 0), sticky="w")
             self.ref_text_input.grid(row=1, column=2, padx=cp, pady=(0, 5), sticky="nsew")
             self.ref_text_input.configure(height=60) 
@@ -294,11 +286,10 @@ class LunaVoxGUI(ctk.CTk):
                 self.speaker_dropdown.grid(row=1, column=1, padx=cp, pady=(0, 5), sticky="ew")
                 self.speaker_dropdown.configure(values=speakers)
                 self.speaker_dropdown.set(speakers[0])
-        else: # Design
+        else:
             self.audio_cfg_frame.grid_columnconfigure(0, weight=1)
             self.audio_cfg_frame.grid_columnconfigure((1, 2), weight=0)
 
-        # Instruct Support — label differs by model type
         if self.current_model.get("instruct_support"):
             if mtype == "design":
                 self.instruct_label.configure(text=self.t("instruct_required"))
@@ -307,11 +298,9 @@ class LunaVoxGUI(ctk.CTk):
             self.instruct_label.grid(row=2, column=0, padx=15, pady=(5, 2), sticky="w")
             self.instruct_input.grid(row=3, column=0, padx=15, pady=(0, 10), sticky="ew")
 
-        # Refresh language list (Only full names > 2 chars)
         langs = ["auto"] + [l for l in profile.get("language_names", []) if len(l) > 2]
         self.lang_sel_dropdown.configure(values=langs)
         self.lang_sel_dropdown.set("auto")
-        
         self.update_command_preview()
 
     def toggle_advanced(self):
@@ -321,7 +310,6 @@ class LunaVoxGUI(ctk.CTk):
         else:
             self.adv_frame.grid(row=4, column=0, padx=15, pady=10, sticky="ew")
             self.adv_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
-            # ... (grid logic for sliders/entries stays similar but in adv_frame)
             self.temp_label.grid(row=0, column=0, columnspan=2, padx=10, pady=5, sticky="w")
             self.temp_slider.grid(row=1, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
             self.pred_temp_label.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="w")
@@ -340,8 +328,6 @@ class LunaVoxGUI(ctk.CTk):
             self.threads_input.grid(row=7, column=3, padx=10, pady=5)
             self.adv_visible = True
         self.update_texts()
-
-
 
     def update_command_preview(self):
         args = self.get_current_args()
@@ -388,9 +374,7 @@ class LunaVoxGUI(ctk.CTk):
             self.status_label.configure(text="Design model requires Instruct!", text_color="red")
             return
 
-        # Release file lock before starting new synthesis
         self.report.unload_audio()
-
         self.status_label.configure(text=self.t("status_running"), text_color="white")
         self.generate_btn.configure(state="disabled")
 
@@ -399,24 +383,19 @@ class LunaVoxGUI(ctk.CTk):
             full_output = ""
             for line in proc.stdout:
                 full_output += line
-                self.after(0, lambda l=line: self.status_label.configure(text=l.strip()[-50:])) # Show last part of log
+                self.after(0, lambda l=line: self.status_label.configure(text=l.strip()[-50:]))
             
             proc.wait()
             metrics = self.engine.parse_metrics(full_output)
             
             if proc.returncode == 0:
                 self.after(0, lambda: self.status_label.configure(text=self.t("status_success"), text_color="green"))
-                # Get absolute path for audio player
                 out_path = args.get("output", "output/out.wav")
                 abs_out = str((self.engine.root_dir / out_path).absolute())
-                
-                # Get expected backend for warning check
                 backend_info = self.engine.get_backend_info()
                 expected = backend_info.get("llama", {}).get("backend", "") if backend_info else ""
-                
                 self.after(0, lambda m=metrics, p=abs_out, e=expected, s=args["text"]: self.report.display(m, p, e, s))
                 self.after(0, lambda m=metrics: self.header.check_backends(m))
-                
                 if self.header.auto_play_var.get():
                     self.after(300, lambda: self.report.play_audio())
             else:
@@ -426,6 +405,10 @@ class LunaVoxGUI(ctk.CTk):
 
         threading.Thread(target=run).start()
 
+    def on_platform_change(self, val):
+        self.platform = val
+        self.update_command_preview()
+
 if __name__ == "__main__":
-    app = LunaVoxGUI()
+    app = LunaVoxTTS()
     app.mainloop()

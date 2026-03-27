@@ -626,8 +626,11 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
              tokenizer_.get_config().vocab_size,
              (long long) (get_time_ms() - t_tok));
 
+    std::string exe_dir = get_executable_dir();
+    std::string default_lib_dir = exe_dir;
+
     const char * lib_dir_env = std::getenv("QWEN3_TTS_LIB_DIR");
-    std::string lib_dir = lib_dir_env && lib_dir_env[0] ? std::string(lib_dir_env) : std::string("lib/llama");
+    std::string lib_dir = lib_dir_env && lib_dir_env[0] ? std::string(lib_dir_env) : default_lib_dir;
     if (!talker_predictor_.load(lib_dir, talker_model_path_, predictor_model_path_, assets_, profile_, n_threads)) {
         error_msg_ = "Failed to initialize llama talker/predictor runtime: " + talker_predictor_.get_error();
         return false;

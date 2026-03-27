@@ -55,7 +55,7 @@ Use specific expert speaker IDs. **This feature only works for `custom` type mod
   -m models/custom `
   --speaker Vivian `
   --instruct "Use angry tone." `
-  -t "Welcome to the show." `
+  -t "She said she would be here by noon." `
   -o out.wav
 ```
 

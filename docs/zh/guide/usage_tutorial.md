@@ -55,7 +55,7 @@
   -m models/custom `
   --speaker Vivian `
   --instruct "Use angry tone." `
-  -t "Welcome to the show." `
+  -t "She said she would be here by noon." `
   -o out.wav
 ```
 
