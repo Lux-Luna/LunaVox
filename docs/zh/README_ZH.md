@@ -1,3 +1,5 @@
+[**English**](../../README.md) | [**中文**](README_ZH.md)
+
 # 🌌 LunaVox: Qwen3-TTS C++ 高性能推理引擎
 
 ![Version](https://img.shields.io/badge/version-2.1.0-blueviolet?style=for-the-badge)

@@ -1,10 +1,12 @@
+[**English**](README.md) | [**中文**](docs/zh/README_ZH.md)
+
 # 🌌 LunaVox: High-Performance C++ Inference Engine for Qwen3-TTS
 
 ![Version](https://img.shields.io/badge/version-2.1.0-blueviolet?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-0078d7?style=for-the-badge&logo=windows&logoColor=white)
 ![CoreML](https://img.shields.io/badge/iOS-CoreML-000000?style=for-the-badge&logo=apple&logoColor=white)
 ![C++](https://img.shields.io/badge/C++-17-00599C?style=for-the-badge&logo=c%2B%2B)
-[![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](../../LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 
 **LunaVox** is a high-performance C++ inference engine specifically designed for **Qwen3-TTS**. Through streamlined architecture and deep hardware optimization, it provides extreme speech synthesis speed and flexibility. Whether for local embedded devices, desktop applications, or high-performance servers, LunaVox delivers stable, low-latency TTS experience.
 
