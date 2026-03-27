@@ -153,15 +153,6 @@ LunaVox 自动下载 `lib/` 下相应的 ONNX Runtime 与 Llama.cpp。如果您�
 
 ---
 
-## 📜 更多信息
-
-有关运行时详细配置及设计准则，请参阅:
-- **[LunaVox CLI 指令汇总手册](guide/cli_reference.md)**
-- **[运行时技术规范与约束](technical/runtime_specs.md)**
-- **[合成链路编码器需求分析](technical/synthesis_pathway.md)**
-
----
-
 ## 🙏 致谢
 
 本项目深受以下开源项目的启发或基于其成果：

@@ -40,7 +40,7 @@
 
 ## 📊 Performance Benchmarks
 
-The following table shows the average performance of LunaVox across different backend configurations. For detailed reports, see the **[Windows Performance Evaluation Report](benchmark/windows_performance.md)**.
+The following table shows the average performance of LunaVox across different backend configurations. For detailed reports, see the **[Windows Performance Evaluation Report](docs/en/benchmark/windows_performance.md)**.
 
 | Configuration | Average RTF | Peak RAM | VRAM | Relative Speedup |
 | :--- | :---: | :---: | :---: | :---: |
@@ -91,15 +91,15 @@ lunavox build --clean
 ```
 
 > [!TIP]
-> For detailed commands and advanced parameters, see the **[LunaVox CLI Reference Manual](guide/cli_reference.md)**.
+> For detailed commands and advanced parameters, see the **[LunaVox CLI Reference Manual](docs/en/guide/cli_reference.md)**.
 
 ---
 
 ## 🧱 Runtime Libraries
 
 LunaVox automatically downloads appropriate ONNX Runtime and Llama.cpp into the `lib/` directory. For CUDA configurations, see:
-- **[CUDA 12 Windows Dependency Guide](install/cuda12_windows.md)**
-- **[CUDA 13 Windows Dependency Guide](install/cuda13_windows.md)**
+- **[CUDA 12 Windows Dependency Guide](docs/en/install/cuda12_windows.md)**
+- **[CUDA 13 Windows Dependency Guide](docs/en/install/cuda13_windows.md)**
 
 ---
 
@@ -110,7 +110,7 @@ After building, the executable is located at `./build/qwen3-tts-cli.exe`.
 > - On Linux/macOS, use `./build/qwen3-tts-cli`.
 > - `--instruct` is only valid for **Custom** and **Design** modes (disabled in Base mode).
 
-Detailed tutorial: **[CLI Usage Tutorial](guide/usage_tutorial.md)**.
+Detailed tutorial: **[CLI Usage Tutorial](docs/en/guide/usage_tutorial.md)**.
 
 ### 1. Voice Cloning
 Mimic a specific voice using reference audio (.wav) or pre-computed features (.json):
@@ -150,15 +150,6 @@ Design voice using text descriptions:
 - **Detailed Stats**: Add `--stats-json report.json` to get RTF and memory analysis.
 - **Logs**: All build and runtime output is logged to `../../logs/latest.log`.
 - **Thread Control**: Use `-j` (default 4) to adjust CPU thread usage.
-
----
-
-## 📜 More Information
-
-See also:
-- **[LunaVox CLI Reference Manual](guide/cli_reference.md)**
-- **[Runtime Technical Specifications & Constraints](technical/runtime_specs.md)**
-- **[Synthesis Pathway Encoder Requirements](technical/synthesis_pathway.md)**
 
 ---
 
