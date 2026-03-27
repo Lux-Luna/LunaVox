@@ -11,6 +11,7 @@ from engine import LunaVoxEngine
 from i18n import TRANSLATIONS
 from components.header import HeaderFrame
 from components.report import ReportFrame
+from components.setup_page import SetupPage
 
 class LunaVoxGUI(ctk.CTk):
     def __init__(self):
@@ -21,6 +22,7 @@ class LunaVoxGUI(ctk.CTk):
         self.models = self.engine.discover_models()
         self.current_model = None
         self.platform = "Windows"
+        self.current_page = "tts"
 
         self.setup_ui()
         self.update_texts()
@@ -34,7 +36,7 @@ class LunaVoxGUI(ctk.CTk):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
-        self.header = HeaderFrame(self, self.t, self.toggle_language, self.on_platform_change)
+        self.header = HeaderFrame(self, self.t, self.show_setup_page, self.on_platform_change)
         self.header.grid(row=0, column=0, padx=20, pady=(15, 5), sticky="ew")
 
         self.scroll_frame = ctk.CTkScrollableFrame(self)
@@ -129,6 +131,14 @@ class LunaVoxGUI(ctk.CTk):
         self.status_label = ctk.CTkLabel(self.footer_frame, text="Ready", font=ctk.CTkFont(size=12))
         self.status_label.pack(side="top", padx=20, pady=(0, 5))
 
+        # Set Up Page (hidden initially)
+        self.setup_page = SetupPage(
+            self, self.t,
+            on_back=self.show_tts_page,
+            on_lang_change=self.set_language,
+            on_refresh=self.refresh_state
+        )
+
         # Initialize
         if model_names:
             self.model_dropdown.set(model_names[0])
@@ -189,11 +199,44 @@ class LunaVoxGUI(ctk.CTk):
     def t(self, key):
         return TRANSLATIONS[self.lang].get(key, key)
 
-    def toggle_language(self):
-        self.lang = "zh" if self.lang == "en" else "en"
+    def set_language(self, new_lang):
+        self.lang = new_lang
         self.update_texts()
         self.header.update_texts()
         self.report.update_texts()
+        self.setup_page.update_texts()
+        self.setup_page.set_lang_dropdown(self.lang)
+
+    def show_setup_page(self):
+        if self.current_page == "setup":
+            self.show_tts_page()
+            return
+            
+        self.current_page = "setup"
+        self.scroll_frame.grid_forget()
+        self.footer_frame.grid_forget()
+        self.setup_page.set_lang_dropdown(self.lang)
+        self.setup_page.grid(row=1, column=0, padx=20, pady=10, sticky="nsew")
+        self.header.set_setup_mode(True)
+
+    def show_tts_page(self):
+        if self.current_page == "tts":
+            return
+        self.current_page = "tts"
+        self.setup_page.grid_forget()
+        self.scroll_frame.grid(row=1, column=0, padx=20, pady=10, sticky="nsew")
+        self.footer_frame.grid(row=2, column=0, padx=20, pady=(5, 15), sticky="ew")
+        self.header.set_setup_mode(False)
+
+    def refresh_state(self):
+        """Re-discover models and backend info after setup operations."""
+        self.models = self.engine.discover_models()
+        model_names = [m["name"] for m in self.models]
+        self.model_dropdown.configure(values=model_names)
+        if model_names:
+            self.model_dropdown.set(model_names[0])
+            self.on_model_change(model_names[0])
+        self.header.update_info(self.engine.get_backend_info())
 
     def on_platform_change(self, val):
         self.platform = val
