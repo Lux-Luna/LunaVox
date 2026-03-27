@@ -44,9 +44,9 @@
 | :--- | :---: | :---: | :---: | :---: |
 | **Baseline (CPU)** | 5.066 | 5.06 GB | — | 1.00x |
 | **Baseline (GPU)** | 3.788 | 1.59 GB | 2.29 GB | 1.34x |
-| **LunaVox (Full CPU)** | 0.935 | 1.54 GB | — | 5.42x |
-| **LunaVox (Vulkan)** | 0.327 | 1.47 GB | 1.66 GB | 15.492x |
-| **LunaVox (CUDA)** | **0.216** | 1.49 GB | 1.68 GB | **23.45x** |
+| **LunaVox (Full CPU)** | 1.152 | 1.06 GB | — | 4.40x |
+| **LunaVox (CUDA13)** | 0.254 | 1.39 GB | 1.30 GB | 19.94x |
+| **LunaVox (Vulkan)** | **0.206** | 0.91 GB | 1.05 GB | **24.59x** |
 
 > [!NOTE]
 > - **测试模型**: 基于 **Qwen3-TTS-12Hz-0.6B-Base**，开启声音克隆模式并使用 `.json` 预计算特征文件作为参考。
@@ -113,10 +113,9 @@ LunaVox 自动下载 `lib/` 下合作 ONNX Runtime 与 Llama.cpp。若要手动�
 通过参考音频（.wav）或预计算特征（.json）模仿特定音色：
 ```bash
 ./build/qwen3-tts-cli.exe `
-  -m models/base `
-  -r ref/ref_1.7B.json `
-  --instruct "Maintain the speaker's original emotional tone and rhythm." `
-  -t "Good one. Okay, fine, I'm just gonna leave this sock monkey here. Goodbye." `
+  -m models/base_small `
+  -r ref/ref_0.6B.json `
+  -t "Okay, fine, I'm just gonna leave this sock monkey here. Goodbye." `
   -o output/cloned.wav
 ```
 
