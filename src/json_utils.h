@@ -12,14 +12,59 @@
 #include <cstdlib>
 #include <cerrno>
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
 namespace qwen3_tts {
 
 /**
- * Helper: Try to find metadata.json near the binary or in lib/
+ * Helper: Get the directory of the currently running executable.
+ */
+static inline std::string get_executable_dir() {
+#ifdef _WIN32
+    char path[MAX_PATH];
+    DWORD size = GetModuleFileNameA(NULL, path, MAX_PATH);
+    if (size == 0) return ".";
+    std::string s(path);
+    size_t last_slash = s.find_last_of("\\/");
+    if (last_slash != std::string::npos) return s.substr(0, last_slash);
+    return ".";
+#else
+    char path[1024];
+    ssize_t count = readlink("/proc/self/exe", path, sizeof(path));
+    if (count != -1) {
+        std::string s(path, count);
+        size_t last_slash = s.find_last_of("/");
+        if (last_slash != std::string::npos) return s.substr(0, last_slash);
+    }
+    return ".";
+#endif
+}
+
+/**
+ * Helper: Try to find metadata.json near the binary or via environment
  */
 static inline std::string find_metadata_json() {
-    const char* p_list[] = {"metadata.json", "lib/metadata.json", "../lib/metadata.json"};
-    for (const char* p : p_list) {
+    std::string exe_dir = get_executable_dir();
+    const char* lib_dir_env = std::getenv("QWEN3_TTS_LIB_DIR");
+
+    std::vector<std::string> p_list = {
+        "metadata.json",                    // CWD
+        exe_dir + "/metadata.json",         // Root or Build (portable)
+        exe_dir + "/../metadata.json"       // Alternative layout
+    };
+    
+    if (lib_dir_env && lib_dir_env[0]) {
+        p_list.push_back(std::string(lib_dir_env) + "/metadata.json");
+    }
+
+    for (const auto & p : p_list) {
         std::ifstream f(p);
         if (f.good()) return p;
     }
