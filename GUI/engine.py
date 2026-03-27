@@ -91,10 +91,19 @@ class LunaVoxEngine:
         if m: metrics["vram"] = f"{m.group(1).strip()} {m.group(2)}"
         
         # Extra Latency Steps
-        metrics["tokenization"] = f"{re.search(r'Tokenization:\s*([\d\.\s]+)ms', output, re.I).group(1).strip() if re.search(r'Tokenization:', output, re.I) else '0'} ms"
-        metrics["speaker_encoding"] = f"{re.search(r'Speaker\s+Encoding:\s*([\d\.\s]+)ms', output, re.I).group(1).strip() if re.search(r'Speaker\s+Encoding:', output, re.I) else '0'} ms"
-        metrics["code_generation"] = f"{re.search(r'Code\s+Generation:\s*([\d\.\s]+)ms', output, re.I).group(1).strip() if re.search(r'Code\s+Generation:', output, re.I) else '0'} ms"
-        metrics["audio_decoding"] = f"{re.search(r'Audio\s+Decoding:\s*([\d\.\s]+)ms', output, re.I).group(1).strip() if re.search(r'Audio\s+Decoding:', output, re.I) else '0'} ms"
+        def get_metric(pattern, text):
+            match = re.search(pattern, text, re.I)
+            return match.group(1).strip() if match else "0"
+
+        pat_tok = r'Tokenization:\s*([\d\.\s]+)ms'
+        pat_spk = r'Speaker\s+Encoding:\s*([\d\.\s]+)ms'
+        pat_gen = r'Code\s+Generation:\s*([\d\.\s]+)ms'
+        pat_aud = r'Audio\s+Decoding:\s*([\d\.\s]+)ms'
+
+        metrics["tokenization"] = f"{get_metric(pat_tok, output)} ms"
+        metrics["speaker_encoding"] = f"{get_metric(pat_spk, output)} ms"
+        metrics["code_generation"] = f"{get_metric(pat_gen, output)} ms"
+        metrics["audio_decoding"] = f"{get_metric(pat_aud, output)} ms"
         
         # RTF
         m = re.search(r"(?:Real-time\s+)?Factor:\s*([\d\.\s]+)x", output, re.IGNORECASE)

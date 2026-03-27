@@ -1,11 +1,13 @@
 import customtkinter as ctk
 
 class HeaderFrame(ctk.CTkFrame):
-    def __init__(self, master, t_func, on_setup_click, on_platform_change):
+    def __init__(self, master, t_func, on_lang_change, on_platform_change, show_setup=True, on_setup_click=None):
         super().__init__(master)
         self.t = t_func
-        self.on_setup_click = on_setup_click
+        self.on_lang_change = on_lang_change
         self.on_platform_change = on_platform_change
+        self.on_setup_click = on_setup_click
+        self.show_setup = show_setup
 
         self.is_setup_page = False
         self.setup_ui()
@@ -34,8 +36,16 @@ class HeaderFrame(ctk.CTkFrame):
         self.platform_dropdown.pack(side="left", padx=5)
         self.platform_dropdown.set("Windows")
 
-        self.setup_btn = ctk.CTkButton(self.settings_frame, text=self.t("setup_btn"), width=80, height=24, font=ctk.CTkFont(size=11), command=self.on_setup_click)
-        self.setup_btn.pack(side="left", padx=5)
+        # Language Toggle (EN/ZH)
+        self.lang_dropdown = ctk.CTkOptionMenu(
+            self.settings_frame, values=["English", "中文"], 
+            command=self.on_lang_change, width=80, height=24, font=ctk.CTkFont(size=11)
+        )
+        self.lang_dropdown.pack(side="left", padx=5)
+
+        if self.show_setup:
+            self.setup_btn = ctk.CTkButton(self.settings_frame, text=self.t("setup_btn"), width=80, height=24, font=ctk.CTkFont(size=11), command=self.on_setup_click)
+            self.setup_btn.pack(side="left", padx=5)
 
     def update_info(self, backend_info):
         """Show expected backends from metadata.json (initial state)."""
@@ -85,13 +95,19 @@ class HeaderFrame(ctk.CTkFrame):
     def set_setup_mode(self, is_setup_page):
         """Toggle button text/command between 'Set Up' and 'Back'."""
         self.is_setup_page = is_setup_page
-        if is_setup_page:
-            self.setup_btn.configure(text=self.t("setup_back"), fg_color="transparent", border_width=1)
-        else:
-            self.setup_btn.configure(text=self.t("setup_btn"), fg_color=["#3B8ED0", "#1F6AA5"], border_width=0)
+        if hasattr(self, 'setup_btn'):
+            if is_setup_page:
+                self.setup_btn.configure(text=self.t("setup_back"), fg_color="transparent", border_width=1)
+            else:
+                self.setup_btn.configure(text=self.t("setup_btn"), fg_color=["#3B8ED0", "#1F6AA5"], border_width=0)
+
+    def set_lang_dropdown(self, lang):
+        """Sync the dropdown to the current app language."""
+        self.lang_dropdown.set("中文" if lang == "zh" else "English")
 
     def update_texts(self):
-        btn_text = self.t("setup_back") if self.is_setup_page else self.t("setup_btn")
-        self.setup_btn.configure(text=btn_text)
+        if hasattr(self, 'setup_btn'):
+            btn_text = self.t("setup_back") if self.is_setup_page else self.t("setup_btn")
+            self.setup_btn.configure(text=btn_text)
         self.auto_play_check.configure(text=self.t("auto_play_short"))
 

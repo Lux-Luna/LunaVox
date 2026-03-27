@@ -223,7 +223,14 @@ class SetupPage(ctk.CTkFrame):
         self._set_status(status_key, "#E8A838")
         self._set_buttons_state("disabled")
 
-        lunavox_exe = "lunavox"
+        # Detect bundled lunavox CLI in portable environment
+        root = self._get_project_root()
+        if sys.platform == "win32":
+            bundled_exe = os.path.join(root, "python_env", "Scripts", "lunavox.exe")
+        else:
+            bundled_exe = os.path.join(root, "python_env", "bin", "lunavox")
+        
+        lunavox_exe = bundled_exe if os.path.exists(bundled_exe) else "lunavox"
 
         def worker():
             try:
@@ -272,7 +279,7 @@ class SetupPage(ctk.CTkFrame):
 
     def _get_project_root(self):
         """Get the LunaVox project root (parent of GUI dir)."""
-        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     # --- Actions ---
     def _download_model(self):
@@ -305,10 +312,19 @@ class SetupPage(ctk.CTkFrame):
         self._set_status("setup_status_downloading", "#E8A838")
         self._set_buttons_state("disabled")
 
+        # Detect bundled lunavox CLI in portable environment
+        root = self._get_project_root()
+        if sys.platform == "win32":
+            bundled_exe = os.path.join(root, "python_env", "Scripts", "lunavox.exe")
+        else:
+            bundled_exe = os.path.join(root, "python_env", "bin", "lunavox")
+        
+        lunavox_exe = bundled_exe if os.path.exists(bundled_exe) else "lunavox"
+
         def worker():
             try:
                 for i, mid in enumerate(model_ids):
-                    full_cmd = ["lunavox", "--yes", "pull-model", "--model", mid]
+                    full_cmd = [lunavox_exe, "--yes", "pull-model", "--model", mid]
                     cmd_str = " ".join(full_cmd)
                     header = f"\n--- [{i+1}/{len(model_ids)}] $ {cmd_str} ---\n"
                     self.after(0, lambda h=header: self._append_console(h))

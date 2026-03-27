@@ -48,3 +48,4 @@ dist/
 src/lunavox.egg-info/
 src/lunavox
 pyproject.toml
+release_dist.py
