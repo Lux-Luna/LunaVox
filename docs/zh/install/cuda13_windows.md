@@ -103,6 +103,5 @@ cp build/lib/llama/*.dll build/
 ## 6. 排障建议
 
 1. **错误 126 (找不到指定模块)**: 通常是由于 DLL 内部存在对 CUDA 12 版本库名（如 `cublasLt64_12.dll`）的引用，而环境只有 CUDA 13。请通过更新二进制文件解决。
-2. **Provider 检查**: 运行 TTS 后检查 `stats-json` 输出，确认 `decoder` 字段为 `CUDAExecutionProvider`。
+2. **Provider 检查**: 确认 `decoder` 字段为 `CUDAExecutionProvider`。
 3. **Llama.cpp 警告**: 若 `llama.cpp` 回退至 CPU，请确认 `ggml-cuda.dll` 是否已替换为针对 CUDA 13 构建的版本。
-

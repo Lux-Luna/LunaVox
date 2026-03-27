@@ -96,34 +96,9 @@ LunaVox 及其依赖项需要标准 C/C++ 运行时支持：
 4. **数学库**: `cufft64_11.dll`, `curand64_10.dll`
 5. **系统库**: `vcruntime140.dll`, `vcruntime140_1.dll`, `msvcp140.dll`
 
-如果目标是“让 LunaVox 在 Windows CUDA 12 下成功启用 GGML CUDA + ORT CUDA”，则建议最少检查以下文件是否可见：
-
-- `onnxruntime.dll`
-- `onnxruntime_providers_cuda.dll`
-- `onnxruntime_providers_shared.dll`
-- `ggml-cuda.dll`
-- `cudart64_12.dll`
-- `cublas64_12.dll`
-- `cublasLt64_12.dll`
-- `cufft64_11.dll`
-- `curand64_10.dll`
-- `cudnn64_9.dll`
-- `cudnn_adv64_9.dll`
-- `cudnn_cnn64_9.dll`
-- `cudnn_engines_precompiled64_9.dll`
-- `cudnn_engines_runtime_compiled64_9.dll`
-- `cudnn_graph64_9.dll`
-- `cudnn_heuristic64_9.dll`
-- `cudnn_ops64_9.dll`
-- `vcruntime140.dll`
-- `vcruntime140_1.dll`
-- `msvcp140.dll`
-
 ---
 
-## 5. 排障建议
-
-如果运行时仍然出现 ONNX CUDA 相关问题，建议按以下顺序检查：
+## 6. 排障建议
 
 1. 确认 `metadata.json` 中 `onnx.provider` 为 `CUDAExecutionProvider`
 2. 确认程序实际加载的是 GPU 版 ONNX Runtime，而不是 CPU 版
@@ -135,7 +110,7 @@ LunaVox 及其依赖项需要标准 C/C++ 运行时支持：
 
 ---
 
-## 8. 当前推荐结论
+## 7. 当前推荐结论
 
 对于 LunaVox Windows CUDA 12：
 

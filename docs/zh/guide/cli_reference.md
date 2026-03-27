@@ -124,3 +124,10 @@ lunavox build --clean --j 8
 - `--yes`: 自动确认所有风险操作和下载提示（非交互式/CI 执行必备）。
 - `--no-install`: 强制不检测/自动修复 Python 模块缺失。
 - `--verbose`: 显示构建和网络下载的详细原始输出。
+
+---
+
+## 📜 更多信息
+
+有关运行时详细配置及设计准则，请参阅:
+- **[运行时设计契约与约束 (Runtime Specs)](../technical/runtime_specs.md)**
