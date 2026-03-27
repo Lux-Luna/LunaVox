@@ -65,7 +65,7 @@ pip install lunavox
 ```
 
 > [!NOTE]
-> **开发与脚本说明**: LunaVox 已发布至 PyPI，标准用户仅需执行 `pip install lunavox` 即可安装完整工具。若您需要深入研究模型转换、量化流水线或导出 Python 脚本，请切换至 **`dev`** 分支获取最新源码与内部工具。
+> **开发与脚本说明**: LunaVox 已发布至 PyPI，标准用户仅需执行 `pip install lunavox` 即可安装完整工具。若您需要深入研究模型转换、量化流水线或导出 Python 脚本，请切换至 **[cli-only](https://github.com/Lux-Luna/LunaVox/tree/cli-only)** 分支获取最新源码与内部工具。
 
 ## 📦 快速上手流程 (One-Key Setup)
 

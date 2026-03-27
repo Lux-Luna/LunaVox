@@ -65,7 +65,7 @@ pip install lunavox
 ```
 
 > [!NOTE]
-> **Developer Note**: LunaVox is published on PyPI. Standard users only need to run `pip install lunavox`. For research into model conversion or quantization pipelines, switch to the **`dev`** branch to get the latest source and internal tools.
+> **Developer Note**: LunaVox is published on PyPI. Standard users only need to run `pip install lunavox`. For research into model conversion or quantization pipelines, switch to the **[cli-only](https://github.com/Lux-Luna/LunaVox/tree/cli-only)** branch to get the latest source and internal tools.
 
 ## 📦 Quick Setup (One-Key Setup)
 
