@@ -41,6 +41,9 @@ dev = [
   "build>=1.2",
   "twine>=5.1",
 ]
+gui = [
+  "customtkinter>=5.2.0",
+]
 
 [project.scripts]
 lunavox = "lunavox.cli.main:run"
