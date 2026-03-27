@@ -2,7 +2,8 @@
 
 #include <string>
 
-#include <cpu_provider_factory.h>
+// Forward declare Ort types to avoid header issues in the interface if possible,
+// but for SessionOptions we really need the header.
 #include <onnxruntime_cxx_api.h>
 
 namespace qwen3_tts {

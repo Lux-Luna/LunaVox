@@ -12,6 +12,15 @@ using llama_token = int32_t;
 using llama_pos = int32_t;
 using llama_seq_id = int32_t;
 
+enum llama_log_level {
+    LLAMA_LOG_LEVEL_ERROR = 2,
+    LLAMA_LOG_LEVEL_WARN  = 3,
+    LLAMA_LOG_LEVEL_INFO  = 4,
+    LLAMA_LOG_LEVEL_DEBUG = 5
+};
+
+typedef void (*llama_log_callback)(enum llama_log_level level, const char * text, void * user_data);
+
 struct llama_model_params {
     void * devices;
     void * tensor_buft_overrides;
@@ -99,6 +108,7 @@ public:
     void (*llama_model_free)(void * model);
     void * (*llama_model_get_vocab)(void * model);
     int32_t (*llama_model_n_embd)(void * model);
+    int32_t (*llama_model_n_ctx_train)(void * model);
 
     // context lifecycle
     llama_context_params (*llama_context_default_params)();
@@ -116,6 +126,7 @@ public:
     int32_t (*llama_decode)(void * ctx, llama_batch batch);
     float * (*llama_get_logits_ith)(void * ctx, int32_t i);
     float * (*llama_get_embeddings)(void * ctx);
+    float * (*llama_get_embeddings_ith)(void * ctx, int32_t i);
 
     // vocab / memory
     int32_t (*llama_vocab_n_tokens)(void * vocab);
@@ -137,6 +148,9 @@ public:
     llama_token (*llama_sampler_sample)(void * sampler, void * ctx, int32_t idx);
     void (*llama_sampler_accept)(void * sampler, llama_token token);
     void (*llama_sampler_free)(void * sampler);
+
+    // logger
+    void (*llama_log_set)(llama_log_callback log_callback, void * user_data);
 
 private:
     LlamaLibrary() = default;
@@ -164,6 +178,7 @@ public:
     int32_t n_embd() const { return n_embd_; }
     int32_t n_vocab() const { return n_vocab_; }
     int32_t eos_id() const { return eos_id_; }
+    int32_t n_ctx_train() const { return n_ctx_train_; }
 
 private:
     void * model_ = nullptr;
@@ -171,6 +186,7 @@ private:
     int32_t n_embd_ = 0;
     int32_t n_vocab_ = 0;
     int32_t eos_id_ = -1;
+    int32_t n_ctx_train_ = 0;
 };
 
 class LlamaContext {
@@ -178,18 +194,31 @@ public:
     LlamaContext() = default;
     ~LlamaContext();
 
-    bool init(LlamaModel & model, int32_t n_ctx, int32_t n_threads, bool embeddings, std::string & err);
+    bool init(
+        LlamaModel & model,
+        int32_t n_ctx,
+        int32_t n_threads,
+        bool embeddings,
+        int32_t n_batch_cap,
+        int32_t n_ubatch_cap,
+        const char * tag,
+        std::string & err);
     void free();
     bool is_ready() const { return ctx_ != nullptr; }
 
     int32_t decode(llama_batch batch) const;
     float * get_logits_ith(int32_t i) const;
     float * get_embeddings() const;
+    float * get_embeddings_ith(int32_t i) const;
     void clear_kv_cache() const;
     void * raw() const { return ctx_; }
+    int32_t n_ctx() const { return n_ctx_; }
+    int32_t n_embd() const { return n_embd_; }
 
 private:
     void * ctx_ = nullptr;
+    int32_t n_ctx_ = 0;
+    int32_t n_embd_ = 0;
 };
 
 class LlamaBatch {
@@ -206,12 +235,13 @@ public:
         int32_t n_tokens,
         int32_t embd_dim,
         const int32_t * pos,
-        int32_t n_pos,
+        int32_t pos_count,
         int32_t seq_id,
         std::string & err);
 
     llama_batch & raw() { return batch_; }
     const llama_batch & raw() const { return batch_; }
+    int32_t capacity() const { return max_tokens_; }
 
 private:
     llama_batch batch_{};

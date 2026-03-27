@@ -1,141 +1,161 @@
-# LunaVox
+[**English**](README.md) | [**中文**](docs/zh/README_ZH.md)
 
-LunaVox is a C++ inference runtime for Qwen3-TTS.
+# 🌌 LunaVox: High-Performance C++ Inference Engine for Qwen3-TTS
 
-Current runtime architecture:
-- Talker + Predictor: `llama.cpp` official runtime from `./lib`
-- Speaker encoder + codec encoder: ONNX Runtime (CPU only)
-- Decoder: ONNX Runtime with fixed provider policy (`CUDA > CoreML > CPU`, always CPU fallback)
-- Model layout: 2 GGUF + 3 ONNX + `embeddings/` + `tokenizer.json`
+![Version](https://img.shields.io/badge/version-2.1.0-blueviolet?style=for-the-badge)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-0078d7?style=for-the-badge&logo=windows&logoColor=white)
+![CoreML](https://img.shields.io/badge/iOS-CoreML-000000?style=for-the-badge&logo=apple&logoColor=white)
+![C++](https://img.shields.io/badge/C++-17-00599C?style=for-the-badge&logo=c%2B%2B)
+[![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 
-## Requirements
+**LunaVox** is a high-performance C++ inference engine specifically designed for **Qwen3-TTS**. Through streamlined architecture and deep hardware optimization, it provides extreme speech synthesis speed and flexibility. Whether for local embedded devices, desktop applications, or high-performance servers, LunaVox delivers stable, low-latency TTS experience.
 
-- CMake 3.16+
-- Python 3.10+
-- A C++ toolchain (on Windows, conda toolchains are supported)
-- Prebuilt llama runtime files in `./lib`
-- ONNX Runtime SDK in `./lib/onnx` (`include/` + `lib/`)
-- Python dependencies:
-  - `pip install -r requirements.txt`
-  - `pip install -r requirements-convert-onnx.txt` (needed for local ONNX export)
+---
 
-## Important Constraints
+## 🚀 Key Features
 
-- Inference has no Python dependency.
-- ONNX artifacts are exported locally only.
-- Online prebuilt ONNX download is intentionally disabled.
+- **Lightweight Runtime**: Runs with only ONNX Runtime and a custom Llama inference library, no heavy Python environment required.
+- **Native Multi-language Support**: Built-in automatic language detection, supporting **Chinese, English, Japanese, Korean, Russian, German, French, Italian, Spanish, and Portuguese**.
+- **Full Mode Support**: Supports Base synthesis, Voice Cloning, Custom Voice, and Voice Design (Prompt-to-Voice).
+- **Modern Build System**: Automatic toolchain detection. Supports Windows (MSVC), Linux (GCC), and macOS (Clang/Apple Silicon).
+- **Cross-platform Hardware Acceleration**: Deeply integrated with CUDA (NVIDIA), CoreML/Metal (Apple), DML (DirectX 12), and Vulkan.
 
-## One-Command Bootstrap (recommended)
+---
 
-```bash
-conda run -n lunavox python manage.py bootstrap --backend cpu
+## 🛠️ Environment & Build Requirements
+
+### 1. System Environment
+- **Windows**: Windows 10/11 (VS 2022/2025 supported)
+- **Linux**: Ubuntu 22.04+ or mainstream distributions (GCC >= 9.0)
+- **macOS**: Apple Silicon (M1/M2/M3), macOS 12+ (Metal support)
+- **Compiler**: MSVC (v143/v144), GCC 10.0+, or Apple Clang
+- **Build Tools**: CMake 3.16+, **Ninja** is recommended for faster builds.
+
+### 2. Dependencies
+- **Python 3.10+**: For model conversion and automation.
+- **ONNX Runtime SDK**: Platform-specific C++ dynamic libraries.
+- **Llama Runtime**: Pre-compiled backend binaries.
+
+---
+
+## 📊 Performance Benchmarks
+
+The following table shows the average performance of LunaVox across different backend configurations. For detailed reports, see the **[Windows Performance Evaluation Report](docs/en/benchmark/windows_performance.md)**.
+
+| Configuration | Average RTF | Peak RAM | VRAM | Relative Speedup |
+| :--- | :---: | :---: | :---: | :---: |
+| **Baseline (CPU)** | 5.066 | 5.06 GB | — | 1.00x |
+| **Baseline (GPU)** | 3.788 | 1.59 GB | 2.29 GB | 1.34x |
+| **LunaVox (Full CPU)** | 1.152 | 1.06 GB | — | 4.40x |
+| **LunaVox (CUDA13)** | 0.254 | 1.39 GB | 1.30 GB | 19.94x |
+| **LunaVox (Vulkan + DML)**| **0.206** | 0.91 GB | 1.05 GB | **24.59x** |
+
+> [!NOTE]
+> - **Test Model**: Based on **Qwen3-TTS-12Hz-0.6B-Base**, with Voice Cloning enabled using pre-computed `.json` feature files.
+> - **Test Environment**: Intel i9-12900K + NVIDIA RTX 3090
+> - **Test Standard**: Average of **10 runs** after **3 warmup runs**.
+
+---
+
+### 3. CLI Tool & Dependency Installation
+
+```powershell
+# Install core inference tooling
+pip install lunavox
 ```
 
-Optional:
+> [!NOTE]
+> **Developer Note**: LunaVox is published on PyPI. Standard users only need to run `pip install lunavox`. For research into model conversion or quantization pipelines, switch to the **[cli-only](https://github.com/Lux-Luna/LunaVox/tree/cli-only)** branch to get the latest source and internal tools.
 
-```bash
-conda run -n lunavox python manage.py bootstrap --backend cpu --timeout-sec 170 --skip-quant
+## 📦 Quick Setup (One-Key Setup)
+
+LunaVox recommends using the `bootstrap` command to complete **Model Pulling, Runtime Library Download, Project Build, and Interactive Testing** in one go.
+
+### 1. Automatic Guided Setup (Recommended)
+```powershell
+# Execute full automatic setup
+lunavox bootstrap
 ```
 
-This command runs:
-1. preflight checks (`git safe.directory`, conda env, conversion deps, ORT SDK)
-2. local model conversion/export
-3. CMake configure + build
-4. built CLI verification (`--help`)
+### 2. Local Build (From Source)
+If you need fine-grained control:
+```powershell
+# 1. Download pre-converted models (or use 'convert' for local weights)
+lunavox pull-model
 
-## Manual Steps
+# 2. Download C++ runtime libraries
+lunavox download-libs
 
-Run preflight only:
-
-```bash
-conda run -n lunavox python manage.py preflight
+# 3. Compile the project
+lunavox build --clean
 ```
 
-Run setup (download + conversion):
+> [!TIP]
+> For detailed commands and advanced parameters, see the **[LunaVox CLI Reference Manual](docs/en/guide/cli_reference.md)**.
 
+---
+
+## 🧱 Runtime Libraries
+
+LunaVox automatically downloads appropriate ONNX Runtime and Llama.cpp into the `lib/` directory. For CUDA configurations, see:
+- **[CUDA 12 Windows Dependency Guide](docs/en/install/cuda12_windows.md)**
+- **[CUDA 13 Windows Dependency Guide](docs/en/install/cuda13_windows.md)**
+
+---
+
+## 🎙️ Inference Testing & Modes
+
+After building, the executable is located at `./build/qwen3-tts-cli.exe`.
+> [!NOTE]
+> - On Linux/macOS, use `./build/qwen3-tts-cli`.
+> - `--instruct` is only valid for **Custom** and **Design** modes (disabled in Base mode).
+
+Detailed tutorial: **[CLI Usage Tutorial](docs/en/guide/usage_tutorial.md)**.
+
+### 1. Voice Cloning
+Mimic a specific voice using reference audio (.wav) or pre-computed features (.json):
 ```bash
-conda run -n lunavox python manage.py setup
+./build/qwen3-tts-cli.exe `
+  -m models/base_small `
+  -r ref/ref_0.6B.json `
+  -t "Okay, fine, I'm just gonna leave this sock monkey here. Goodbye." `
+  -o output/cloned.wav
 ```
 
-Convert only (reuse local model assets):
-
+### 2. Custom Voice
+Use built-in expert speaker IDs:
 ```bash
-conda run -n lunavox python manage.py convert --force
+./build/qwen3-tts-cli.exe `
+  -m models/custom `
+  --speaker Vivian `
+  --instruct "Use angry tone." `
+  -t "She said she would be here by noon." `
+  -o output/custom.wav
 ```
 
-Build only:
-
+### 3. Voice Design
+Design voice using text descriptions:
 ```bash
-conda run -n lunavox python manage.py build --backend cpu --timeout-sec 170
+.\build\qwen3-tts-cli.exe `
+  -m models/design `
+  -t "It's in the top drawer... wait, it's empty? No way, that's impossible! I'm sure I put it there!" `
+  --instruct "Speak in an incredulous tone, but with a hint of panic beginning to creep into your voice."
+  -o output/out.wav
 ```
 
-Run alignment/performance compare (base + clone):
+---
 
-```bash
-conda run -n lunavox python manage.py compare --mode both --timeout-sec 170 --report-out logs/compare/latest_compare_report.json
-```
+## 📈 Monitoring & Logging
 
-Notes:
-- `compare` writes per-stage command logs under `logs/manage/` and detailed artifacts under `logs/compare/_artifacts/`.
-- `--qwen-model-dir` now defaults to `models/base_small` to avoid stale external paths.
-- `--strict-qwen-model` defaults to `true`: if Qwen model artifacts are incomplete, compare fails immediately (no fallback).
-- `--qwen-clone-anchor-seconds` controls **Qwen side only** (default `0.0`); clone compare also writes a fixed anchor matrix (`0.0` and `1.0`) for long-WAV root-cause isolation.
-- For clone compare, you can pass separate references:
-  - `--reference-audio` for lunavox (WAV)
-  - `--qwen-reference-audio` for Qwen side (WAV or JSON)
-- Compare defaults now include fixed seeds (`--seed`, `--predictor-seed`) for reproducibility.
+- **Detailed Stats**: Add `--stats-json report.json` to get RTF and memory analysis.
+- **Logs**: All build and runtime output is logged to `../../logs/latest.log`.
+- **Thread Control**: Use `-j` (default 4) to adjust CPU thread usage.
 
-## ONNX Export Diagnostics
+---
 
-- ONNX export runs by stage: `codec_encoder`, `speaker_encoder`, `decoder` (+ optional `quantize`)
-- ONNX export completion is followed by a local ORT validation stage.
-- Per-stage timeout default: `170s` (configurable by `--timeout-sec`)
-- Stage logs:
-  - `logs/convert_onnx/codec_encoder.log`
-  - `logs/convert_onnx/speaker_encoder.log`
-  - `logs/convert_onnx/decoder.log`
-  - `logs/convert_onnx/quantize.log` (if enabled)
-  - `logs/convert_onnx/validate.log`
+## 🙏 Acknowledgements
 
-## Runtime Model Layout (`models/base_small/`)
-
-- `qwen3_tts_talker.q5_k.gguf`
-- `qwen3_tts_predictor.q8_0.gguf`
-- `qwen3_tts_speaker_encoder.fp16.onnx`
-- `qwen3_tts_codec_encoder.fp16.onnx`
-- `qwen3_tts_decoder.fp16.onnx`
-- `embeddings/text_embedding_projected.npy`
-- `embeddings/codec_embedding_0.npy` ... `embeddings/codec_embedding_15.npy`
-- optional `embeddings/proj_weight.npy`, `embeddings/proj_bias.npy`
-- `tokenizer.json`
-
-## Run
-
-```bash
-./build-cpu/qwen3-tts-cli -m models/base_small -t "Hello from LunaVox" -o output.wav
-```
-
-Voice cloning:
-
-```bash
-./build-cpu/qwen3-tts-cli -m models/base_small -t "Hello" -r output.wav -o cloned.wav
-```
-
-Runtime notes:
-- Clone reference audio is full-length by default (no forced 1-second truncation).
-- Optional manual cap is supported via env var `QWEN3_TTS_CLONE_MAX_REF_SAMPLES`.
-- Clone synthesis defaults to x-vector-only prompting for stability. Enable ICL fusion (`ref_codes + spk_emb`) explicitly with `QWEN3_TTS_CLONE_USE_ICL=1`.
-- ORT logs are error-only by default; pass `--ort-debug-log` to surface warning logs during debugging.
-- ORT provider diagnostics are written to `--stats-json` as `ort_providers`.
-
-Export timing/memory JSON:
-
-```bash
-./build-cpu/qwen3-tts-cli -m models/base_small -t "Hello" --stats-json logs/compare/hello_stats.json
-```
-
-## Tests
-
-```bash
-ctest --test-dir build-cpu -R cli_help_smoke --output-on-failure
-```
+Inspired by or based on:
+- **[Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS)**: Powerful base weights and architecture design.
+- **[onnxruntime](https://github.com/microsoft/onnxruntime)**: High-performance audio decoding backend.
+- **[llama.cpp](https://github.com/ggml-org/llama.cpp)**: Core for LLM sequence prediction.

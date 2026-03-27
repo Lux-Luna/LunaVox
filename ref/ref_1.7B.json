@@ -1,6 +1,6 @@
 {
   "info": "Model: Qwen/Qwen3-TTS-12Hz-1.7B-Base | Ref: First get into position like this, then move like that. Yep, thats it..wav",
-  "text": "First get into position like this, then move like that. Yep, thats it.",
+  "ref-text": "First get into position like this, then move like that. Yep, thats it.",
   "text_ids": [
     5338,
     633,

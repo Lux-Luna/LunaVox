@@ -13,13 +13,14 @@ typedef struct Qwen3Tts Qwen3Tts;
 
 /* Generation parameters */
 typedef struct Qwen3TtsParams {
-    int32_t max_audio_tokens;    /* default: 4096 */
+    int32_t max_audio_tokens;    /* default: 0 (use model_profile default_max_new_tokens) */
     float   temperature;         /* default: 0.9, 0=greedy */
     float   top_p;               /* default: 1.0 */
     int32_t top_k;               /* default: 50, 0=disabled */
     int32_t n_threads;           /* default: 4 */
     float   repetition_penalty;  /* default: 1.05 */
     int32_t language_id;         /* 2050=en, 2058=ja, 2055=zh, etc. */
+    const char* ref_text;        /* Optional reference text for cloned voice */
 } Qwen3TtsParams;
 
 /* Generated audio result */
@@ -34,11 +35,12 @@ void qwen3_tts_default_params(Qwen3TtsParams* params);
 
 /* Create TTS engine and load models from directory.
  * New default layout expects:
- *   qwen3_tts_talker.q5_k.gguf
- *   qwen3_tts_predictor.q8_0.gguf
- *   qwen3_tts_speaker_encoder.fp16.onnx
- *   qwen3_tts_codec_encoder.fp16.onnx
- *   qwen3_tts_decoder.fp16.onnx
+ *   qwen3_tts_talker*.gguf
+ *   qwen3_tts_predictor*.gguf
+ *   qwen3_tts_decoder*.onnx
+ * Optional:
+ *   qwen3_tts_speaker_encoder*.onnx
+ *   qwen3_tts_codec_encoder*.onnx
  *   embeddings/
  *   tokenizer.json
  * Returns NULL on failure. */

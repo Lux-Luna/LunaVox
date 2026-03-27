@@ -1,9 +1,11 @@
 #include "onnx_audio_runtime.h"
+#include "logger.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <complex>
+#include <cstddef>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -26,7 +28,16 @@ static constexpr float kEps = 1e-9f;
 
 struct ort_env_holder {
     Ort::Env env;
-    explicit ort_env_holder(OrtLoggingLevel level) : env(level, "lunavox-ort") {}
+    explicit ort_env_holder(OrtLoggingLevel level) : 
+        env(level, "lunavox-ort", 
+            [](void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location, const char* message) {
+                (void)param; (void)code_location; (void)logid;
+                // ORT levels: 0=verbose, 1=info, 2=warn, 3=error, 4=fatal
+                // We map them to our Logger backend log
+                char buf[2048];
+                std::snprintf(buf, sizeof(buf), "[ORT:%s] %s\n", category, message);
+                Logger::instance().log_backend((int)severity, buf);
+            }, nullptr) {}
 };
 
 std::mutex g_ort_env_mu;
@@ -80,6 +91,14 @@ bool create_session_impl(
     try {
         Ort::SessionOptions opts;
         opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+        if (role == ort_session_role::decoder) {
+            // Decoder memory footprint dominates end-to-end peak RSS.
+            // Disable allocator arenas/pattern caching to reduce peak memory.
+            opts.DisableCpuMemArena();
+            opts.DisableMemPattern();
+            opts.AddConfigEntry("session.intra_op.allow_spinning", "0");
+            opts.AddConfigEntry("session.inter_op.allow_spinning", "0");
+        }
         if (intra_threads > 0) {
             opts.SetIntraOpNumThreads((int) intra_threads);
         }
@@ -495,7 +514,7 @@ bool CodecEncoderOnnx::encode(
     }
 
     auto * impl = as_session(session_impl_);
-    Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+    Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
     const char * in_name = input_names_[0].c_str();
     const char * out_name = output_names_[0].c_str();
     std::array<const char *, 1> in_names = {in_name};
@@ -740,7 +759,7 @@ bool SpeakerEncoderOnnx::encode(const float * samples, int32_t n_samples, std::v
 
     try {
         auto * impl = as_session(session_impl_);
-        Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+        Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
 
         std::array<int64_t, 3> in_shape = {1, (int64_t) n_frames, (int64_t) cfg_.n_mels};
         Ort::Value in_tensor = Ort::Value::CreateTensor<float>(
@@ -869,6 +888,16 @@ bool StatefulDecoderOnnx::load_model(const std::string & model_path, int32_t int
     }
 
     loaded_ = true;
+    LOG_INFO(
+        "Decoder runtime: layers=%d, heads=%d, head_dim=%d, chunk=%d, windows(pre=%d, latent=%d, conv=%d, kv=%d)",
+        num_layers_,
+        num_heads_,
+        head_dim_,
+        decode_chunk_frames_,
+        pre_conv_window_,
+        latent_window_,
+        conv_window_,
+        kv_cache_window_);
     return true;
 }
 
@@ -902,7 +931,7 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
 
     try {
         auto * impl = as_session(session_impl_);
-        Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+        Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
         static float dummy_f = 0.0f;
         static Ort::Float16_t dummy_f16 = Ort::Float16_t::FromBits(0);
         static Ort::BFloat16_t dummy_bf16 = Ort::BFloat16_t::FromBits(0);
@@ -991,6 +1020,53 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                 return true;
             }
             return false;
+        };
+
+        auto trim_tensor_state_tail = [&](state_buffer::tensor_state & ts, int64_t max_seq, const char * name) -> bool {
+            if (max_seq < 0 || ts.seq <= max_seq) {
+                return true;
+            }
+            if (ts.seq <= 0) {
+                ts.seq = 0;
+                ts.f32.clear();
+                ts.f16.clear();
+                return true;
+            }
+
+            auto trim_vec = [&](auto & vec) -> bool {
+                if (vec.empty()) {
+                    return true;
+                }
+                const int64_t seq = ts.seq;
+                if (seq <= 0) {
+                    vec.clear();
+                    return true;
+                }
+                const int64_t count = (int64_t) vec.size();
+                if (count % seq != 0) {
+                    error_msg_ = std::string("Decoder state tensor size/seq mismatch for ") + name;
+                    return false;
+                }
+                const int64_t elem_per_seq = count / seq;
+                const int64_t keep_elems64 = elem_per_seq * max_seq;
+                if (keep_elems64 <= 0) {
+                    vec.clear();
+                    return true;
+                }
+                const size_t keep_elems = (size_t) keep_elems64;
+                const size_t drop_elems = vec.size() - keep_elems;
+                vec.erase(vec.begin(), vec.begin() + static_cast<std::ptrdiff_t>(drop_elems));
+                return true;
+            };
+
+            if (!trim_vec(ts.f32)) {
+                return false;
+            }
+            if (!trim_vec(ts.f16)) {
+                return false;
+            }
+            ts.seq = max_seq;
+            return true;
         };
 
         for (int32_t frame_offset = 0; frame_offset < n_frames; frame_offset += decode_chunk_frames_) {
@@ -1108,6 +1184,9 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                 error_msg_ = "Decoder next_pre_conv_history type is unsupported";
                 return false;
             }
+            if (!trim_tensor_state_tail(state.pre_conv_history, pre_conv_window_, "pre_conv_history")) {
+                return false;
+            }
             if (!extract_state_tensor(
                     out[3],
                     state.latent_buffer.elem_type,
@@ -1117,6 +1196,9 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                 error_msg_ = "Decoder next_latent_buffer type is unsupported";
                 return false;
             }
+            if (!trim_tensor_state_tail(state.latent_buffer, latent_window_, "latent_buffer")) {
+                return false;
+            }
             if (!extract_state_tensor(
                     out[4],
                     state.conv_history.elem_type,
@@ -1124,6 +1206,9 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                     state.conv_history.f16,
                     state.conv_history.seq)) {
                 error_msg_ = "Decoder next_conv_history type is unsupported";
+                return false;
+            }
+            if (!trim_tensor_state_tail(state.conv_history, conv_window_, "conv_history")) {
                 return false;
             }
             for (int i = 0; i < num_layers_; ++i) {
@@ -1136,6 +1221,9 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                     error_msg_ = "Decoder next_key type is unsupported";
                     return false;
                 }
+                if (!trim_tensor_state_tail(state.past_keys[(size_t) i], kv_cache_window_, "past_key")) {
+                    return false;
+                }
             }
             for (int i = 0; i < num_layers_; ++i) {
                 if (!extract_state_tensor(
@@ -1145,6 +1233,9 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                         state.past_values[(size_t) i].f16,
                         state.past_values[(size_t) i].seq)) {
                     error_msg_ = "Decoder next_value type is unsupported";
+                    return false;
+                }
+                if (!trim_tensor_state_tail(state.past_values[(size_t) i], kv_cache_window_, "past_value")) {
                     return false;
                 }
             }

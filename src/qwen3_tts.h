@@ -4,21 +4,24 @@
 #include "onnx_audio_runtime.h"
 #include "assets_manager.h"
 #include "talker_predictor_llama.h"
+#include "model_profile.h"
 
 #include <string>
 #include <vector>
 #include <functional>
 #include <cstdint>
+#include <mutex>
 
 namespace qwen3_tts {
 
 // TTS generation parameters
 struct tts_params {
-    // Maximum number of audio tokens to generate
-    int32_t max_audio_tokens = 4096;
+    // Maximum number of audio tokens to generate.
+    // <= 0 means use model_profile default_max_new_tokens.
+    int32_t max_audio_tokens = 0;
     
     // Temperature for sampling (0 = greedy)
-    float temperature = 0.9f;
+    float temperature = 0.6f;
     
     // Top-p sampling
     float top_p = 1.0f;
@@ -28,13 +31,13 @@ struct tts_params {
 
     // Predictor stage sampling controls (Q1..Q15 generation).
     bool predictor_do_sample = true;
-    float predictor_temperature = 0.9f;
+    float predictor_temperature = 0.6f;
     float predictor_top_p = 1.0f;
     int32_t predictor_top_k = 50;
 
-    // Sampling seeds (-1 means random seed from clock).
-    int32_t seed = -1;
-    int32_t predictor_seed = -1;
+    // Sampling seeds (deterministic defaults; callers can override).
+    int32_t seed = 42;
+    int32_t predictor_seed = 45;
     
     // Number of threads
     int32_t n_threads = 4;
@@ -52,12 +55,19 @@ struct tts_params {
     // Repetition penalty for CB0 token generation (HuggingFace style)
     float repetition_penalty = 1.05f;
 
-    // Auto-detect language from text when true.
-    // If false, use language_id as-is.
-    bool auto_language = true;
+    // Language ID for codec. -1 means "Auto(None)" (no language token injection).
+    int32_t language_id = -1;
 
-    // Language ID for codec (2050=en, 2069=ru, 2055=zh, 2058=ja, 2064=ko, 2053=de, 2061=fr, 2054=es)
-    int32_t language_id = 2050;
+    // Instruct text for Custom Voice / Voice Design modes.
+    // For Custom: emotion/style instructions (e.g. "用温柔的语气说")
+    // For Design: full voice design description
+    std::string instruct;
+
+    // Speaker name for Custom Voice mode (e.g. "Vivian", "Ryan")
+    std::string speaker_name;
+    
+    // Reference text for Voice Clone mode (matches reference audio)
+    std::string ref_text;
 
 };
 
@@ -83,9 +93,9 @@ struct tts_result {
     int64_t t_decode_ms = 0;
     int64_t t_total_ms = 0;
 
-    // Language used for generation after auto-detection / override.
-    int32_t effective_language_id = 2050;
-    bool used_auto_language = false;
+    // Language used for generation after explicit override (-1 means no language token).
+    int32_t effective_language_id = -1;
+    bool used_auto_language = false; // reserved for backward compatibility, always false.
 
     // Process memory snapshots (bytes)
     uint64_t mem_rss_start_bytes = 0;
@@ -102,18 +112,20 @@ struct tts_result {
     int32_t spk_emb_inf_count = 0;
 
     int32_t ref_code_frames = 0;
-    int32_t ref_codebooks = 16;
+    int32_t ref_codebooks = 0;
     int32_t ref_code_min = -1;
     int32_t ref_code_max = -1;
 
     int32_t gen_code_frames = 0;
-    int32_t gen_codebooks = 16;
+    int32_t gen_codebooks = 0;
     int32_t gen_code_min = -1;
     int32_t gen_code_max = -1;
     uint64_t gen_codes_hash = 0;
     int32_t eos_step = -1;
-    int32_t trailing_count = 0;
-    int32_t trailing_consumed = 0;
+    int32_t ctx_required = 0;
+    int32_t ctx_allocated = 0;
+    int32_t ctx_cap = 0;
+    bool ctx_overflow = false;
 
     float pcm_peak = 0.0f;
     float pcm_rms = 0.0f;
@@ -136,11 +148,12 @@ public:
     
     // Load all models from directory.
     // Required layout:
-    //   qwen3_tts_talker.q5_k.gguf
-    //   qwen3_tts_predictor.q8_0.gguf
-    //   qwen3_tts_speaker_encoder.fp16.onnx
-    //   qwen3_tts_codec_encoder.fp16.onnx
-    //   qwen3_tts_decoder.fp16.onnx
+    //   qwen3_tts_talker*.gguf
+    //   qwen3_tts_predictor*.gguf
+    //   qwen3_tts_decoder*.onnx
+    // Optional:
+    //   qwen3_tts_speaker_encoder*.onnx
+    //   qwen3_tts_codec_encoder*.onnx
     //   embeddings/
     //   tokenizer.json
     bool load_models(const std::string & model_dir, int32_t n_threads = 4);
@@ -183,6 +196,20 @@ public:
                                           const float * embedding, int32_t embedding_size,
                                           const tts_params & params = tts_params());
 
+    // Custom Voice synthesis (uses built-in speaker + optional instruct)
+    // speaker: speaker name (e.g. "Vivian", "Ryan", "Aiden")
+    // instruct: optional style/emotion instruction
+    tts_result synthesize_custom(const std::string & text,
+                                  const std::string & speaker,
+                                  const std::string & instruct,
+                                  const tts_params & params = tts_params());
+
+    // Voice Design synthesis (instruct-only, no speaker embedding)
+    // instruct: full voice design description
+    tts_result synthesize_design(const std::string & text,
+                                  const std::string & instruct,
+                                  const tts_params & params = tts_params());
+
     // Set progress callback
     void set_progress_callback(tts_progress_callback_t callback);
     
@@ -191,14 +218,25 @@ public:
     
     // Check if models are loaded
     bool is_loaded() const { return models_loaded_; }
+
+    // Runtime profile accessors.
+    const RuntimeModelProfile & profile() const { return profile_; }
+    bool supports_mode(const std::string & mode) const;
+    bool resolve_language_id(const std::string & name_or_alias, int32_t & language_id_out) const;
+    std::vector<std::string> supported_speakers() const;
+    std::vector<std::string> supported_languages() const;
     
 private:
+    bool preload_hot_embedding_rows();
+
     tts_result synthesize_internal(const std::string & text,
                                    const float * speaker_embedding,
                                    const int32_t * ref_codes,
                                    int32_t n_ref_frames,
                                    const tts_params & params,
                                    tts_result & result);
+
+    bool load_model_profile(const std::string & path);
 
     bool load_models_new_layout(const std::string & model_dir, int32_t n_threads);
     
@@ -216,6 +254,8 @@ private:
     bool assets_loaded_ = false;
     bool decoder_loaded_ = false;
     bool low_mem_mode_ = false;
+    bool hot_rows_preloaded_ = false;
+    std::mutex hot_rows_preload_mu_;
     std::string error_msg_;
     std::string speaker_onnx_path_;
     std::string codec_encoder_onnx_path_;
@@ -224,6 +264,8 @@ private:
     std::string embeddings_dir_path_;
     std::string decoder_onnx_path_;
     std::string tokenizer_json_path_;
+    std::string model_profile_json_path_;
+    RuntimeModelProfile profile_;
     tts_progress_callback_t progress_callback_;
 };
 

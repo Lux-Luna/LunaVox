@@ -502,62 +502,198 @@ bool TextTokenizer::load_from_json(const std::string & tokenizer_json_path) {
 
 std::vector<std::string> TextTokenizer::split_regex_equivalent(const std::string & text) const {
     std::vector<std::string> words;
-    std::string current;
+    words.reserve(text.size() / 2 + 1);
 
-    auto flush = [&]() {
-        if (!current.empty()) {
-            words.push_back(current);
-            current.clear();
+    auto decode_cp = [&](size_t pos, uint32_t & cp, size_t & len) -> bool {
+        if (pos >= text.size()) return false;
+        const unsigned char c = (unsigned char) text[pos];
+        if (c < 0x80) {
+            cp = c;
+            len = 1;
+            return true;
         }
+        if ((c & 0xE0) == 0xC0 && pos + 1 < text.size()) {
+            cp = ((c & 0x1F) << 6) | ((unsigned char) text[pos + 1] & 0x3F);
+            len = 2;
+            return true;
+        }
+        if ((c & 0xF0) == 0xE0 && pos + 2 < text.size()) {
+            cp = ((c & 0x0F) << 12) |
+                 (((unsigned char) text[pos + 1] & 0x3F) << 6) |
+                 ((unsigned char) text[pos + 2] & 0x3F);
+            len = 3;
+            return true;
+        }
+        if ((c & 0xF8) == 0xF0 && pos + 3 < text.size()) {
+            cp = ((c & 0x07) << 18) |
+                 (((unsigned char) text[pos + 1] & 0x3F) << 12) |
+                 (((unsigned char) text[pos + 2] & 0x3F) << 6) |
+                 ((unsigned char) text[pos + 3] & 0x3F);
+            len = 4;
+            return true;
+        }
+        cp = c;
+        len = 1;
+        return true;
+    };
+
+    auto is_space_cp = [](uint32_t cp) -> bool {
+        return cp == ' ' || cp == '\t' || cp == '\n' || cp == '\r' || cp == '\f' || cp == '\v';
+    };
+
+    auto is_digit_cp = [](uint32_t cp) -> bool {
+        return (cp >= '0' && cp <= '9') || (cp >= 0xFF10 && cp <= 0xFF19);
+    };
+
+    auto is_letter_cp = [&](uint32_t cp) -> bool {
+        if ((cp >= 'a' && cp <= 'z') || (cp >= 'A' && cp <= 'Z')) return true;
+        if ((cp >= 0x00C0 && cp <= 0x02AF) || (cp >= 0x1E00 && cp <= 0x1EFF)) return true; // Latin extended
+        if ((cp >= 0x0370 && cp <= 0x03FF) || (cp >= 0x0400 && cp <= 0x052F)) return true; // Greek/Cyrillic
+        if ((cp >= 0x3040 && cp <= 0x30FF) || (cp >= 0x31F0 && cp <= 0x31FF)) return true; // Japanese
+        if ((cp >= 0xAC00 && cp <= 0xD7AF) || (cp >= 0x1100 && cp <= 0x11FF) || (cp >= 0x3130 && cp <= 0x318F)) return true; // Korean
+        return is_cjk(cp);
+    };
+
+    auto is_word_like = [&](uint32_t cp) -> bool {
+        return is_letter_cp(cp) || is_digit_cp(cp);
+    };
+
+    auto ci_match = [&](size_t pos, const char * lit) -> bool {
+        size_t j = 0;
+        while (lit[j] != '\0') {
+            if (pos + j >= text.size()) return false;
+            const unsigned char a = (unsigned char) text[pos + j];
+            const unsigned char b = (unsigned char) lit[j];
+            if (std::tolower(a) != std::tolower(b)) return false;
+            ++j;
+        }
+        return true;
+    };
+
+    auto contraction_len = [&](size_t pos) -> size_t {
+        if (pos >= text.size() || text[pos] != '\'') return 0;
+        if (ci_match(pos, "'re")) return 3;
+        if (ci_match(pos, "'ve")) return 3;
+        if (ci_match(pos, "'ll")) return 3;
+        if (ci_match(pos, "'s")) return 2;
+        if (ci_match(pos, "'t")) return 2;
+        if (ci_match(pos, "'m")) return 2;
+        if (ci_match(pos, "'d")) return 2;
+        return 0;
     };
 
     size_t i = 0;
     while (i < text.size()) {
-        uint32_t cp = 0;
-        size_t len = 0;
-        unsigned char c = (unsigned char) text[i];
-
-        if (c < 0x80) {
-            cp = c;
-            len = 1;
-        } else if ((c & 0xE0) == 0xC0 && i + 1 < text.size()) {
-            cp = ((c & 0x1F) << 6) | (text[i + 1] & 0x3F);
-            len = 2;
-        } else if ((c & 0xF0) == 0xE0 && i + 2 < text.size()) {
-            cp = ((c & 0x0F) << 12) | ((text[i + 1] & 0x3F) << 6) | (text[i + 2] & 0x3F);
-            len = 3;
-        } else if ((c & 0xF8) == 0xF0 && i + 3 < text.size()) {
-            cp = ((c & 0x07) << 18) | ((text[i + 1] & 0x3F) << 12) | ((text[i + 2] & 0x3F) << 6) | (text[i + 3] & 0x3F);
-            len = 4;
-        } else {
-            cp = c;
-            len = 1;
-        }
-
-        bool is_alnum_cjk = (cp >= 'a' && cp <= 'z') ||
-                             (cp >= 'A' && cp <= 'Z') ||
-                             (cp >= '0' && cp <= '9') ||
-                             is_cjk(cp);
-
-        if (std::isspace(c)) {
-            flush();
-            std::string spaces;
-            while (i < text.size() && std::isspace((unsigned char) text[i])) {
-                spaces += text[i];
-                ++i;
-            }
-            words.push_back(spaces);
+        const size_t c_len = contraction_len(i);
+        if (c_len > 0) {
+            words.push_back(text.substr(i, c_len));
+            i += c_len;
             continue;
         }
-        if (is_alnum_cjk) {
-            current += text.substr(i, len);
-        } else {
-            flush();
-            words.push_back(text.substr(i, len));
+
+        uint32_t cp = 0;
+        size_t len = 0;
+        decode_cp(i, cp, len);
+
+        // ByteLevel-like optional leading single ASCII space for the next token.
+        if (cp == ' ' && (i + len) < text.size()) {
+            uint32_t ncp = 0;
+            size_t nlen = 0;
+            decode_cp(i + len, ncp, nlen);
+            if (!is_space_cp(ncp)) {
+                size_t j = i + len;
+                if (is_letter_cp(ncp)) {
+                    while (j < text.size()) {
+                        uint32_t tcp = 0;
+                        size_t tlen = 0;
+                        decode_cp(j, tcp, tlen);
+                        if (!is_letter_cp(tcp)) break;
+                        j += tlen;
+                    }
+                    words.push_back(text.substr(i, j - i));
+                    i = j;
+                    continue;
+                }
+                if (is_digit_cp(ncp)) {
+                    while (j < text.size()) {
+                        uint32_t tcp = 0;
+                        size_t tlen = 0;
+                        decode_cp(j, tcp, tlen);
+                        if (!is_digit_cp(tcp)) break;
+                        j += tlen;
+                    }
+                    words.push_back(text.substr(i, j - i));
+                    i = j;
+                    continue;
+                }
+                while (j < text.size()) {
+                    uint32_t tcp = 0;
+                    size_t tlen = 0;
+                    decode_cp(j, tcp, tlen);
+                    if (is_space_cp(tcp) || is_word_like(tcp) || contraction_len(j) > 0) break;
+                    j += tlen;
+                }
+                words.push_back(text.substr(i, j - i));
+                i = j;
+                continue;
+            }
         }
-        i += len;
+
+        if (is_space_cp(cp)) {
+            size_t j = i + len;
+            while (j < text.size()) {
+                uint32_t tcp = 0;
+                size_t tlen = 0;
+                decode_cp(j, tcp, tlen);
+                if (!is_space_cp(tcp)) break;
+                j += tlen;
+            }
+            words.push_back(text.substr(i, j - i));
+            i = j;
+            continue;
+        }
+
+        if (is_letter_cp(cp)) {
+            size_t j = i + len;
+            while (j < text.size()) {
+                uint32_t tcp = 0;
+                size_t tlen = 0;
+                decode_cp(j, tcp, tlen);
+                if (!is_letter_cp(tcp)) break;
+                j += tlen;
+            }
+            words.push_back(text.substr(i, j - i));
+            i = j;
+            continue;
+        }
+
+        if (is_digit_cp(cp)) {
+            size_t j = i + len;
+            while (j < text.size()) {
+                uint32_t tcp = 0;
+                size_t tlen = 0;
+                decode_cp(j, tcp, tlen);
+                if (!is_digit_cp(tcp)) break;
+                j += tlen;
+            }
+            words.push_back(text.substr(i, j - i));
+            i = j;
+            continue;
+        }
+
+        size_t j = i + len;
+        while (j < text.size()) {
+            if (contraction_len(j) > 0) break;
+            uint32_t tcp = 0;
+            size_t tlen = 0;
+            decode_cp(j, tcp, tlen);
+            if (is_space_cp(tcp) || is_word_like(tcp)) break;
+            j += tlen;
+        }
+        words.push_back(text.substr(i, j - i));
+        i = j;
     }
-    flush();
+
     return words;
 }
 
@@ -621,26 +757,83 @@ std::vector<int32_t> TextTokenizer::encode(const std::string & text) const {
         return {};
     }
     std::vector<int32_t> tokens;
-    std::vector<std::string> raw_words = split_regex_equivalent(text);
-
-    for (const auto & raw_word : raw_words) {
-        std::string word = bytes_to_unicode(raw_word);
-        auto pieces = bpe(word);
-        for (const auto & p : pieces) {
-            auto it = vocab_.find(p);
-            if (it != vocab_.end()) {
-                tokens.push_back(it->second);
-                continue;
-            }
-            for (unsigned char c : p) {
-                std::string byte_tok = BYTE_TO_UNICODE[c];
-                auto bit = vocab_.find(byte_tok);
-                if (bit != vocab_.end()) {
-                    tokens.push_back(bit->second);
+    auto encode_plain_segment = [&](const std::string & segment) {
+        if (segment.empty()) {
+            return;
+        }
+        auto append_bpe_token = [&](const std::string & raw_word) {
+            std::string word = bytes_to_unicode(raw_word);
+            auto pieces = bpe(word);
+            for (const auto & p : pieces) {
+                auto it = vocab_.find(p);
+                if (it != vocab_.end()) {
+                    tokens.push_back(it->second);
+                    continue;
+                }
+                for (unsigned char c : p) {
+                    std::string byte_tok = BYTE_TO_UNICODE[c];
+                    auto bit = vocab_.find(byte_tok);
+                    if (bit != vocab_.end()) {
+                        tokens.push_back(bit->second);
+                    }
                 }
             }
+        };
+
+        std::vector<std::string> raw_words = split_regex_equivalent(segment);
+        for (const auto & raw_word : raw_words) {
+            if (!raw_word.empty()) {
+                append_bpe_token(raw_word);
+            }
         }
+    };
+
+    // Keep official ChatML boundary markers as atomic special tokens.
+    // This avoids degrading "<|im_start|>/<|im_end|>" into byte-level pieces.
+    struct special_token {
+        const char * text;
+        int32_t id;
+    };
+    const special_token specials[] = {
+        {"<|im_start|>", config_.bos_token_id},
+        {"<|im_end|>", config_.eos_token_id},
+        {"<|endoftext|>", config_.pad_token_id},
+    };
+
+    size_t cursor = 0;
+    while (cursor < text.size()) {
+        size_t best_pos = std::string::npos;
+        size_t best_len = 0;
+        int32_t best_id = -1;
+
+        for (const auto & sp : specials) {
+            if (sp.id < 0) {
+                continue;
+            }
+            const std::string needle(sp.text);
+            const size_t p = text.find(needle, cursor);
+            if (p == std::string::npos) {
+                continue;
+            }
+            if (best_pos == std::string::npos || p < best_pos || (p == best_pos && needle.size() > best_len)) {
+                best_pos = p;
+                best_len = needle.size();
+                best_id = sp.id;
+            }
+        }
+
+        if (best_id < 0 || best_pos == std::string::npos) {
+            encode_plain_segment(text.substr(cursor));
+            break;
+        }
+
+        if (best_pos > cursor) {
+            encode_plain_segment(text.substr(cursor, best_pos - cursor));
+        }
+        tokens.push_back(best_id);
+        cursor = best_pos + best_len;
     }
+
     return tokens;
 }
 

@@ -1,58 +1,98 @@
 #include "ort_provider_policy.h"
 
 #include <algorithm>
+#include <fstream>
+#include <iterator>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
+
+#include <onnxruntime_cxx_api.h>
+#include <cpu_provider_factory.h>
+#include "json_utils.h"
+#include "logger.h"
 
 namespace qwen3_tts {
 
 namespace {
 
-std::string join_csv(const std::vector<std::string> & items) {
-    if (items.empty()) {
-        return "";
-    }
-    std::ostringstream oss;
-    for (size_t i = 0; i < items.size(); ++i) {
-        if (i > 0) {
-            oss << ",";
-        }
-        oss << items[i];
-    }
-    return oss.str();
-}
+/**
+ * Comprehensive Execution Provider (EP) registration helpers.
+ */
 
 bool append_cpu_provider(Ort::SessionOptions & opts, std::string & error_msg) {
     try {
         opts.AppendExecutionProvider_CPU(/*use_arena=*/1);
         return true;
     } catch (const std::exception & e) {
-        error_msg = std::string("Failed to append CPUExecutionProvider: ") + e.what();
+        error_msg = std::string("CPU EP error: ") + e.what();
         return false;
     }
 }
 
-bool append_cuda_provider(Ort::SessionOptions & opts, std::string & error_msg) {
+bool append_cuda_provider(Ort::SessionOptions & opts, bool low_mem_mode, std::string & error_msg) {
     try {
-        OrtCUDAProviderOptions cuda_opts{};
-        opts.AppendExecutionProvider_CUDA(cuda_opts);
+        // CUDA is not supported by the generic provider-name API in ORT 1.24.
+        Ort::CUDAProviderOptions cuda_opts;
+        // The decoder graph is convolution-heavy and includes 1D convs. Use the
+        // nc1d padding mode recommended by ORT for better cuDNN coverage.
+        const char * max_workspace = low_mem_mode ? "0" : "1";
+        cuda_opts.Update({
+            {"device_id", "0"},
+            {"cudnn_conv_algo_search", "DEFAULT"},
+            {"cudnn_conv_use_max_workspace", max_workspace},
+            {"cudnn_conv1d_pad_to_nc1d", "1"},
+        });
+        opts.AppendExecutionProvider_CUDA_V2(*cuda_opts);
         return true;
     } catch (const std::exception & e) {
-        error_msg = std::string("Failed to append CUDAExecutionProvider: ") + e.what();
-        return false;
+        error_msg = e.what(); return false;
+    }
+}
+
+bool append_dml_provider(Ort::SessionOptions & opts, std::string & error_msg) {
+    try {
+        // Generic approach for DirectML
+        opts.AppendExecutionProvider("DmlExecutionProvider", {{"device_id", "0"}});
+        return true;
+    } catch (const std::exception & e) {
+        error_msg = e.what(); return false;
+    }
+}
+
+bool append_rocm_provider(Ort::SessionOptions & opts, std::string & error_msg) {
+    try {
+        opts.AppendExecutionProvider("ROCmExecutionProvider", {});
+        return true;
+    } catch (const std::exception & e) {
+        error_msg = e.what(); return false;
     }
 }
 
 bool append_coreml_provider(Ort::SessionOptions & opts, std::string & error_msg) {
     try {
-        opts.AppendExecutionProvider(
-            "CoreMLExecutionProvider",
-            std::unordered_map<std::string, std::string>{});
+        opts.AppendExecutionProvider("CoreMLExecutionProvider", {});
         return true;
     } catch (const std::exception & e) {
-        error_msg = std::string("Failed to append CoreMLExecutionProvider: ") + e.what();
-        return false;
+        error_msg = e.what(); return false;
+    }
+}
+
+bool append_vulkan_provider(Ort::SessionOptions & opts, std::string & error_msg) {
+    try {
+        opts.AppendExecutionProvider("VulkanExecutionProvider", {});
+        return true;
+    } catch (const std::exception & e) {
+        error_msg = e.what(); return false;
+    }
+}
+
+bool append_openvino_provider(Ort::SessionOptions & opts, std::string & error_msg) {
+    try {
+        opts.AppendExecutionProvider("OpenVINOExecutionProvider", {});
+        return true;
+    } catch (const std::exception & e) {
+        error_msg = e.what(); return false;
     }
 }
 
@@ -66,43 +106,64 @@ bool apply_ort_provider_policy(
     std::string & policy_summary) {
     (void) env;
     error_msg.clear();
-
-    std::vector<std::string> enabled;
-    std::vector<std::string> skipped;
+    policy_summary.clear();
 
     if (role == ort_session_role::cpu_only) {
-        if (!append_cpu_provider(opts, error_msg)) {
-            return false;
-        }
-        policy_summary = "enabled=cpu";
+        append_cpu_provider(opts, error_msg);
+        policy_summary = "CPU (forced)";
         return true;
     }
 
-    std::string provider_error;
-    if (append_cuda_provider(opts, provider_error)) {
-        enabled.push_back("cuda");
+    // 1. Try to load intent from metadata.json
+    std::string intent = "CPUExecutionProvider";
+    std::string metadata_path = find_metadata_json();
+    bool meta_found = false;
+
+    if (!metadata_path.empty()) {
+        std::ifstream f(metadata_path);
+        if (f.is_open()) {
+            std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            size_t onnx_start = content.find("\"onnx\"");
+            if (onnx_start != std::string::npos) {
+                std::string onnx_section = content.substr(onnx_start);
+                if (qwen3_tts::json_extract_string(onnx_section, "provider", intent)) {
+                    meta_found = true;
+                }
+            }
+        }
+    }
+
+    bool success = false;
+    std::string detail;
+
+    // 2. Load requested provider
+    if (intent == "CUDAExecutionProvider") {
+        success = append_cuda_provider(opts, role == ort_session_role::decoder, detail);
+    } else if (intent == "DmlExecutionProvider") {
+        success = append_dml_provider(opts, detail);
+    } else if (intent == "ROCmExecutionProvider") {
+        success = append_rocm_provider(opts, detail);
+    } else if (intent == "CoreMLExecutionProvider") {
+        success = append_coreml_provider(opts, detail);
+    } else if (intent == "VulkanExecutionProvider") {
+        success = append_vulkan_provider(opts, detail);
+    } else if (intent == "OpenVINOExecutionProvider") {
+        success = append_openvino_provider(opts, detail);
+    }
+
+    if (success) {
+        policy_summary = intent;
     } else {
-        skipped.push_back("cuda(" + provider_error + ")");
+        if (meta_found && intent != "CPUExecutionProvider" && intent != "unknown") {
+            std::string target = intent;
+            size_t pos = target.find("ExecutionProvider");
+            if (pos != std::string::npos) target = target.substr(0, pos);
+            LOG_WARN("ONNX Runtime dependency (%s) is incomplete: %s. Falling back to CPU.", target.c_str(), detail.c_str());
+        }
+        append_cpu_provider(opts, detail);
+        policy_summary = "CPUExecutionProvider";
     }
 
-    provider_error.clear();
-    if (append_coreml_provider(opts, provider_error)) {
-        enabled.push_back("coreml");
-    } else {
-        skipped.push_back("coreml(" + provider_error + ")");
-    }
-
-    std::string cpu_error;
-    if (!append_cpu_provider(opts, cpu_error)) {
-        error_msg = "Decoder provider policy failed and CPU fallback was unavailable: " + cpu_error;
-        return false;
-    }
-    enabled.push_back("cpu");
-
-    policy_summary = "enabled=" + join_csv(enabled);
-    if (!skipped.empty()) {
-        policy_summary += "; skipped=" + join_csv(skipped);
-    }
     return true;
 }
 

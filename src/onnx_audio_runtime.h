@@ -106,10 +106,16 @@ private:
     int32_t num_layers_ = 0;
     int32_t num_heads_ = 0;
     int32_t head_dim_ = 0;
-    int32_t decode_chunk_frames_ = 12;
+    // Keep chunk moderately sized to avoid onset artifacts at very small chunking,
+    // while still controlling peak ONNX workspace usage.
+    int32_t decode_chunk_frames_ = 8;
     int32_t pre_conv_channels_ = 512;
     int32_t latent_channels_ = 1024;
     int32_t conv_channels_ = 1024;
+    int32_t pre_conv_window_ = 2;
+    int32_t latent_window_ = 4;
+    int32_t conv_window_ = 4;
+    int32_t kv_cache_window_ = 72;
     int32_t state_elem_type_ = 1; // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT
     int32_t kv_elem_type_ = 1;    // ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT
 
