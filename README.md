@@ -2,7 +2,7 @@
 
 # 🌌 LunaVox: High-Performance C++ Inference Engine for Qwen3-TTS
 
-![Version](https://img.shields.io/badge/version-2.1.0-blueviolet?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-2.1.1-blueviolet?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-0078d7?style=for-the-badge&logo=windows&logoColor=white)
 ![CoreML](https://img.shields.io/badge/iOS-CoreML-000000?style=for-the-badge&logo=apple&logoColor=white)
 ![C++](https://img.shields.io/badge/C++-17-00599C?style=for-the-badge&logo=c%2B%2B)
