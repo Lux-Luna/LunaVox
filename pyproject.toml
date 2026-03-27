@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lunavox"
-version = "2.0.0"
+version = "2.1.0"
 description = "LunaVox tooling CLI for model setup, conversion, quantization, and build workflows."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,11 +14,13 @@ dependencies = [
   "typer>=0.12.0",
   "rich>=13.7.0",
   "huggingface_hub>=0.24.0",
-  "customtkinter>=5.2.0",
-  "pygame>=2.5.0",
 ]
 
 [project.optional-dependencies]
+gui = [
+  "customtkinter>=5.2.0",
+  "pygame>=2.5.0",
+]
 convert = [
   "torch>=2.1",
   "torchaudio>=2.1",
@@ -54,3 +56,5 @@ include-package-data = true
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"lunavox.build" = ["*.json"]

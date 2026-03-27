@@ -11,9 +11,9 @@
 最简单的合成方式，仅适用于 `base` 类型的模型。
 
 ```bash
-./build/qwen3-tts-cli \
-  -m models/base_small \
-  -t "What do you mean that I'm not real?" \
+./build/qwen3-tts-cli `
+  -m models/base_small `
+  -t "What do you mean that I'm not real?" `
   -o out.wav
 ```
 
@@ -27,20 +27,20 @@
 
 ### 2.1 使用参考音频 (Reference Audio)
 ```bash
-./build/qwen3-tts-cli \
-  -m models/base_small \
-  -r ref/ref.wav \
-  -t "Hello world." \
+./build/qwen3-tts-cli `
+  -m models/base_small `
+  -r ref/ref.wav `
+  -t "Hello world." `
   -o out.wav
 ```
 
 ### 2.2 使用参考特征 (Reference JSON)
 ```bash
-./build/qwen3-tts-cli \
-  --mode clone \
-  -m models/base_small \
-  -r ref/ref_0.6B.json \
-  -t "Hello world." \
+./build/qwen3-tts-cli `
+  --mode clone `
+  -m models/base_small `
+  -r ref/ref_0.6B.json `
+  -t "Hello world." `
   -o out.wav
 ```
 
@@ -50,12 +50,12 @@
 使用系统内置的特定专家发音人 ID。**此功能仅对 `custom` 类型模型有效**。
 
 ```bash
-./build/qwen3-tts-cli \
-  --mode custom \
-  -m models/custom \
-  --speaker Vivian \
-  --instruct "Use angry tone." \
-  -t "Welcome to the show." \
+./build/qwen3-tts-cli `
+  --mode custom `
+  -m models/custom `
+  --speaker Vivian `
+  --instruct "Use angry tone." `
+  -t "Welcome to the show." `
   -o out.wav
 ```
 
@@ -68,11 +68,11 @@
 根据文字描述动态设计全新音色。**此功能仅对 `design` 类型模型有效**。
 
 ```bash
-./build/qwen3-tts-cli \
-  --mode design \
-  -m models/design \
-  --instruct "A warm female voice, speaking gently with a hint of a smile." \
-  -t "Hello, it's nice to meet you!" \
+./build/qwen3-tts-cli `
+  --mode design `
+  -m models/design `
+  --instruct "A warm female voice, speaking gently with a hint of a smile." `
+  -t "Hello, it's nice to meet you!" `
   -o out.wav
 ```
 

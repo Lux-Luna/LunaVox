@@ -7,6 +7,10 @@
 ## 🛠️ 1. 环境准备与诊断 (Preparation)
 
 在进行任何模型工作之前，建议运行此工具以确保当前系统环境（CMake, C++, Python 依赖）已就绪。
+```powershell
+# 安装核心推理工具
+pip install lunavox
+```
 
 ### `doctor` - 系统体检
 检查项目结构、工具链路径及运行时库的完整性。

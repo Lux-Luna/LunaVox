@@ -42,4 +42,5 @@ Thumbs.db
 
 
 代办.txt
-info.txt
+dist/
+src/lunavox.egg-info/
