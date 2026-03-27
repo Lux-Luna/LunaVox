@@ -53,7 +53,7 @@ The following table shows the average performance of LunaVox across different ba
 > [!NOTE]
 > - **Test Model**: Based on **Qwen3-TTS-12Hz-0.6B-Base**, with Voice Cloning enabled using pre-computed `.json` feature files.
 > - **Test Environment**: Intel i9-12900K + NVIDIA RTX 3090
-> - **Test Standard**: Average of **10 runs** after **3 warmup runs**.
+> - **Test Standard**: Average of **100 runs** after **3 warmup runs**.
 
 ---
 
