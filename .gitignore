@@ -44,3 +44,5 @@ Thumbs.db
 代办.txt
 dist/
 src/lunavox.egg-info/
+src/lunavox
+pyproject.toml
