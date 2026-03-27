@@ -46,7 +46,7 @@
 | **Baseline (GPU)** | 3.788 | 1.59 GB | 2.29 GB | 1.34x |
 | **LunaVox (Full CPU)** | 1.152 | 1.06 GB | — | 4.40x |
 | **LunaVox (CUDA13)** | 0.254 | 1.39 GB | 1.30 GB | 19.94x |
-| **LunaVox (Universal GPU)** | **0.206** | 0.91 GB | 1.05 GB | **24.59x** |
+| **LunaVox (Llama.cpp (Vulkan) / ORT (DML))** | **0.206** | 0.91 GB | 1.05 GB | **24.59x** |
 
 > [!NOTE]
 > - **测试模型**: 基于 **Qwen3-TTS-12Hz-0.6B-Base**，开启声音克隆模式并在使用 `.json` 预计算特征文件作为参考。
@@ -131,6 +131,15 @@ LunaVox 自动下载 `lib/` 下相应的 ONNX Runtime 与 Llama.cpp。如果您�
   -t "She said she would be here by noon." `
   -o output/custom.wav
 ```
+
+### 3. 声音设计 (Voice Design)
+使用描述设计声音
+```bash
+.\build\qwen3-tts-cli.exe `
+  -m models/design `
+  -t "It's in the top drawer... wait, it's empty? No way, that's impossible! I'm sure I put it there!" `
+  --instruct "Speak in an incredulous tone, but with a hint of panic beginning to creep into your voice."
+  -o output/out.wav `
 
 ---
 
