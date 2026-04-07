@@ -105,9 +105,13 @@ class LunaVoxEngine:
         metrics["code_generation"] = f"{get_metric(pat_gen, output)} ms"
         metrics["audio_decoding"] = f"{get_metric(pat_aud, output)} ms"
         
-        # RTF
-        m = re.search(r"(?:Real-time\s+)?Factor:\s*([\d\.\s]+)x", output, re.IGNORECASE)
-        if m: metrics["rtf"] = f"{m.group(1).strip()}x"
+        # RTF (Captures the value inside brackets like (0.272 RTF))
+        m = re.search(r"\((\d+\.?\d*)\s*RTF\)", output, re.IGNORECASE)
+        if m: metrics["rtf"] = m.group(1).strip()
+        else:
+            # Fallback to the x-multiplier if RTF isn't explicitly in the output
+            m = re.search(r"(?:Real-time\s+)?Factor:\s*([\d\.]+)\s*x", output, re.IGNORECASE)
+            if m: metrics["rtf"] = f"{m.group(1).strip()}x"
         
         # Audio Duration for RTF check (optional)
         m = re.search(r"Audio\s+Duration:\s*([\d\.\s]+)s", output, re.IGNORECASE)
