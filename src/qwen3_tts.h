@@ -87,10 +87,24 @@ struct tts_result {
     
     // Timing info (in milliseconds)
     int64_t t_load_ms = 0;
+    int64_t t_warmup_ms = 0;
     int64_t t_tokenize_ms = 0;
     int64_t t_encode_ms = 0;
     int64_t t_generate_ms = 0;
+    int64_t t_llama_prefill_ms = 0;
+    int64_t t_llama_decode_loop_ms = 0;
+    int64_t t_talker_post_ms = 0;
+    int64_t t_predictor_sample_ms = 0;
+    int64_t t_talker_decode_ms = 0;
+    int64_t t_talker_post_prep_ms = 0;
+    int64_t t_talker_post_copy_ms = 0;
     int64_t t_decode_ms = 0;
+    int64_t t_ort_decoder_run_ms = 0;
+    int64_t t_decoder_tensor_prep_ms = 0;
+    int64_t t_decoder_ort_run_ms = 0;
+    int64_t t_decoder_tensor_extract_ms = 0;
+    int64_t t_decoder_state_trim_ms = 0;
+    int64_t t_pcm_gather_ms = 0;
     int64_t t_total_ms = 0;
 
     // Language used for generation after explicit override (-1 means no language token).
@@ -219,6 +233,11 @@ public:
     // Check if models are loaded
     bool is_loaded() const { return models_loaded_; }
 
+    // Enable/disable the post-load warmup pass. Default: enabled.
+    // Warmup cost is accumulated into last_warmup_ms().
+    void set_warmup_enabled(bool enabled) { warmup_enabled_ = enabled; }
+    int64_t last_warmup_ms() const { return last_warmup_ms_; }
+
     // Runtime profile accessors.
     const RuntimeModelProfile & profile() const { return profile_; }
     bool supports_mode(const std::string & mode) const;
@@ -254,6 +273,8 @@ private:
     bool assets_loaded_ = false;
     bool decoder_loaded_ = false;
     bool low_mem_mode_ = false;
+    bool warmup_enabled_ = true;
+    int64_t last_warmup_ms_ = 0;
     bool hot_rows_preloaded_ = false;
     std::mutex hot_rows_preload_mu_;
     std::string error_msg_;

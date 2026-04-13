@@ -53,6 +53,15 @@ public:
     int32_t last_ctx_cap() const { return last_ctx_cap_; }
     bool last_ctx_overflow() const { return last_ctx_overflow_; }
 
+    int64_t last_t_prefill_ms() const { return t_prefill_ms_; }
+    int64_t last_t_decode_loop_ms() const { return t_decode_loop_ms_; }
+    int64_t last_t_talker_post_ms() const { return t_talker_post_ms_; }
+    int64_t last_t_predictor_sample_ms() const { return t_predictor_sample_ms_; }
+    // Talker-post breakdown (subset of talker_post)
+    int64_t last_t_talker_decode_ms() const { return t_talker_decode_ms_; }
+    int64_t last_t_talker_post_prep_ms() const { return t_talker_post_prep_ms_; }
+    int64_t last_t_talker_post_copy_ms() const { return t_talker_post_copy_ms_; }
+
 private:
     bool ensure_talker_runtime(int32_t request_ctx);
     int32_t estimate_prompt_tokens(
@@ -110,6 +119,14 @@ private:
     int32_t last_ctx_cap_ = 0;
     bool last_ctx_overflow_ = false;
 
+    int64_t t_prefill_ms_ = 0;
+    int64_t t_decode_loop_ms_ = 0;
+    int64_t t_talker_post_ms_ = 0;
+    int64_t t_predictor_sample_ms_ = 0;
+    int64_t t_talker_decode_ms_ = 0;
+    int64_t t_talker_post_prep_ms_ = 0;
+    int64_t t_talker_post_copy_ms_ = 0;
+
     const AssetsManager * assets_ = nullptr;
     RuntimeModelProfile profile_;
 
@@ -119,6 +136,12 @@ private:
     LlamaContext predictor_ctx_;
     LlamaBatch talker_batch_;
     LlamaBatch predictor_batch_;
+
+    // Reused scratch buffers to avoid per-frame heap churn in predict_frame().
+    std::vector<float> scratch_m_pred_;
+    std::vector<float> scratch_emb0_pred_;
+    std::vector<float> scratch_prefill_;
+    std::vector<float> scratch_emb_next_;
 };
 
 } // namespace qwen3_tts

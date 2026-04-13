@@ -1,0 +1,154 @@
+{
+  "tag": "base__clone",
+  "model_dir": "models/base",
+  "mode": "clone",
+  "cmd": [
+    "D:\\TTS\\lunavox\\build\\qwen3-tts-cli.exe",
+    "-m",
+    "models/base",
+    "-t",
+    "LunaVox runs the Qwen3-TTS pipeline on a lightweight C++ runtime. This benchmark measures cold load, warm synthesis, and memory footprint across the base and clone modes.",
+    "-o",
+    "D:\\TTS\\lunavox\\tests\\results\\baseline_20260413_174041\\out_base__clone.wav",
+    "--stats-json",
+    "D:\\TTS\\lunavox\\tests\\results\\baseline_20260413_174041\\stats_base__clone.json",
+    "--warmup",
+    "0",
+    "--repeat",
+    "2",
+    "--mode",
+    "clone",
+    "-r",
+    "D:\\TTS\\lunavox\\ref\\ref.wav"
+  ],
+  "wall_ms": 12712.260700005572,
+  "exit_code": 0,
+  "stdout_tail": "[INFO] Llama context [talker]: n_ctx=512, n_batch=512, n_ubatch=512, embeddings=true\u001b[0m\n  - Completed: D:\\TTS\\lunavox\\tests\\results\\baseline_20260413_174041\\out_base__clone_1.wav\n[BNCH] Run 2/2\n[INFO]   Speaker encoder providers: CPU (forced)\u001b[0m\n[INFO] Language selection: Auto(None): no language token\u001b[0m\n  - Completed: D:\\TTS\\lunavox\\tests\\results\\baseline_20260413_174041\\out_base__clone_2.wav\n\n[ Backend Configuration ]\n  - LLM Engine:     llama.cpp [vulkan: NVIDIA GeForce RTX 3090]\n  - Audio Encoder:  ONNX Runtime [Codec: not_used(xvector_only)]\n  - Audio Decoder:  ONNX Runtime [DmlExecutionProvider]\n\n[ Resource Usage (Last Run) ]\n  - Peak RAM:       1.64 GB\n  - GPU VRAM Delta: 1.73 GB (NVIDIA GeForce RTX 3090)\n  - Peak Phys:      1.64 GB\n\n[ Inference Metrics ]\n  - Avg Total Latency:     4899.0 ms (N=2)\n  - Audio Duration:         12.56 s\n  - Real-time Factor:        2.56x (0.390 RTF)\n\n[ Result ]\n  - Saved 2 files to: D:\\TTS\\lunavox\\tests\\results\\baseline_20260413_174041\\out_base__clone.wav_*\n--------------------------------------------------",
+  "stats": {
+    "t_load_ms": 1971,
+    "t_warmup_ms": 311,
+    "runs": [
+      {
+        "run_id": 1,
+        "success": true,
+        "sample_rate": 24000,
+        "audio_samples": 301440,
+        "audio_sec": 12.56,
+        "timing_ms": {
+          "tokenize": 0,
+          "encode": 206,
+          "generate": 4385,
+          "llama_prefill": 23,
+          "llama_decode_loop": 4328,
+          "talker_post": 449,
+          "talker_decode": 137,
+          "talker_post_prep": 1,
+          "talker_post_copy": 310,
+          "predictor_sample": 3871,
+          "decode": 496,
+          "ort_decoder_run": 495,
+          "decoder_tensor_prep": 0,
+          "decoder_ort_run": 490,
+          "decoder_tensor_extract": 4,
+          "decoder_state_trim": 0,
+          "pcm_gather": 1,
+          "total": 4881
+        },
+        "rtf": 0.388615,
+        "mem": {
+          "rss_start": 1639882752,
+          "rss_end": 1746313216,
+          "rss_peak": 1746313216,
+          "phys_start": 1639882752,
+          "phys_end": 1746313216,
+          "phys_peak": 1746313216
+        },
+        "diag": {
+          "pcm_peak": 0.787109,
+          "pcm_rms": 0.105771
+        },
+        "ctx": {
+          "ctx_required": 481,
+          "ctx_allocated": 512,
+          "ctx_cap": 2048,
+          "ctx_overflow": false
+        },
+        "gen": {
+          "code_frames": 157,
+          "codebooks": 16,
+          "code_min": 0,
+          "code_max": 2044,
+          "eos_step": 157,
+          "codes_hash": 1612843958966956320
+        },
+        "ort_providers": {
+          "speaker_encoder": "CPU (forced)",
+          "codec_encoder": "not_used(xvector_only)",
+          "decoder": "DmlExecutionProvider"
+        }
+      },
+      {
+        "run_id": 2,
+        "success": true,
+        "sample_rate": 24000,
+        "audio_samples": 301440,
+        "audio_sec": 12.56,
+        "timing_ms": {
+          "tokenize": 0,
+          "encode": 246,
+          "generate": 4478,
+          "llama_prefill": 13,
+          "llama_decode_loop": 4462,
+          "talker_post": 479,
+          "talker_decode": 138,
+          "talker_post_prep": 0,
+          "talker_post_copy": 341,
+          "predictor_sample": 3977,
+          "decode": 439,
+          "ort_decoder_run": 439,
+          "decoder_tensor_prep": 0,
+          "decoder_ort_run": 436,
+          "decoder_tensor_extract": 3,
+          "decoder_state_trim": 0,
+          "pcm_gather": 0,
+          "total": 4917
+        },
+        "rtf": 0.391481,
+        "mem": {
+          "rss_start": 1759100928,
+          "rss_end": 1759272960,
+          "rss_peak": 1759272960,
+          "phys_start": 1759100928,
+          "phys_end": 1759272960,
+          "phys_peak": 1759272960
+        },
+        "diag": {
+          "pcm_peak": 0.787109,
+          "pcm_rms": 0.105771
+        },
+        "ctx": {
+          "ctx_required": 481,
+          "ctx_allocated": 512,
+          "ctx_cap": 2048,
+          "ctx_overflow": false
+        },
+        "gen": {
+          "code_frames": 157,
+          "codebooks": 16,
+          "code_min": 0,
+          "code_max": 2044,
+          "eos_step": 157,
+          "codes_hash": 1612843958966956320
+        },
+        "ort_providers": {
+          "speaker_encoder": "CPU (forced)",
+          "codec_encoder": "not_used(xvector_only)",
+          "decoder": "DmlExecutionProvider"
+        }
+      }
+    ]
+  },
+  "rss_peak_bytes": 1803751424,
+  "vram_peak_bytes": 4060700672,
+  "vram_baseline_bytes": 2162315264
+}

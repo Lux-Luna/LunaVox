@@ -675,6 +675,26 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
         LOG_DEBUG("  Decoder ONNX: deferred (lazy load)");
     }
 
+    last_warmup_ms_ = 0;
+    if (warmup_enabled_ && decoder_loaded_ && profile_.codec_num_codebooks > 0) {
+        // Amortize the decoder's first-run kernel compile (DML shader cache,
+        // CUDA cuDNN search, CoreML MLProgram prep) into load time so the
+        // first user-visible synthesize() call does not pay that cost.
+        const int32_t warmup_frames = 8;
+        const int32_t n_cb = profile_.codec_num_codebooks;
+        std::vector<int32_t> dummy_codes((size_t) warmup_frames * (size_t) n_cb,
+                                         profile_.codec_id_start);
+        std::vector<float> dummy_audio;
+        const int64_t t_wm_start = get_time_ms();
+        if (!decoder_.decode(dummy_codes.data(), warmup_frames, dummy_audio)) {
+            LOG_WARN("Decoder warmup failed (continuing anyway): %s",
+                     decoder_.get_error().c_str());
+        }
+        last_warmup_ms_ = get_time_ms() - t_wm_start;
+        LOG_DEBUG("  Decoder warmup: %lld ms (%d frames x %d codebooks)",
+                  (long long) last_warmup_ms_, warmup_frames, n_cb);
+    }
+
     models_loaded_ = true;
     return true;
 }
@@ -1399,6 +1419,13 @@ tts_result Qwen3TTS::synthesize_internal(
     minmax_i32(speech_codes.data(), (int32_t) speech_codes.size(), result.gen_code_min, result.gen_code_max);
     result.gen_codes_hash = fnv1a_u64(speech_codes.data(), speech_codes.size());
     result.t_generate_ms = get_time_ms() - t_generate;
+    result.t_llama_prefill_ms = talker_predictor_.last_t_prefill_ms();
+    result.t_llama_decode_loop_ms = talker_predictor_.last_t_decode_loop_ms();
+    result.t_talker_post_ms = talker_predictor_.last_t_talker_post_ms();
+    result.t_predictor_sample_ms = talker_predictor_.last_t_predictor_sample_ms();
+    result.t_talker_decode_ms = talker_predictor_.last_t_talker_decode_ms();
+    result.t_talker_post_prep_ms = talker_predictor_.last_t_talker_post_prep_ms();
+    result.t_talker_post_copy_ms = talker_predictor_.last_t_talker_post_copy_ms();
     sample_memory("synth/after-generate");
 
     const int n_codebooks = profile_.codec_num_codebooks;
@@ -1434,12 +1461,20 @@ tts_result Qwen3TTS::synthesize_internal(
         LOG_DEBUG("  Decoder providers: %s", decoder_.provider_summary().c_str());
     }
     result.ort_provider_decoder = decoder_.provider_summary();
+    const int64_t t_ort_run_start = get_time_ms();
     if (!decoder_.decode(speech_codes.data(), n_frames, result.audio)) {
         result.error_msg = "Failed to decode speech codes: " + decoder_.get_error();
         return result;
     }
-    result.t_decode_ms = get_time_ms() - t_decode;
+    result.t_ort_decoder_run_ms = get_time_ms() - t_ort_run_start;
+    result.t_decoder_tensor_prep_ms = decoder_.last_t_tensor_prep_ms();
+    result.t_decoder_ort_run_ms = decoder_.last_t_ort_run_ms();
+    result.t_decoder_tensor_extract_ms = decoder_.last_t_tensor_extract_ms();
+    result.t_decoder_state_trim_ms = decoder_.last_t_state_trim_ms();
+    const int64_t t_pcm_gather_start = get_time_ms();
     pcm_peak_rms(result.audio, result.pcm_peak, result.pcm_rms);
+    result.t_pcm_gather_ms = get_time_ms() - t_pcm_gather_start;
+    result.t_decode_ms = get_time_ms() - t_decode;
     sample_memory("synth/after-decode");
 
     if (low_mem_mode_) {

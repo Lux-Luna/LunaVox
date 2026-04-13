@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -916,6 +917,10 @@ void StatefulDecoderOnnx::unload_model() {
 
 bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::vector<float> & audio) {
     audio.clear();
+    t_tensor_prep_ms_ = 0;
+    t_ort_run_ms_ = 0;
+    t_tensor_extract_ms_ = 0;
+    t_state_trim_ms_ = 0;
     if (!loaded_ || !session_impl_) {
         error_msg_ = "Decoder is not loaded";
         return false;
@@ -1069,9 +1074,15 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
             return true;
         };
 
+        auto now_ms = []() {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now().time_since_epoch())
+                .count();
+        };
         for (int32_t frame_offset = 0; frame_offset < n_frames; frame_offset += decode_chunk_frames_) {
             const int32_t chunk_frames = std::min(decode_chunk_frames_, n_frames - frame_offset);
             const bool is_last_chunk = (frame_offset + chunk_frames) >= n_frames;
+            const int64_t t_prep_start = now_ms();
 
             const size_t codes_count = (size_t) chunk_frames * 16;
             if (codes_i64.size() != codes_count) {
@@ -1145,6 +1156,8 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                     return false;
                 }
             }
+            t_tensor_prep_ms_ += now_ms() - t_prep_start;
+            const int64_t t_run_start = now_ms();
             auto out = impl->session.Run(
                 Ort::RunOptions{nullptr},
                 in_names.data(),
@@ -1152,6 +1165,8 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                 in_values.size(),
                 out_names.data(),
                 out_names.size());
+            t_ort_run_ms_ += now_ms() - t_run_start;
+            const int64_t t_extract_start = now_ms();
 
             if (out.size() < (size_t) (5 + 2 * num_layers_)) {
                 error_msg_ = "Decoder returned insufficient outputs";
@@ -1175,6 +1190,13 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                 std::memcpy(audio.data() + old_size, wav, append_count * sizeof(float));
             }
 
+            int64_t trim_accum = 0;
+            auto run_trim = [&](state_buffer::tensor_state & ts, int64_t win, const char * name) -> bool {
+                const int64_t t0 = now_ms();
+                const bool ok = trim_tensor_state_tail(ts, win, name);
+                trim_accum += now_ms() - t0;
+                return ok;
+            };
             if (!extract_state_tensor(
                     out[2],
                     state.pre_conv_history.elem_type,
@@ -1184,7 +1206,7 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                 error_msg_ = "Decoder next_pre_conv_history type is unsupported";
                 return false;
             }
-            if (!trim_tensor_state_tail(state.pre_conv_history, pre_conv_window_, "pre_conv_history")) {
+            if (!run_trim(state.pre_conv_history, pre_conv_window_, "pre_conv_history")) {
                 return false;
             }
             if (!extract_state_tensor(
@@ -1196,7 +1218,7 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                 error_msg_ = "Decoder next_latent_buffer type is unsupported";
                 return false;
             }
-            if (!trim_tensor_state_tail(state.latent_buffer, latent_window_, "latent_buffer")) {
+            if (!run_trim(state.latent_buffer, latent_window_, "latent_buffer")) {
                 return false;
             }
             if (!extract_state_tensor(
@@ -1208,7 +1230,7 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                 error_msg_ = "Decoder next_conv_history type is unsupported";
                 return false;
             }
-            if (!trim_tensor_state_tail(state.conv_history, conv_window_, "conv_history")) {
+            if (!run_trim(state.conv_history, conv_window_, "conv_history")) {
                 return false;
             }
             for (int i = 0; i < num_layers_; ++i) {
@@ -1221,7 +1243,7 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                     error_msg_ = "Decoder next_key type is unsupported";
                     return false;
                 }
-                if (!trim_tensor_state_tail(state.past_keys[(size_t) i], kv_cache_window_, "past_key")) {
+                if (!run_trim(state.past_keys[(size_t) i], kv_cache_window_, "past_key")) {
                     return false;
                 }
             }
@@ -1235,10 +1257,12 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                     error_msg_ = "Decoder next_value type is unsupported";
                     return false;
                 }
-                if (!trim_tensor_state_tail(state.past_values[(size_t) i], kv_cache_window_, "past_value")) {
+                if (!run_trim(state.past_values[(size_t) i], kv_cache_window_, "past_value")) {
                     return false;
                 }
             }
+            t_state_trim_ms_ += trim_accum;
+            t_tensor_extract_ms_ += (now_ms() - t_extract_start) - trim_accum;
         }
         return !audio.empty();
     } catch (const std::exception & e) {

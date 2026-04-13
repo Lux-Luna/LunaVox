@@ -229,6 +229,7 @@ def summarize(result: RunResult) -> dict[str, Any]:
             return None
 
     vram_used = max(0, result.vram_peak_bytes - result.vram_baseline_bytes)
+    warmup_ms = result.stats.get("t_warmup_ms") if isinstance(result.stats, dict) else None
     return {
         "tag": result.tag,
         "model_dir": result.model_dir,
@@ -236,12 +237,26 @@ def summarize(result: RunResult) -> dict[str, Any]:
         "exit_code": result.exit_code,
         "wall_ms": round(result.wall_ms, 1),
         "t_load_ms": load_ms,
+        "t_warmup_ms": warmup_ms,
         "run1_tokenize_ms": ms(first, "tokenize"),
         "run1_encode_ms": ms(first, "encode"),
         "run1_generate_ms": ms(first, "generate"),
+        "run1_llama_prefill_ms": ms(first, "llama_prefill"),
+        "run1_llama_decode_loop_ms": ms(first, "llama_decode_loop"),
+        "run1_talker_post_ms": ms(first, "talker_post"),
+        "run1_predictor_sample_ms": ms(first, "predictor_sample"),
         "run1_decode_ms": ms(first, "decode"),
+        "run1_ort_decoder_run_ms": ms(first, "ort_decoder_run"),
+        "run1_pcm_gather_ms": ms(first, "pcm_gather"),
         "run1_total_ms": ms(first, "total"),
         "run2_total_ms": ms(second, "total") if second else None,
+        "run2_generate_ms": ms(second, "generate") if second else None,
+        "run2_llama_prefill_ms": ms(second, "llama_prefill") if second else None,
+        "run2_llama_decode_loop_ms": ms(second, "llama_decode_loop") if second else None,
+        "run2_talker_post_ms": ms(second, "talker_post") if second else None,
+        "run2_predictor_sample_ms": ms(second, "predictor_sample") if second else None,
+        "run2_decode_ms": ms(second, "decode") if second else None,
+        "run2_ort_decoder_run_ms": ms(second, "ort_decoder_run") if second else None,
         "run1_rtf": first.get("rtf"),
         "run2_rtf": second.get("rtf") if second else None,
         "rss_peak_mb": round(result.rss_peak_bytes / 1024 / 1024, 1),
