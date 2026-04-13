@@ -4,6 +4,9 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <initializer_list>
+#include <vector>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -18,13 +21,83 @@ namespace qwen3_tts {
 
 namespace {
 
+namespace fs = std::filesystem;
+
+// Platform-agnostic dynamic loader. The rest of this file deals only in
+// `void *` handles and named symbols, and never sees LoadLibrary/dlopen.
+struct DynLib {
+    static void * open(const char * path) {
+#ifdef _WIN32
+        return (void *) LoadLibraryA(path);
+#else
+        return dlopen(path, RTLD_NOW | RTLD_LOCAL);
+#endif
+    }
+
+    static void close(void * handle) {
+        if (!handle) return;
+#ifdef _WIN32
+        FreeLibrary((HMODULE) handle);
+#else
+        dlclose(handle);
+#endif
+    }
+
+    static void * lookup_loaded(const char * base_name) {
+#ifdef _WIN32
+        return (void *) GetModuleHandleA(base_name);
+#else
+        (void) base_name;
+        return nullptr;
+#endif
+    }
+
+    static void * symbol(void * handle, const char * name) {
+        if (!handle) return nullptr;
+#ifdef _WIN32
+        return (void *) GetProcAddress((HMODULE) handle, name);
+#else
+        return dlsym(handle, name);
+#endif
+    }
+};
+
+// Try a list of candidate filenames inside `dir`, returning the first that
+// loads. Each candidate is joined via std::filesystem so callers never
+// concatenate separators by hand.
+static void * dynlib_try_open_in(const fs::path & dir,
+                                  std::initializer_list<const char *> candidates,
+                                  std::string * out_path_tried = nullptr) {
+    for (const char * name : candidates) {
+        fs::path p = dir / name;
+        const std::string s = p.string();
+        if (out_path_tried) *out_path_tried = s;
+        void * h = DynLib::open(s.c_str());
+        if (h) return h;
+    }
+    return nullptr;
+}
+
+// OS-specific candidate name tables. Listed most-specific → most-generic.
+#if defined(_WIN32)
+static const std::initializer_list<const char *> kGgmlBaseCandidates = {"ggml.dll", "ggml-base.dll"};
+static const std::initializer_list<const char *> kLlamaCandidates    = {"llama.dll"};
+static const std::initializer_list<const char *> kGgmlBaseLoaded     = {"ggml.dll", "ggml-base.dll"};
+#elif defined(__APPLE__)
+static const std::initializer_list<const char *> kGgmlBaseCandidates = {
+    "libggml.dylib", "libggml-base.dylib", "libggml.so", "libggml-base.so"};
+static const std::initializer_list<const char *> kLlamaCandidates    = {"libllama.dylib", "libllama.so"};
+static const std::initializer_list<const char *> kGgmlBaseLoaded     = {};
+#else
+static const std::initializer_list<const char *> kGgmlBaseCandidates = {
+    "libggml.so", "libggml-base.so"};
+static const std::initializer_list<const char *> kLlamaCandidates    = {"libllama.so"};
+static const std::initializer_list<const char *> kGgmlBaseLoaded     = {};
+#endif
+
 template <typename T>
 bool load_fn(void * handle, const char * name, T & fn_ptr, std::string & err) {
-#ifdef _WIN32
-    auto sym = GetProcAddress((HMODULE) handle, name);
-#else
-    auto sym = dlsym(handle, name);
-#endif
+    void * sym = DynLib::symbol(handle, name);
     if (!sym) {
         err = std::string("Missing symbol in llama runtime: ") + name;
         return false;
@@ -35,15 +108,7 @@ bool load_fn(void * handle, const char * name, T & fn_ptr, std::string & err) {
 
 template <typename T>
 bool try_load_fn(void * handle, const char * name, T & fn_ptr) {
-    if (!handle) {
-        fn_ptr = nullptr;
-        return false;
-    }
-#ifdef _WIN32
-    auto sym = GetProcAddress((HMODULE) handle, name);
-#else
-    auto sym = dlsym(handle, name);
-#endif
+    void * sym = DynLib::symbol(handle, name);
     if (!sym) {
         fn_ptr = nullptr;
         return false;
@@ -64,50 +129,29 @@ bool LlamaLibrary::ensure_loaded(const std::string & lib_dir, std::string & err)
         return true;
     }
 
-    std::string ggml_base_path;
-    std::string llama_path;
-#ifdef _WIN32
-    handle_ggml_base_ = (void *) GetModuleHandleA("ggml.dll");
-    ggml_base_path = lib_dir + "\\ggml.dll";
-    if (!handle_ggml_base_) {
-        handle_ggml_base_ = (void *) LoadLibraryA(ggml_base_path.c_str());
+    const fs::path dir = fs::u8path(lib_dir);
+
+    // ggml-base may already be mapped in the current process (Windows
+    // auto-loads dependent DLLs); probe for that first so we don't pull a
+    // second copy.
+    for (const char * name : kGgmlBaseLoaded) {
+        handle_ggml_base_ = DynLib::lookup_loaded(name);
+        if (handle_ggml_base_) break;
     }
     if (!handle_ggml_base_) {
-        handle_ggml_base_ = (void *) GetModuleHandleA("ggml-base.dll");
+        handle_ggml_base_ = dynlib_try_open_in(dir, kGgmlBaseCandidates);
     }
-    if (!handle_ggml_base_) {
-        ggml_base_path = lib_dir + "\\ggml-base.dll";
-        handle_ggml_base_ = (void *) LoadLibraryA(ggml_base_path.c_str());
-    }
-    llama_path = lib_dir + "\\llama.dll";
-    handle_llama_ = (void *) LoadLibraryA(llama_path.c_str());
-#else
-    ggml_base_path = lib_dir + "/libggml.so";
-    handle_ggml_base_ = dlopen(ggml_base_path.c_str(), RTLD_NOW | RTLD_LOCAL);
-    if (!handle_ggml_base_) {
-        ggml_base_path = lib_dir + "/libggml-base.so";
-        handle_ggml_base_ = dlopen(ggml_base_path.c_str(), RTLD_NOW | RTLD_LOCAL);
-    }
-    llama_path = lib_dir + "/libllama.so";
-    handle_llama_ = dlopen(llama_path.c_str(), RTLD_NOW | RTLD_LOCAL);
-#endif
+
+    std::string llama_path_tried;
+    handle_llama_ = dynlib_try_open_in(dir, kLlamaCandidates, &llama_path_tried);
     if (!handle_llama_) {
-        err = "Failed to load llama runtime: " + llama_path;
+        err = "Failed to load llama runtime: " + llama_path_tried;
         return false;
     }
 
     if (!load_symbol_table(err)) {
-#ifdef _WIN32
-        FreeLibrary((HMODULE) handle_llama_);
-        if (handle_ggml_base_) {
-            FreeLibrary((HMODULE) handle_ggml_base_);
-        }
-#else
-        dlclose(handle_llama_);
-        if (handle_ggml_base_) {
-            dlclose(handle_ggml_base_);
-        }
-#endif
+        DynLib::close(handle_llama_);
+        DynLib::close(handle_ggml_base_);
         handle_llama_ = nullptr;
         handle_ggml_base_ = nullptr;
         return false;

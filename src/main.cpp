@@ -2,6 +2,7 @@
 #include "logger.h"
 #include "nvml_monitor.h"
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -52,42 +53,44 @@ static std::string json_escape(const std::string & s) {
     return out;
 }
 
-#ifdef _WIN32
-static std::string wide_to_utf8(const std::wstring & ws) {
-    if (ws.empty()) {
-        return std::string();
-    }
-    int size = WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(),
-                                   nullptr, 0, nullptr, nullptr);
-    if (size <= 0) {
-        return std::string();
-    }
-    std::string utf8((size_t)size, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(),
-                        &utf8[0], size, nullptr, nullptr);
-    return utf8;
-}
-
+// Collect command-line arguments as UTF-8 strings, regardless of platform.
+// On Windows argv is encoded in the active ANSI code page which mangles
+// non-ASCII filenames/text; we re-fetch via CommandLineToArgvW and re-encode
+// to UTF-8. On POSIX argv is already UTF-8 by convention so we pass it through.
 static std::vector<std::string> collect_cli_args_utf8(int argc, char ** argv) {
     std::vector<std::string> args;
+#ifdef _WIN32
     int wide_argc = 0;
     LPWSTR * wide_argv = CommandLineToArgvW(GetCommandLineW(), &wide_argc);
     if (wide_argv && wide_argc > 0) {
         args.reserve((size_t)wide_argc);
         for (int i = 0; i < wide_argc; ++i) {
-            args.push_back(wide_to_utf8(wide_argv[i]));
+            const std::wstring ws = wide_argv[i] ? wide_argv[i] : L"";
+            if (ws.empty()) {
+                args.emplace_back();
+                continue;
+            }
+            int size = WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(),
+                                           nullptr, 0, nullptr, nullptr);
+            if (size <= 0) {
+                args.emplace_back();
+                continue;
+            }
+            std::string utf8((size_t)size, '\0');
+            WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(),
+                                &utf8[0], size, nullptr, nullptr);
+            args.emplace_back(std::move(utf8));
         }
         LocalFree(wide_argv);
         return args;
     }
-
+#endif
     args.reserve((size_t)argc);
     for (int i = 0; i < argc; ++i) {
         args.emplace_back(argv[i] ? argv[i] : "");
     }
     return args;
 }
-#endif
 
 void print_usage(const char * program) {
     fprintf(stderr, "Usage: %s [options] -m <model_dir> -t <text>\n", program);
@@ -133,15 +136,7 @@ int main(int argc, char ** argv) {
         vram_start = qwen3_tts::NVMLMonitor::instance().get_used_vram();
     }
 
-#ifdef _WIN32
     std::vector<std::string> args = collect_cli_args_utf8(argc, argv);
-#else
-    std::vector<std::string> args;
-    args.reserve((size_t)argc);
-    for (int i = 0; i < argc; ++i) {
-        args.emplace_back(argv[i] ? argv[i] : "");
-    }
-#endif
 
     const char * program = args.empty() ? "qwen3-tts-cli" : args[0].c_str();
     std::string model_dir;
@@ -377,10 +372,14 @@ int main(int argc, char ** argv) {
     qwen3_tts::set_ort_debug_log(params.ort_debug_log);
     
     LOG_USER("[LOAD] Loading Models...");
+    const auto t_load_start = std::chrono::steady_clock::now();
     if (!tts.load_models(model_dir, params.n_threads)) {
         LOG_ERROR("\nError during model load: %s", tts.get_error().c_str());
         return 1;
     }
+    const int64_t t_load_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                  std::chrono::steady_clock::now() - t_load_start).count();
+    LOG_USER("[LOAD] Model load completed in %lld ms", (long long) t_load_ms);
     
     LOG_USER("[PARA] Text: \"%s\"", text.c_str());
     
@@ -680,7 +679,9 @@ int main(int argc, char ** argv) {
         if (!jf) {
             LOG_WARN("Warning: failed to write stats JSON: %s", stats_json_file.c_str());
         } else {
-            fprintf(jf, "[\n");
+            fprintf(jf, "{\n");
+            fprintf(jf, "  \"t_load_ms\": %lld,\n", (long long) t_load_ms);
+            fprintf(jf, "  \"runs\": [\n");
             for (size_t it = 0; it < repeat_results.size(); ++it) {
                 const auto & r = repeat_results[it];
                 double audio_sec = (double)r.audio.size() / r.sample_rate;
@@ -771,7 +772,8 @@ int main(int argc, char ** argv) {
                     decoder_ep_json.c_str(),
                     (it == repeat_results.size() - 1) ? "" : ",");
             }
-            fprintf(jf, "]\n");
+            fprintf(jf, "  ]\n");
+            fprintf(jf, "}\n");
             fclose(jf);
         }
     }

@@ -1,0 +1,97 @@
+{
+  "t_load_ms": 1436,
+  "runs": [
+  {
+    "run_id": 1,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 274560,
+    "audio_sec": 11.440000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 198,
+      "generate": 1660,
+      "decode": 1399,
+      "total": 3059
+    },
+    "rtf": 0.267395,
+    "mem": {
+      "rss_start": 791924736,
+      "rss_end": 1037172736,
+      "rss_peak": 1037172736,
+      "phys_start": 791924736,
+      "phys_end": 1037172736,
+      "phys_peak": 1037172736
+    },
+    "diag": {
+      "pcm_peak": 0.847656,
+      "pcm_rms": 0.111321
+    },
+    "ctx": {
+      "ctx_required": 481,
+      "ctx_allocated": 512,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 143,
+      "codebooks": 16,
+      "code_min": 2,
+      "code_max": 2046,
+      "eos_step": 143,
+      "codes_hash": 7068773158842048125
+    },
+    "ort_providers": {
+      "speaker_encoder": "CPU (forced)",
+      "codec_encoder": "not_used(xvector_only)",
+      "decoder": "DmlExecutionProvider"
+    }
+  },
+  {
+    "run_id": 2,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 274560,
+    "audio_sec": 11.440000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 199,
+      "generate": 1530,
+      "decode": 988,
+      "total": 2519
+    },
+    "rtf": 0.220192,
+    "mem": {
+      "rss_start": 1049903104,
+      "rss_end": 1052086272,
+      "rss_peak": 1052086272,
+      "phys_start": 1049903104,
+      "phys_end": 1052086272,
+      "phys_peak": 1052086272
+    },
+    "diag": {
+      "pcm_peak": 0.847656,
+      "pcm_rms": 0.111321
+    },
+    "ctx": {
+      "ctx_required": 481,
+      "ctx_allocated": 512,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 143,
+      "codebooks": 16,
+      "code_min": 2,
+      "code_max": 2046,
+      "eos_step": 143,
+      "codes_hash": 7068773158842048125
+    },
+    "ort_providers": {
+      "speaker_encoder": "CPU (forced)",
+      "codec_encoder": "not_used(xvector_only)",
+      "decoder": "DmlExecutionProvider"
+    }
+  }
+  ]
+}

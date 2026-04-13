@@ -1,5 +1,15 @@
 cmake_minimum_required(VERSION 3.16)
 
+# On macOS pin a minimum deployment target before project() so clang settles
+# ABI decisions early. CMAKE_OSX_ARCHITECTURES is intentionally NOT forced
+# here: the Python build driver passes it explicitly (arm64 on Apple Silicon,
+# x86_64 on Intel). Both variables can also be set from the command line.
+if(APPLE)
+    if(NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET AND NOT DEFINED ENV{MACOSX_DEPLOYMENT_TARGET})
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS deployment target" FORCE)
+    endif()
+endif()
+
 project(qwen3-tts VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -48,17 +58,10 @@ else()
     message(STATUS "qwen3-tts OpenMP: disabled by user")
 endif()
 
-if(WIN32)
-    find_library(ONNXRUNTIME_LIBRARY
-        NAMES onnxruntime
-        HINTS "${QWEN3_TTS_ORT_ROOT}/lib"
-        NO_DEFAULT_PATH)
-else()
-    find_library(ONNXRUNTIME_LIBRARY
-        NAMES onnxruntime
-        HINTS "${QWEN3_TTS_ORT_ROOT}/lib"
-        NO_DEFAULT_PATH)
-endif()
+find_library(ONNXRUNTIME_LIBRARY
+    NAMES onnxruntime libonnxruntime
+    HINTS "${QWEN3_TTS_ORT_ROOT}/lib"
+    NO_DEFAULT_PATH)
 
 if(NOT ONNXRUNTIME_LIBRARY)
     message(FATAL_ERROR
@@ -71,18 +74,30 @@ set_target_properties(onnxruntime::onnxruntime PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${QWEN3_TTS_ORT_ROOT}/include")
 
 set(QWEN3_TTS_RUNTIME_DIRS "${QWEN3_TTS_PREBUILT_LIB_DIR};${QWEN3_TTS_ORT_ROOT}/lib")
-set(QWEN3_TTS_RUNTIME_DLLS "")
+set(QWEN3_TTS_RUNTIME_BINS "")
 if(WIN32)
-    file(GLOB _qwen3_tts_runtime_dlls
+    file(GLOB _qwen3_tts_runtime_bins
         "${QWEN3_TTS_PREBUILT_LIB_DIR}/ggml*.dll"
         "${QWEN3_TTS_PREBUILT_LIB_DIR}/llama*.dll"
         "${QWEN3_TTS_PREBUILT_LIB_DIR}/libomp*.dll"
         "${QWEN3_TTS_PREBUILT_LIB_DIR}/mtmd*.dll"
         "${QWEN3_TTS_ORT_ROOT}/lib/onnxruntime*.dll")
-    if(_qwen3_tts_runtime_dlls)
-        list(APPEND QWEN3_TTS_RUNTIME_DLLS ${_qwen3_tts_runtime_dlls})
-        list(REMOVE_DUPLICATES QWEN3_TTS_RUNTIME_DLLS)
-    endif()
+elseif(APPLE)
+    file(GLOB _qwen3_tts_runtime_bins
+        "${QWEN3_TTS_PREBUILT_LIB_DIR}/libggml*.dylib"
+        "${QWEN3_TTS_PREBUILT_LIB_DIR}/libllama*.dylib"
+        "${QWEN3_TTS_PREBUILT_LIB_DIR}/libmtmd*.dylib"
+        "${QWEN3_TTS_ORT_ROOT}/lib/libonnxruntime*.dylib")
+else()
+    file(GLOB _qwen3_tts_runtime_bins
+        "${QWEN3_TTS_PREBUILT_LIB_DIR}/libggml*.so*"
+        "${QWEN3_TTS_PREBUILT_LIB_DIR}/libllama*.so*"
+        "${QWEN3_TTS_PREBUILT_LIB_DIR}/libmtmd*.so*"
+        "${QWEN3_TTS_ORT_ROOT}/lib/libonnxruntime*.so*")
+endif()
+if(_qwen3_tts_runtime_bins)
+    list(APPEND QWEN3_TTS_RUNTIME_BINS ${_qwen3_tts_runtime_bins})
+    list(REMOVE_DUPLICATES QWEN3_TTS_RUNTIME_BINS)
 endif()
 
 function(qwen3_tts_finalize_binary target_name)
@@ -92,23 +107,24 @@ function(qwen3_tts_finalize_binary target_name)
 
     if(QWEN3_TTS_RUNTIME_DIRS)
         if(APPLE)
-            set(_origin "@loader_path")
+            # @loader_path resolves relative to the binary itself; adding a
+            # second entry one level up keeps install trees bin/+lib/ working.
             set_target_properties(${target_name} PROPERTIES
-                BUILD_RPATH "${QWEN3_TTS_RUNTIME_DIRS}"
-                INSTALL_RPATH "${_origin};${_origin}/../lib")
+                BUILD_RPATH "${QWEN3_TTS_RUNTIME_DIRS};@loader_path;@loader_path/../lib"
+                INSTALL_RPATH "@loader_path;@loader_path/../lib"
+                MACOSX_RPATH ON)
         elseif(UNIX)
-            set(_origin "$ORIGIN")
             set_target_properties(${target_name} PROPERTIES
-                BUILD_RPATH "${QWEN3_TTS_RUNTIME_DIRS}"
-                INSTALL_RPATH "${_origin};${_origin}/../lib")
+                BUILD_RPATH "${QWEN3_TTS_RUNTIME_DIRS};$ORIGIN;$ORIGIN/../lib"
+                INSTALL_RPATH "$ORIGIN;$ORIGIN/../lib")
         endif()
     endif()
 
-    if(WIN32 AND QWEN3_TTS_COPY_RUNTIME AND QWEN3_TTS_RUNTIME_DLLS)
-        foreach(_dll IN LISTS QWEN3_TTS_RUNTIME_DLLS)
+    if(QWEN3_TTS_COPY_RUNTIME AND QWEN3_TTS_RUNTIME_BINS)
+        foreach(_bin IN LISTS QWEN3_TTS_RUNTIME_BINS)
             add_custom_command(TARGET ${target_name} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${_dll}" "$<TARGET_FILE_DIR:${target_name}>"
+                    "${_bin}" "$<TARGET_FILE_DIR:${target_name}>"
                 VERBATIM)
         endforeach()
     endif()
