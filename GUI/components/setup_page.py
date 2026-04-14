@@ -1,20 +1,34 @@
-import customtkinter as ctk
-import subprocess
-import threading
-import sys
+"""Setup page — in-process version.
+
+Previously this spawned ``lunavox`` as a subprocess for every action and
+streamed its stdout into a Tk textbox. That duplicated the CLI binding
+and forced users to install the CLI on their PATH before the GUI could
+do anything. We now import the same pure-Python entry points the CLI
+uses (``ModelDownloader.download_converted_model``,
+``download_platform_libs``, ``run_build``) and run them on a worker
+thread with stdout/stderr redirected into a line-buffered pipe so the
+console panel still shows live progress.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import io
 import os
+import sys
+import threading
+import traceback
+
+import customtkinter as ctk
+
+from lunavox.build.lib_downloader import download_platform_libs
+from lunavox.build.main import run_build
+from lunavox.core.project import resolve_project_root
+from lunavox.model import ModelDownloader, all_models, model_keys
 
 
-# Model options matching CLI source
-MODEL_OPTIONS = [
-    ("base_small", "Qwen3-TTS-12Hz-0.6B-Base"),
-    ("custom_small", "Qwen3-TTS-12Hz-0.6B-CustomVoice"),
-    ("base", "Qwen3-TTS-12Hz-1.7B-Base"),
-    ("custom", "Qwen3-TTS-12Hz-1.7B-CustomVoice"),
-    ("design", "Qwen3-TTS-12Hz-1.7B-VoiceDesign"),
-]
-
-# Platform options matching libs.json
+# Platform options matching libs.json. Kept here because the GUI catalog
+# order is user-facing and differs from the raw libs.json dict order.
 PLATFORM_OPTIONS = [
     ("win_cpu", "Windows (CPU Only)"),
     ("win_vulkan", "Windows (Universal GPU - DML/Vulkan)"),
@@ -26,6 +40,45 @@ PLATFORM_OPTIONS = [
 ]
 
 
+class _LineTee(io.TextIOBase):
+    """File-like object that buffers writes and flushes them by line.
+
+    Every completed line is forwarded through ``on_line`` (expected to
+    schedule a ``Tk.after(0, ...)`` call into the console textbox). We
+    keep the behaviour narrow on purpose: no stream isatty(), no rich
+    terminal handshake — just plain text with newlines.
+    """
+
+    def __init__(self, on_line):
+        super().__init__()
+        self._on_line = on_line
+        self._buf: list[str] = []
+
+    def writable(self) -> bool:
+        return True
+
+    def write(self, text: str) -> int:  # type: ignore[override]
+        if not text:
+            return 0
+        self._buf.append(text)
+        if "\n" in text:
+            joined = "".join(self._buf)
+            lines = joined.splitlines(keepends=True)
+            tail: list[str] = []
+            for line in lines:
+                if line.endswith("\n"):
+                    self._on_line(line)
+                else:
+                    tail.append(line)
+            self._buf = tail
+        return len(text)
+
+    def flush(self) -> None:
+        if self._buf:
+            self._on_line("".join(self._buf))
+            self._buf = []
+
+
 class SetupPage(ctk.CTkFrame):
     def __init__(self, master, t_func, on_back, on_lang_change, on_refresh):
         super().__init__(master, fg_color="transparent")
@@ -34,12 +87,17 @@ class SetupPage(ctk.CTkFrame):
         self.on_lang_change = on_lang_change
         self.on_refresh = on_refresh
         self._running = False
+        # Cache the catalog so the dropdown is stable across language
+        # toggles and we don't re-query the HF cache on every rebuild.
+        self._catalog = all_models()
 
         self.grid_columnconfigure(0, weight=1)
         self.setup_ui()
 
+    # -----------------------------------------------------------------
+    # UI
+    # -----------------------------------------------------------------
     def setup_ui(self):
-        # --- Scrollable content ---
         self.scroll = ctk.CTkScrollableFrame(self)
         self.scroll.grid(row=0, column=0, padx=10, pady=5, sticky="nsew")
         self.scroll.grid_columnconfigure(0, weight=1)
@@ -47,7 +105,7 @@ class SetupPage(ctk.CTkFrame):
 
         row = 0
 
-        # ============ 1. Language Section ============
+        # ---- Language Section ----
         self.lang_section = ctk.CTkFrame(self.scroll)
         self.lang_section.grid(row=row, column=0, padx=5, pady=5, sticky="ew")
         self.lang_section.grid_columnconfigure(1, weight=1)
@@ -68,7 +126,7 @@ class SetupPage(ctk.CTkFrame):
         self.lang_dropdown.grid(row=1, column=1, padx=12, pady=(0, 10), sticky="w")
         row += 1
 
-        # ============ 2. Model Download Section ============
+        # ---- Model Download Section ----
         self.model_section = ctk.CTkFrame(self.scroll)
         self.model_section.grid(row=row, column=0, padx=5, pady=5, sticky="ew")
         self.model_section.grid_columnconfigure(1, weight=1)
@@ -79,19 +137,17 @@ class SetupPage(ctk.CTkFrame):
         )
         self.model_section_label.grid(row=0, column=0, columnspan=2, padx=12, pady=(10, 5), sticky="w")
 
-        # China warning (hidden by default, shown when lang=zh)
         self.china_warning = ctk.CTkLabel(
             self.model_section, text=self.t("setup_china_warning"),
             font=ctk.CTkFont(size=11), text_color="#E8A838", wraplength=700
         )
-        # Only show if warning text is non-empty
         if self.t("setup_china_warning"):
             self.china_warning.grid(row=1, column=0, columnspan=2, padx=12, pady=(0, 5), sticky="w")
 
         self.model_label = ctk.CTkLabel(self.model_section, text=self.t("setup_model_label"), font=ctk.CTkFont(size=12))
         self.model_label.grid(row=2, column=0, padx=12, pady=(0, 10), sticky="w")
 
-        model_display = [f"{display}" for _, display in MODEL_OPTIONS] + [self.t("setup_model_all")]
+        model_display = [spec.display_name for spec in self._catalog] + [self.t("setup_model_all")]
         self.model_dropdown = ctk.CTkOptionMenu(self.model_section, values=model_display, width=340)
         self.model_dropdown.grid(row=2, column=1, padx=12, pady=(0, 10), sticky="w")
 
@@ -103,7 +159,7 @@ class SetupPage(ctk.CTkFrame):
         self.model_download_btn.grid(row=3, column=0, columnspan=2, padx=12, pady=(0, 12), sticky="w")
         row += 1
 
-        # ============ 3. Library Download Section ============
+        # ---- Library Download Section ----
         self.libs_section = ctk.CTkFrame(self.scroll)
         self.libs_section.grid(row=row, column=0, padx=5, pady=5, sticky="ew")
         self.libs_section.grid_columnconfigure(1, weight=1)
@@ -135,7 +191,7 @@ class SetupPage(ctk.CTkFrame):
         self.libs_download_btn.grid(row=3, column=0, columnspan=2, padx=12, pady=(0, 12), sticky="w")
         row += 1
 
-        # ============ 4. Build Section ============
+        # ---- Build Section ----
         self.build_section = ctk.CTkFrame(self.scroll)
         self.build_section.grid(row=row, column=0, padx=5, pady=5, sticky="ew")
         self.build_section.grid_columnconfigure(0, weight=1)
@@ -160,7 +216,7 @@ class SetupPage(ctk.CTkFrame):
         self.build_btn.grid(row=2, column=0, padx=12, pady=(0, 12), sticky="w")
         row += 1
 
-        # ============ 5. Console Output ============
+        # ---- Console Output ----
         self.console_section = ctk.CTkFrame(self.scroll)
         self.console_section.grid(row=row, column=0, padx=5, pady=5, sticky="ew")
         self.console_section.grid_columnconfigure(0, weight=1)
@@ -184,18 +240,18 @@ class SetupPage(ctk.CTkFrame):
         )
         self.console_box.grid(row=1, column=0, padx=10, pady=(0, 10), sticky="ew")
 
-    # --- Language ---
+    # -----------------------------------------------------------------
+    # UI helpers
+    # -----------------------------------------------------------------
     def _on_lang_select(self, value):
         new_lang = "zh" if value == "中文" else "en"
         self.on_lang_change(new_lang)
         self.update_texts()
 
     def set_lang_dropdown(self, lang):
-        """Sync the dropdown to the current app language."""
         self.lang_dropdown.set("中文" if lang == "zh" else "English")
 
-    # --- Console helpers ---
-    def _append_console(self, text):
+    def _append_console(self, text: str):
         self.console_box.configure(state="normal")
         self.console_box.insert("end", text)
         self.console_box.see("end")
@@ -206,159 +262,97 @@ class SetupPage(ctk.CTkFrame):
         self.console_box.delete("1.0", "end")
         self.console_box.configure(state="disabled")
 
-    def _set_status(self, key, color="#5BA0D0"):
+    def _set_status(self, key: str, color: str = "#5BA0D0"):
         self.status_label.configure(text=self.t(key), text_color=color)
 
-    def _set_buttons_state(self, state):
+    def _set_buttons_state(self, state: str):
         self.model_download_btn.configure(state=state)
         self.libs_download_btn.configure(state=state)
         self.build_btn.configure(state=state)
 
-    # --- Run CLI command in background ---
-    def _run_cli(self, cmd_args, status_key, on_done=None):
+    def _get_project_root(self):
+        return resolve_project_root()
+
+    # -----------------------------------------------------------------
+    # Worker dispatch
+    # -----------------------------------------------------------------
+    def _run_task(self, title: str, status_key: str, fn, on_done=None):
+        """Run ``fn`` on a background thread with stdout/stderr teed to
+        the console panel.
+
+        ``fn`` is called with no arguments. It must be self-contained —
+        all inputs should be captured in a closure by the caller. Any
+        exception is caught, formatted, and surfaced in the console.
+        """
         if self._running:
             return
         self._running = True
         self._clear_console()
         self._set_status(status_key, "#E8A838")
         self._set_buttons_state("disabled")
+        self._append_console(f"$ {title}\n\n")
 
-        # Detect bundled lunavox CLI in portable environment
-        root = self._get_project_root()
-        if sys.platform == "win32":
-            bundled_exe = os.path.join(root, "python_env", "Scripts", "lunavox.exe")
-        else:
-            bundled_exe = os.path.join(root, "python_env", "bin", "lunavox")
-        
-        lunavox_exe = bundled_exe if os.path.exists(bundled_exe) else "lunavox"
+        def push_line(line: str):
+            self.after(0, lambda l=line: self._append_console(l))
+
+        tee = _LineTee(push_line)
 
         def worker():
+            # Force UTF-8 on Windows so HF Hub progress bars don't
+            # explode on the default cp936 encoding.
+            prev_env = os.environ.get("PYTHONUTF8")
+            os.environ["PYTHONUTF8"] = "1"
+            ok = False
             try:
-                full_cmd = [lunavox_exe] + cmd_args
-                self.after(0, lambda c=" ".join(full_cmd): self._append_console(f"$ {c}\n\n"))
-
-                # Force UTF-8 on Windows
-                proc_env = os.environ.copy()
-                proc_env["PYTHONUTF8"] = "1"
-                
-                proc = subprocess.Popen(
-                    full_cmd,
-                    cwd=str(self._get_project_root()),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    env=proc_env,
-                    text=True,
-                    encoding="utf-8"
-                )
-
-                for line in proc.stdout:
-                    self.after(0, lambda l=line: self._append_console(l))
-
-                proc.wait()
-
-                if proc.returncode == 0:
+                with contextlib.redirect_stdout(tee), contextlib.redirect_stderr(tee):
+                    fn()
+                    tee.flush()
+                ok = True
+            except Exception:
+                tee.flush()
+                self.after(0, lambda tb=traceback.format_exc():
+                           self._append_console(f"\n[ERROR]\n{tb}\n"))
+            finally:
+                if prev_env is None:
+                    os.environ.pop("PYTHONUTF8", None)
+                else:
+                    os.environ["PYTHONUTF8"] = prev_env
+                self._running = False
+                if ok:
                     self.after(0, lambda: self._set_status("setup_status_success", "#4CAF50"))
                     if on_done:
                         self.after(100, on_done)
                 else:
                     self.after(0, lambda: self._set_status("setup_status_error", "#E74C3C"))
-            except FileNotFoundError:
-                self.after(0, lambda: self._append_console(
-                    "\n[ERROR] 'lunavox' command not found.\n"
-                    "Make sure lunavox is installed: pip install lunavox\n"
-                ))
-                self.after(0, lambda: self._set_status("setup_status_error", "#E74C3C"))
-            except Exception as e:
-                self.after(0, lambda err=str(e): self._append_console(f"\n[ERROR] {err}\n"))
-                self.after(0, lambda: self._set_status("setup_status_error", "#E74C3C"))
-            finally:
-                self._running = False
                 self.after(0, lambda: self._set_buttons_state("normal"))
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _get_project_root(self):
-        """Get the LunaVox project root (parent of GUI dir)."""
-        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-    # --- Actions ---
-    def _download_model(self):
+    # -----------------------------------------------------------------
+    # Actions
+    # -----------------------------------------------------------------
+    def _selected_model_keys(self) -> list[str]:
         selected = self.model_dropdown.get()
-        all_label = self.t("setup_model_all")
+        if selected == self.t("setup_model_all"):
+            return model_keys()
+        for spec in self._catalog:
+            if spec.display_name == selected:
+                return [spec.name]
+        return []
 
-        if selected == all_label:
-            model_ids = [key for key, _ in MODEL_OPTIONS]
-            self._run_cli_sequential_models(model_ids)
-        else:
-            # Find the model id by display name
-            model_id = None
-            for key, display in MODEL_OPTIONS:
-                if display == selected:
-                    model_id = key
-                    break
-            if model_id:
-                self._run_cli(
-                    ["--yes", "pull-model", "--model", model_id],
-                    "setup_status_downloading",
-                    on_done=self.on_refresh
-                )
-
-    def _run_cli_sequential_models(self, model_ids):
-        """Download multiple models sequentially in one thread."""
-        if self._running:
+    def _download_model(self):
+        keys = self._selected_model_keys()
+        if not keys:
             return
-        self._running = True
-        self._clear_console()
-        self._set_status("setup_status_downloading", "#E8A838")
-        self._set_buttons_state("disabled")
-
-        # Detect bundled lunavox CLI in portable environment
         root = self._get_project_root()
-        if sys.platform == "win32":
-            bundled_exe = os.path.join(root, "python_env", "Scripts", "lunavox.exe")
-        else:
-            bundled_exe = os.path.join(root, "python_env", "bin", "lunavox")
-        
-        lunavox_exe = bundled_exe if os.path.exists(bundled_exe) else "lunavox"
 
-        def worker():
-            try:
-                for i, mid in enumerate(model_ids):
-                    full_cmd = [lunavox_exe, "--yes", "pull-model", "--model", mid]
-                    cmd_str = " ".join(full_cmd)
-                    header = f"\n--- [{i+1}/{len(model_ids)}] $ {cmd_str} ---\n"
-                    self.after(0, lambda h=header: self._append_console(h))
+        def work():
+            for i, key in enumerate(keys, 1):
+                print(f"--- [{i}/{len(keys)}] Pulling model: {key} ---")
+                ModelDownloader.download_converted_model(key, root)
 
-                    # Force UTF-8 on Windows
-                    proc_env = os.environ.copy()
-                    proc_env["PYTHONUTF8"] = "1"
-                    
-                    proc = subprocess.Popen(
-                        full_cmd,
-                        cwd=str(self._get_project_root()),
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        env=proc_env,
-                        text=True,
-                        encoding="utf-8"
-                    )
-                    for line in proc.stdout:
-                        self.after(0, lambda l=line: self._append_console(l))
-                    proc.wait()
-
-                    if proc.returncode != 0:
-                        self.after(0, lambda m=mid: self._append_console(f"\n[WARN] Model '{m}' download may have failed.\n"))
-
-                self.after(0, lambda: self._set_status("setup_status_success", "#4CAF50"))
-                self.after(100, self.on_refresh)
-            except Exception as e:
-                self.after(0, lambda err=str(e): self._append_console(f"\n[ERROR] {err}\n"))
-                self.after(0, lambda: self._set_status("setup_status_error", "#E74C3C"))
-            finally:
-                self._running = False
-                self.after(0, lambda: self._set_buttons_state("normal"))
-
-        threading.Thread(target=worker, daemon=True).start()
+        title = "pull-model " + (",".join(keys) if len(keys) > 1 else keys[0])
+        self._run_task(title, "setup_status_downloading", work, on_done=self.on_refresh)
 
     def _download_libs(self):
         selected_display = self.libs_dropdown.get()
@@ -367,21 +361,39 @@ class SetupPage(ctk.CTkFrame):
             if display == selected_display:
                 platform_key = key
                 break
-        if platform_key:
-            self._run_cli(
-                ["--yes", "download-libs", "--platform", platform_key],
-                "setup_status_downloading",
-                on_done=self.on_refresh
-            )
+        if not platform_key:
+            return
+        root = self._get_project_root()
 
-    def _run_build(self):
-        self._run_cli(
-            ["--yes", "build", "--clean"],
-            "setup_status_building",
-            on_done=self.on_refresh
+        def work():
+            print(f"--- Downloading libs for platform: {platform_key} ---")
+            download_platform_libs(platform_key, str(root))
+
+        self._run_task(
+            f"download-libs --platform {platform_key}",
+            "setup_status_downloading",
+            work,
+            on_done=self.on_refresh,
         )
 
-    # --- Update texts ---
+    def _run_build(self):
+        root = self._get_project_root()
+
+        def work():
+            print("--- Building LunaVox C++ engine (clean) ---")
+            run_build(
+                root=root,
+                clean=True,
+                jobs=4,
+                toolchain="auto",
+                verbose=False,
+            )
+
+        self._run_task("build --clean", "setup_status_building", work, on_done=self.on_refresh)
+
+    # -----------------------------------------------------------------
+    # Text updates (language toggle)
+    # -----------------------------------------------------------------
     def update_texts(self):
         self.lang_section_label.configure(text=self.t("setup_lang_section"))
         self.lang_label.configure(text=self.t("setup_lang_label"))
@@ -398,11 +410,9 @@ class SetupPage(ctk.CTkFrame):
         self.console_label.configure(text=self.t("setup_console_title"))
         self.status_label.configure(text=self.t("setup_status_idle"))
 
-        # Update "ALL MODELS" label in dropdown
-        model_display = [display for _, display in MODEL_OPTIONS] + [self.t("setup_model_all")]
+        model_display = [spec.display_name for spec in self._catalog] + [self.t("setup_model_all")]
         self.model_dropdown.configure(values=model_display)
 
-        # China warning: show/hide based on whether the text is non-empty
         warning_text = self.t("setup_china_warning")
         if warning_text:
             self.china_warning.configure(text=warning_text)

@@ -34,7 +34,7 @@
 
 执行以下命令快速验证 CLI 可用性：
 ```bash
-./build/qwen3-tts-cli.exe --help
+./build/lunavox-cli.exe --help
 ```
 
 - **超时要求**: 单次人工验证推理建议控制在 20 秒以内。

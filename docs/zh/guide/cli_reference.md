@@ -95,7 +95,7 @@ lunavox download-libs --platform win_cuda12
 ```
 
 ### `build` - 编译 C++ 推理引擎
-基于 CMake 进行本地编译，生成最终的 `qwen3-tts-cli` 执行程序。
+基于 CMake 进行本地编译，生成最终的 `lunavox-cli` 执行程序。
 
 **用法示例:**
 ```bash

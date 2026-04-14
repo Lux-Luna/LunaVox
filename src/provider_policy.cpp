@@ -1,4 +1,4 @@
-#include "ort_provider_policy.h"
+#include "provider_policy.h"
 
 #include <algorithm>
 #include <fstream>
@@ -12,7 +12,7 @@
 #include "json_utils.h"
 #include "logger.h"
 
-namespace qwen3_tts {
+namespace lunavox {
 
 namespace {
 
@@ -69,9 +69,25 @@ bool append_rocm_provider(Ort::SessionOptions & opts, std::string & error_msg) {
     }
 }
 
-bool append_coreml_provider(Ort::SessionOptions & opts, std::string & error_msg) {
+bool append_coreml_provider(Ort::SessionOptions & opts, ort_session_role role, std::string & error_msg) {
+    // CoreML EP on ORT 1.24 takes key/value options via AppendExecutionProvider:
+    //   - ModelFormat: "MLProgram" (required for modern op coverage) / "NeuralNetwork"
+    //   - MLComputeUnits: "CPUAndGPU" | "CPUAndNeuralEngine" | "ALL" | "CPUOnly"
+    //   - RequireStaticInputShapes: "0"
+    //   - EnableOnSubgraphs: "1"
+    // For the decoder we bias towards CPUAndGPU: the Neural Engine has shape /
+    // dtype restrictions that the codec decoder's dynamic-sequence graph
+    // regularly trips, causing the whole subgraph to fall back to CPU anyway.
+    // Encoder graphs are small enough that ALL is acceptable.
+    const char * compute_units =
+        (role == ort_session_role::decoder) ? "CPUAndGPU" : "ALL";
     try {
-        opts.AppendExecutionProvider("CoreMLExecutionProvider", {});
+        opts.AppendExecutionProvider("CoreMLExecutionProvider", {
+            {"ModelFormat", "MLProgram"},
+            {"MLComputeUnits", compute_units},
+            {"RequireStaticInputShapes", "0"},
+            {"EnableOnSubgraphs", "1"},
+        });
         return true;
     } catch (const std::exception & e) {
         error_msg = e.what(); return false;
@@ -126,7 +142,7 @@ bool apply_ort_provider_policy(
             size_t onnx_start = content.find("\"onnx\"");
             if (onnx_start != std::string::npos) {
                 std::string onnx_section = content.substr(onnx_start);
-                if (qwen3_tts::json_extract_string(onnx_section, "provider", intent)) {
+                if (lunavox::json_extract_string(onnx_section, "provider", intent)) {
                     meta_found = true;
                 }
             }
@@ -144,7 +160,7 @@ bool apply_ort_provider_policy(
     } else if (intent == "ROCmExecutionProvider") {
         success = append_rocm_provider(opts, detail);
     } else if (intent == "CoreMLExecutionProvider") {
-        success = append_coreml_provider(opts, detail);
+        success = append_coreml_provider(opts, role, detail);
     } else if (intent == "VulkanExecutionProvider") {
         success = append_vulkan_provider(opts, detail);
     } else if (intent == "OpenVINOExecutionProvider") {
@@ -167,4 +183,4 @@ bool apply_ort_provider_policy(
     return true;
 }
 
-} // namespace qwen3_tts
+} // namespace lunavox

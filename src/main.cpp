@@ -1,30 +1,17 @@
-#include "qwen3_tts.h"
+#include "lunavox_engine.h"
 #include "logger.h"
 #include "nvml_monitor.h"
+#include "platform_utils.h"
+#include "string_utils.h"
+#include "audio_io.h"
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
-#include <algorithm>
-#include <cctype>
 
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <shellapi.h>
-#endif
-
-using namespace qwen3_tts;
-
-static std::string to_lower_ascii(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
-        return (char)std::tolower(c);
-    });
-    return s;
-}
+using namespace lunavox;
 
 static std::string json_escape(const std::string & s) {
     std::string out;
@@ -52,43 +39,6 @@ static std::string json_escape(const std::string & s) {
     return out;
 }
 
-#ifdef _WIN32
-static std::string wide_to_utf8(const std::wstring & ws) {
-    if (ws.empty()) {
-        return std::string();
-    }
-    int size = WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(),
-                                   nullptr, 0, nullptr, nullptr);
-    if (size <= 0) {
-        return std::string();
-    }
-    std::string utf8((size_t)size, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(),
-                        &utf8[0], size, nullptr, nullptr);
-    return utf8;
-}
-
-static std::vector<std::string> collect_cli_args_utf8(int argc, char ** argv) {
-    std::vector<std::string> args;
-    int wide_argc = 0;
-    LPWSTR * wide_argv = CommandLineToArgvW(GetCommandLineW(), &wide_argc);
-    if (wide_argv && wide_argc > 0) {
-        args.reserve((size_t)wide_argc);
-        for (int i = 0; i < wide_argc; ++i) {
-            args.push_back(wide_to_utf8(wide_argv[i]));
-        }
-        LocalFree(wide_argv);
-        return args;
-    }
-
-    args.reserve((size_t)argc);
-    for (int i = 0; i < argc; ++i) {
-        args.emplace_back(argv[i] ? argv[i] : "");
-    }
-    return args;
-}
-#endif
-
 void print_usage(const char * program) {
     fprintf(stderr, "Usage: %s [options] -m <model_dir> -t <text>\n", program);
     fprintf(stderr, "\n");
@@ -114,7 +64,9 @@ void print_usage(const char * program) {
     fprintf(stderr, "  --repetition-penalty <val> Repetition penalty (default: model_profile)\n");
     fprintf(stderr, "  --ort-debug-log        Enable ORT warning logs (default: error-only)\n");
     fprintf(stderr, "  --stats-json <file>    Write timing/runtime stats JSON report\n");
-    fprintf(stderr, "  --warmup <n>           Warm-up runs (default: 0)\n");
+    fprintf(stderr, "  --warmup <n>           Warm-up runs after load (default: 0)\n");
+    fprintf(stderr, "  --no-warmup            Skip the in-load decoder warmup\n");
+    fprintf(stderr, "  --low-mem              Lazy-load decoder; unload after each synthesize\n");
     fprintf(stderr, "  --repeat <n>           Benchmark runs (default: 1)\n");
     fprintf(stderr, "  -l, --language <lang>  Explicit language from model profile aliases (or 'none')\n");
     fprintf(stderr, "  --no-auto-language     Deprecated no-op (default already Auto(None))\n");
@@ -129,21 +81,13 @@ int main(int argc, char ** argv) {
     Logger::instance().init("logs/latest.log");
 
     uint64_t vram_start = 0;
-    if (qwen3_tts::NVMLMonitor::instance().init()) {
-        vram_start = qwen3_tts::NVMLMonitor::instance().get_used_vram();
+    if (lunavox::NVMLMonitor::instance().init()) {
+        vram_start = lunavox::NVMLMonitor::instance().get_used_vram();
     }
 
-#ifdef _WIN32
-    std::vector<std::string> args = collect_cli_args_utf8(argc, argv);
-#else
-    std::vector<std::string> args;
-    args.reserve((size_t)argc);
-    for (int i = 0; i < argc; ++i) {
-        args.emplace_back(argv[i] ? argv[i] : "");
-    }
-#endif
+    std::vector<std::string> args = platform::utf8_args(argc, argv);
 
-    const char * program = args.empty() ? "qwen3-tts-cli" : args[0].c_str();
+    const char * program = args.empty() ? "lunavox-cli" : args[0].c_str();
     std::string model_dir;
     std::string text;
     std::string output_file = "output.wav";
@@ -158,8 +102,10 @@ int main(int argc, char ** argv) {
     int warmup = 0;
     int repeat = 1;
     bool verbose = false;
+    bool disable_load_warmup = false;
+    bool low_mem_mode_cli = false;
 
-    qwen3_tts::tts_params params;
+    lunavox::tts_params params;
     bool user_set_max_tokens = false;
     bool user_set_temperature = false;
     bool user_set_top_k = false;
@@ -298,6 +244,10 @@ int main(int argc, char ** argv) {
                 return 1;
             }
             warmup = std::stoi(args[i]);
+        } else if (arg == "--no-warmup") {
+            disable_load_warmup = true;
+        } else if (arg == "--low-mem") {
+            low_mem_mode_cli = true;
         } else if (arg == "--repeat") {
             if (++i >= (int)args.size()) {
                 LOG_ERROR("Error: missing repeat count");
@@ -372,15 +322,27 @@ int main(int argc, char ** argv) {
     LOG_USER("--------------------------------------------------");
     
     // Initialize TTS
-    qwen3_tts::Qwen3TTS tts;
+    lunavox::Engine tts;
+    tts.set_warmup_enabled(!disable_load_warmup);
 
-    qwen3_tts::set_ort_debug_log(params.ort_debug_log);
-    
+    lunavox::set_ort_debug_log(params.ort_debug_log);
+
+    if (low_mem_mode_cli) {
+        platform::set_env("LUNAVOX_LOW_MEM", "1");
+        LOG_USER("[LOAD] Low-memory mode enabled via --low-mem");
+    }
+
     LOG_USER("[LOAD] Loading Models...");
+    const auto t_load_start = std::chrono::steady_clock::now();
     if (!tts.load_models(model_dir, params.n_threads)) {
         LOG_ERROR("\nError during model load: %s", tts.get_error().c_str());
         return 1;
     }
+    const int64_t t_load_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                  std::chrono::steady_clock::now() - t_load_start).count();
+    const int64_t t_warmup_ms = tts.last_warmup_ms();
+    LOG_USER("[LOAD] Model load completed in %lld ms (warmup %lld ms)",
+             (long long) t_load_ms, (long long) t_warmup_ms);
     
     LOG_USER("[PARA] Text: \"%s\"", text.c_str());
     
@@ -532,7 +494,7 @@ int main(int argc, char ** argv) {
     }
 
     // Benchmark Run
-    std::vector<qwen3_tts::tts_result> repeat_results;
+    std::vector<lunavox::tts_result> repeat_results;
     LOG_DEBUG("[BNCH] Starting %d benchmark runs...", repeat);
     
     for (int it = 0; it < repeat; ++it) {
@@ -541,7 +503,7 @@ int main(int argc, char ** argv) {
         }
         
         // Generate speech
-        qwen3_tts::tts_result result;
+        lunavox::tts_result result;
         
         if (mode == "clone") {
             if (reference_audio.empty()) { // Added this check back for safety, though it should be caught earlier
@@ -583,7 +545,7 @@ int main(int argc, char ** argv) {
             }
         }
 
-        if (!qwen3_tts::save_audio_file(current_output, result.audio, result.sample_rate)) {
+        if (!lunavox::save_audio_file(current_output, result.audio, result.sample_rate)) {
             LOG_ERROR("Error: failed to save output file: %s", current_output.c_str());
             return 1;
         }
@@ -598,7 +560,7 @@ int main(int argc, char ** argv) {
     LOG_USER("");
     LOG_USER("[ Backend Configuration ]");
     {
-        std::string binfo = qwen3_tts::Logger::instance().get_llama_backend_info();
+        std::string binfo = lunavox::Logger::instance().get_llama_backend_info();
         if (binfo == "cpu") binfo = "CPU: Native Implementation";
         else if (binfo == "cuda" || binfo == "CUDA") binfo = "CUDA: NVIDIA Acceleration";
         else if (binfo == "vulkan" || binfo == "Vulkan") binfo = "Vulkan: Generic Acceleration";
@@ -621,10 +583,10 @@ int main(int argc, char ** argv) {
     LOG_USER("");
     LOG_USER("[ Resource Usage (Last Run) ]");
     LOG_USER("  - Peak RAM:       %.2f GB", (double)last_res.mem_rss_peak_bytes / (1024.0 * 1024.0 * 1024.0));
-    if (qwen3_tts::NVMLMonitor::instance().is_available()) {
-        uint64_t vram_end = qwen3_tts::NVMLMonitor::instance().get_used_vram();
+    if (lunavox::NVMLMonitor::instance().is_available()) {
+        uint64_t vram_end = lunavox::NVMLMonitor::instance().get_used_vram();
         double delta_gb = (double)(vram_end > vram_start ? vram_end - vram_start : 0) / (1024.0 * 1024.0 * 1024.0);
-        LOG_USER("  - GPU VRAM Delta: %.2f GB (%s)", delta_gb, qwen3_tts::NVMLMonitor::instance().get_device_name().c_str());
+        LOG_USER("  - GPU VRAM Delta: %.2f GB (%s)", delta_gb, lunavox::NVMLMonitor::instance().get_device_name().c_str());
     } else {
         LOG_USER("  - GPU VRAM Delta: N/A (NVML not initialized)");
     }
@@ -680,7 +642,10 @@ int main(int argc, char ** argv) {
         if (!jf) {
             LOG_WARN("Warning: failed to write stats JSON: %s", stats_json_file.c_str());
         } else {
-            fprintf(jf, "[\n");
+            fprintf(jf, "{\n");
+            fprintf(jf, "  \"t_load_ms\": %lld,\n", (long long) t_load_ms);
+            fprintf(jf, "  \"t_warmup_ms\": %lld,\n", (long long) t_warmup_ms);
+            fprintf(jf, "  \"runs\": [\n");
             for (size_t it = 0; it < repeat_results.size(); ++it) {
                 const auto & r = repeat_results[it];
                 double audio_sec = (double)r.audio.size() / r.sample_rate;
@@ -702,7 +667,20 @@ int main(int argc, char ** argv) {
                     "      \"tokenize\": %lld,\n"
                     "      \"encode\": %lld,\n"
                     "      \"generate\": %lld,\n"
+                    "      \"llama_prefill\": %lld,\n"
+                    "      \"llama_decode_loop\": %lld,\n"
+                    "      \"talker_post\": %lld,\n"
+                    "      \"talker_decode\": %lld,\n"
+                    "      \"talker_post_prep\": %lld,\n"
+                    "      \"talker_post_copy\": %lld,\n"
+                    "      \"predictor_sample\": %lld,\n"
                     "      \"decode\": %lld,\n"
+                    "      \"ort_decoder_run\": %lld,\n"
+                    "      \"decoder_tensor_prep\": %lld,\n"
+                    "      \"decoder_ort_run\": %lld,\n"
+                    "      \"decoder_tensor_extract\": %lld,\n"
+                    "      \"decoder_state_trim\": %lld,\n"
+                    "      \"pcm_gather\": %lld,\n"
                     "      \"total\": %lld\n"
                     "    },\n"
                     "    \"rtf\": %.6f,\n"
@@ -745,7 +723,20 @@ int main(int argc, char ** argv) {
                     (long long) r.t_tokenize_ms,
                     (long long) r.t_encode_ms,
                     (long long) r.t_generate_ms,
+                    (long long) r.t_llama_prefill_ms,
+                    (long long) r.t_llama_decode_loop_ms,
+                    (long long) r.t_talker_post_ms,
+                    (long long) r.t_talker_decode_ms,
+                    (long long) r.t_talker_post_prep_ms,
+                    (long long) r.t_talker_post_copy_ms,
+                    (long long) r.t_predictor_sample_ms,
                     (long long) r.t_decode_ms,
+                    (long long) r.t_ort_decoder_run_ms,
+                    (long long) r.t_decoder_tensor_prep_ms,
+                    (long long) r.t_decoder_ort_run_ms,
+                    (long long) r.t_decoder_tensor_extract_ms,
+                    (long long) r.t_decoder_state_trim_ms,
+                    (long long) r.t_pcm_gather_ms,
                     (long long) r.t_total_ms,
                     rtf,
                     (unsigned long long) r.mem_rss_start_bytes,
@@ -771,7 +762,8 @@ int main(int argc, char ** argv) {
                     decoder_ep_json.c_str(),
                     (it == repeat_results.size() - 1) ? "" : ",");
             }
-            fprintf(jf, "]\n");
+            fprintf(jf, "  ]\n");
+            fprintf(jf, "}\n");
             fclose(jf);
         }
     }

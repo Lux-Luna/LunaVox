@@ -1,0 +1,124 @@
+{
+  "t_load_ms": 2079,
+  "t_warmup_ms": 340,
+  "runs": [
+  {
+    "run_id": 1,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 276480,
+    "audio_sec": 11.520000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 4006,
+      "llama_prefill": 23,
+      "llama_decode_loop": 3947,
+      "talker_post": 415,
+      "talker_decode": 128,
+      "talker_post_prep": 0,
+      "talker_post_copy": 287,
+      "predictor_sample": 3527,
+      "decode": 559,
+      "ort_decoder_run": 558,
+      "decoder_tensor_prep": 1,
+      "decoder_ort_run": 553,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "total": 4566
+    },
+    "rtf": 0.396354,
+    "mem": {
+      "rss_start": 1652805632,
+      "rss_end": 1755361280,
+      "rss_peak": 1755361280,
+      "phys_start": 1652805632,
+      "phys_end": 1755361280,
+      "phys_peak": 1755361280
+    },
+    "diag": {
+      "pcm_peak": 0.439209,
+      "pcm_rms": 0.065880
+    },
+    "ctx": {
+      "ctx_required": 480,
+      "ctx_allocated": 512,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 144,
+      "codebooks": 16,
+      "code_min": 1,
+      "code_max": 2047,
+      "eos_step": 144,
+      "codes_hash": 17877899363833524360
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "DmlExecutionProvider"
+    }
+  },
+  {
+    "run_id": 2,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 276480,
+    "audio_sec": 11.520000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 4214,
+      "llama_prefill": 11,
+      "llama_decode_loop": 4200,
+      "talker_post": 429,
+      "talker_decode": 135,
+      "talker_post_prep": 0,
+      "talker_post_copy": 294,
+      "predictor_sample": 3766,
+      "decode": 498,
+      "ort_decoder_run": 498,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 494,
+      "decoder_tensor_extract": 4,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "total": 4713
+    },
+    "rtf": 0.409115,
+    "mem": {
+      "rss_start": 1755369472,
+      "rss_end": 1766887424,
+      "rss_peak": 1766887424,
+      "phys_start": 1755369472,
+      "phys_end": 1766887424,
+      "phys_peak": 1766887424
+    },
+    "diag": {
+      "pcm_peak": 0.439209,
+      "pcm_rms": 0.065880
+    },
+    "ctx": {
+      "ctx_required": 480,
+      "ctx_allocated": 512,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 144,
+      "codebooks": 16,
+      "code_min": 1,
+      "code_max": 2047,
+      "eos_step": 144,
+      "codes_hash": 17877899363833524360
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "DmlExecutionProvider"
+    }
+  }
+  ]
+}

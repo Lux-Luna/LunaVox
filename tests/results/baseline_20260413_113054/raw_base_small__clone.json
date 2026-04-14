@@ -1,0 +1,127 @@
+{
+  "tag": "base_small__clone",
+  "model_dir": "models/base_small",
+  "mode": "clone",
+  "cmd": [
+    "D:\\TTS\\lunavox\\build\\qwen3-tts-cli.exe",
+    "-m",
+    "models/base_small",
+    "-t",
+    "LunaVox runs the Qwen3-TTS pipeline on a lightweight C++ runtime. This benchmark measures cold load, warm synthesis, and memory footprint across the base and clone modes.",
+    "-o",
+    "D:\\TTS\\lunavox\\tests\\results\\baseline_20260413_113054\\out_base_small__clone.wav",
+    "--stats-json",
+    "D:\\TTS\\lunavox\\tests\\results\\baseline_20260413_113054\\stats_base_small__clone.json",
+    "--warmup",
+    "0",
+    "--repeat",
+    "2",
+    "--mode",
+    "clone",
+    "-r",
+    "D:\\TTS\\lunavox\\ref\\ref.wav"
+  ],
+  "wall_ms": 7827.1471000043675,
+  "exit_code": 0,
+  "stdout_tail": "[INFO] Llama context [talker]: n_ctx=512, n_batch=512, n_ubatch=512, embeddings=true\u001b[0m\n  - Completed: D:\\TTS\\lunavox\\tests\\results\\baseline_20260413_113054\\out_base_small__clone_1.wav\n[BNCH] Run 2/2\n[INFO]   Speaker encoder providers: CPU (forced)\u001b[0m\n[INFO] Language selection: Auto(None): no language token\u001b[0m\n  - Completed: D:\\TTS\\lunavox\\tests\\results\\baseline_20260413_113054\\out_base_small__clone_2.wav\n\n[ Backend Configuration ]\n  - LLM Engine:     llama.cpp [vulkan: NVIDIA GeForce RTX 3090]\n  - Audio Encoder:  ONNX Runtime [Codec: not_used(xvector_only)]\n  - Audio Decoder:  ONNX Runtime [DmlExecutionProvider]\n\n[ Resource Usage (Last Run) ]\n  - Peak RAM:       0.98 GB\n  - GPU VRAM Delta: 1.02 GB (NVIDIA GeForce RTX 3090)\n  - Peak Phys:      0.98 GB\n\n[ Inference Metrics ]\n  - Avg Total Latency:     2789.0 ms (N=2)\n  - Audio Duration:         11.44 s\n  - Real-time Factor:        4.10x (0.244 RTF)\n\n[ Result ]\n  - Saved 2 files to: D:\\TTS\\lunavox\\tests\\results\\baseline_20260413_113054\\out_base_small__clone.wav_*\n--------------------------------------------------",
+  "stats": {
+    "t_load_ms": 1436,
+    "runs": [
+      {
+        "run_id": 1,
+        "success": true,
+        "sample_rate": 24000,
+        "audio_samples": 274560,
+        "audio_sec": 11.44,
+        "timing_ms": {
+          "tokenize": 0,
+          "encode": 198,
+          "generate": 1660,
+          "decode": 1399,
+          "total": 3059
+        },
+        "rtf": 0.267395,
+        "mem": {
+          "rss_start": 791924736,
+          "rss_end": 1037172736,
+          "rss_peak": 1037172736,
+          "phys_start": 791924736,
+          "phys_end": 1037172736,
+          "phys_peak": 1037172736
+        },
+        "diag": {
+          "pcm_peak": 0.847656,
+          "pcm_rms": 0.111321
+        },
+        "ctx": {
+          "ctx_required": 481,
+          "ctx_allocated": 512,
+          "ctx_cap": 2048,
+          "ctx_overflow": false
+        },
+        "gen": {
+          "code_frames": 143,
+          "codebooks": 16,
+          "code_min": 2,
+          "code_max": 2046,
+          "eos_step": 143,
+          "codes_hash": 7068773158842048125
+        },
+        "ort_providers": {
+          "speaker_encoder": "CPU (forced)",
+          "codec_encoder": "not_used(xvector_only)",
+          "decoder": "DmlExecutionProvider"
+        }
+      },
+      {
+        "run_id": 2,
+        "success": true,
+        "sample_rate": 24000,
+        "audio_samples": 274560,
+        "audio_sec": 11.44,
+        "timing_ms": {
+          "tokenize": 1,
+          "encode": 199,
+          "generate": 1530,
+          "decode": 988,
+          "total": 2519
+        },
+        "rtf": 0.220192,
+        "mem": {
+          "rss_start": 1049903104,
+          "rss_end": 1052086272,
+          "rss_peak": 1052086272,
+          "phys_start": 1049903104,
+          "phys_end": 1052086272,
+          "phys_peak": 1052086272
+        },
+        "diag": {
+          "pcm_peak": 0.847656,
+          "pcm_rms": 0.111321
+        },
+        "ctx": {
+          "ctx_required": 481,
+          "ctx_allocated": 512,
+          "ctx_cap": 2048,
+          "ctx_overflow": false
+        },
+        "gen": {
+          "code_frames": 143,
+          "codebooks": 16,
+          "code_min": 2,
+          "code_max": 2046,
+          "eos_step": 143,
+          "codes_hash": 7068773158842048125
+        },
+        "ort_providers": {
+          "speaker_encoder": "CPU (forced)",
+          "codec_encoder": "not_used(xvector_only)",
+          "decoder": "DmlExecutionProvider"
+        }
+      }
+    ]
+  },
+  "rss_peak_bytes": 1083424768,
+  "vram_peak_bytes": 2869096448,
+  "vram_baseline_bytes": 1768972288
+}

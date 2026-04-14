@@ -95,7 +95,7 @@ lunavox download-libs --platform win_cuda12
 ```
 
 ### `build` - Compile C++ Inference Engine
-Local build based on CMake to generate the `qwen3-tts-cli` executable.
+Local build based on CMake to generate the `lunavox-cli` executable.
 
 **Usage Example:**
 ```bash

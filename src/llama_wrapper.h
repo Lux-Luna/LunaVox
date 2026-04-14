@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace qwen3_tts {
+namespace lunavox {
 
 // Minimal llama.cpp C API mirror used by the new talker/predictor runtime.
 using llama_token = int32_t;
@@ -277,4 +277,4 @@ private:
     void * sampler_ = nullptr;
 };
 
-} // namespace qwen3_tts
+} // namespace lunavox

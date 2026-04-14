@@ -1,5 +1,10 @@
-#include "qwen3_tts.h"
+#include "lunavox_engine.h"
 #include "logger.h"
+#include "platform_utils.h"
+#include "string_utils.h"
+#include "timing_utils.h"
+#include "format_utils.h"
+#include "audio_io.h"
 
 #include <algorithm>
 #include <cctype>
@@ -16,19 +21,7 @@ namespace fs = std::filesystem;
 
 #include "json_utils.h"
 
-#ifdef __APPLE__
-#include <mach/mach.h>
-#elif defined(_WIN32)
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <psapi.h>
-#else
-#include <sys/resource.h>
-#endif
-
-namespace qwen3_tts {
+namespace lunavox {
 
 namespace {
 
@@ -41,64 +34,10 @@ static std::string join_csv(const std::vector<std::string> & items) {
     return out;
 }
 
-static int64_t get_time_ms() {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-               std::chrono::steady_clock::now().time_since_epoch())
-        .count();
-}
+using platform::ProcessMemorySnapshot;
 
-struct process_memory_snapshot {
-    uint64_t rss_bytes = 0;
-    uint64_t phys_footprint_bytes = 0;
-};
-
-static bool get_process_memory_snapshot(process_memory_snapshot & out) {
-#ifdef __APPLE__
-    mach_task_basic_info_data_t basic_info = {};
-    mach_msg_type_number_t basic_count = MACH_TASK_BASIC_INFO_COUNT;
-    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, reinterpret_cast<task_info_t>(&basic_info), &basic_count) !=
-        KERN_SUCCESS) {
-        return false;
-    }
-    out.rss_bytes = (uint64_t) basic_info.resident_size;
-    task_vm_info_data_t vm_info = {};
-    mach_msg_type_number_t vm_count = TASK_VM_INFO_COUNT;
-    if (task_info(mach_task_self(), TASK_VM_INFO, reinterpret_cast<task_info_t>(&vm_info), &vm_count) == KERN_SUCCESS) {
-        out.phys_footprint_bytes = (uint64_t) vm_info.phys_footprint;
-    } else {
-        out.phys_footprint_bytes = out.rss_bytes;
-    }
-    return true;
-#elif defined(_WIN32)
-    PROCESS_MEMORY_COUNTERS memCounters;
-    if (GetProcessMemoryInfo(GetCurrentProcess(), &memCounters, sizeof(memCounters))) {
-        out.rss_bytes = (uint64_t) memCounters.WorkingSetSize;
-        out.phys_footprint_bytes = out.rss_bytes;
-        return true;
-    }
-    return false;
-#else
-    struct rusage usage = {};
-    if (getrusage(RUSAGE_SELF, &usage) != 0) {
-        return false;
-    }
-    out.rss_bytes = (uint64_t) usage.ru_maxrss * 1024ULL;
-    out.phys_footprint_bytes = out.rss_bytes;
-    return true;
-#endif
-}
-
-static std::string format_bytes(uint64_t bytes) {
-    static const char * units[] = {"B", "KB", "MB", "GB", "TB"};
-    double val = (double) bytes;
-    int unit = 0;
-    while (val >= 1024.0 && unit < 4) {
-        val /= 1024.0;
-        ++unit;
-    }
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "%.2f %s", val, units[unit]);
-    return std::string(buf);
+static bool get_process_memory_snapshot(ProcessMemorySnapshot & out) {
+    return platform::process_memory_snapshot(out);
 }
 
 static bool file_exists_readable(const std::string & path) {
@@ -106,22 +45,6 @@ static bool file_exists_readable(const std::string & path) {
     if (!f) return false;
     std::fclose(f);
     return true;
-}
-
-static std::string to_lower_ascii(std::string s) {
-    for (char & c : s) {
-        c = (char) std::tolower((unsigned char) c);
-    }
-    return s;
-}
-
-static bool starts_with(const std::string & s, const std::string & prefix) {
-    return s.size() >= prefix.size() && std::equal(prefix.begin(), prefix.end(), s.begin());
-}
-
-static bool ends_with(const std::string & s, const std::string & suffix) {
-    return s.size() >= suffix.size() &&
-           std::equal(suffix.rbegin(), suffix.rend(), s.rbegin());
 }
 
 static int artifact_score(const std::string & name_lc) {
@@ -392,10 +315,10 @@ static void pcm_peak_rms(const std::vector<float> & audio, float & peak, float &
 
 } // namespace
 
-Qwen3TTS::Qwen3TTS() = default;
-Qwen3TTS::~Qwen3TTS() = default;
+Engine::Engine() = default;
+Engine::~Engine() = default;
 
-bool Qwen3TTS::supports_mode(const std::string & mode) const {
+bool Engine::supports_mode(const std::string & mode) const {
     const std::string m = to_lower_ascii(mode);
     if (profile_.model_type == "base") {
         return m == "base" || m == "clone";
@@ -409,7 +332,7 @@ bool Qwen3TTS::supports_mode(const std::string & mode) const {
     return false;
 }
 
-bool Qwen3TTS::resolve_language_id(const std::string & name_or_alias, int32_t & language_id_out) const {
+bool Engine::resolve_language_id(const std::string & name_or_alias, int32_t & language_id_out) const {
     const int32_t id = profile_.resolve_language_id(name_or_alias);
     if (id == -2) {
         return false;
@@ -418,11 +341,11 @@ bool Qwen3TTS::resolve_language_id(const std::string & name_or_alias, int32_t & 
     return true;
 }
 
-std::vector<std::string> Qwen3TTS::supported_speakers() const {
+std::vector<std::string> Engine::supported_speakers() const {
     return profile_.speaker_names_sorted();
 }
 
-std::vector<std::string> Qwen3TTS::supported_languages() const {
+std::vector<std::string> Engine::supported_languages() const {
     std::vector<std::string> names;
     names.reserve(profile_.language_map.size());
     for (const auto & kv : profile_.language_map) {
@@ -433,7 +356,7 @@ std::vector<std::string> Qwen3TTS::supported_languages() const {
     return names;
 }
 
-bool Qwen3TTS::load_model_profile(const std::string & path) {
+bool Engine::load_model_profile(const std::string & path) {
     std::ifstream fin(path, std::ios::binary);
     if (!fin) {
         error_msg_ = "Failed to open model profile: " + path;
@@ -441,7 +364,7 @@ bool Qwen3TTS::load_model_profile(const std::string & path) {
     }
     const std::string json((std::istreambuf_iterator<char>(fin)), std::istreambuf_iterator<char>());
 
-    RuntimeModelProfile p;
+    ModelProfile p;
     std::string model_type;
     std::string model_size;
     if (!json_extract_string(json, "model_type", model_type) ||
@@ -449,8 +372,8 @@ bool Qwen3TTS::load_model_profile(const std::string & path) {
         error_msg_ = "model_profile.json missing model_type/model_size";
         return false;
     }
-    p.model_type = profile_to_lower_ascii(model_type);
-    p.model_size = profile_to_lower_ascii(model_size);
+    p.model_type = to_lower_ascii(model_type);
+    p.model_size = to_lower_ascii(model_size);
 
     if (!json_extract_int(json, "version", p.version) ||
         !json_extract_bool(json, "instruct_support", p.instruct_support) ||
@@ -514,12 +437,12 @@ bool Qwen3TTS::load_model_profile(const std::string & path) {
     }
 
     for (size_t i = 0; i < speaker_names.size(); ++i) {
-        const std::string name = profile_to_lower_ascii(speaker_names[i]);
+        const std::string name = to_lower_ascii(speaker_names[i]);
         p.speaker_map[name] = speaker_ids[i];
-        p.speaker_dialect_map[name] = profile_to_lower_ascii(speaker_dialects[i]);
+        p.speaker_dialect_map[name] = to_lower_ascii(speaker_dialects[i]);
     }
     for (size_t i = 0; i < language_names.size(); ++i) {
-        p.language_map[profile_to_lower_ascii(language_names[i])] = language_ids[i];
+        p.language_map[to_lower_ascii(language_names[i])] = language_ids[i];
     }
 
     std::string reason;
@@ -532,7 +455,7 @@ bool Qwen3TTS::load_model_profile(const std::string & path) {
     return true;
 }
 
-bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_threads) {
+bool Engine::load_models_new_layout(const std::string & model_dir, int32_t n_threads) {
     talker_model_path_ = model_dir + "/qwen3_tts_talker.q5_k.gguf";
     if (!file_exists_readable(talker_model_path_)) {
         error_msg_ = "Model layout missing Talker GGUF in: " + model_dir;
@@ -626,10 +549,10 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
              tokenizer_.get_config().vocab_size,
              (long long) (get_time_ms() - t_tok));
 
-    std::string exe_dir = get_executable_dir();
+    std::string exe_dir = platform::executable_dir();
     std::string default_lib_dir = exe_dir;
 
-    const char * lib_dir_env = std::getenv("QWEN3_TTS_LIB_DIR");
+    const char * lib_dir_env = std::getenv("LUNAVOX_LIB_DIR");
     std::string lib_dir = lib_dir_env && lib_dir_env[0] ? std::string(lib_dir_env) : default_lib_dir;
     if (!talker_predictor_.load(lib_dir, talker_model_path_, predictor_model_path_, assets_, profile_, n_threads)) {
         error_msg_ = "Failed to initialize llama talker/predictor runtime: " + talker_predictor_.get_error();
@@ -675,13 +598,34 @@ bool Qwen3TTS::load_models_new_layout(const std::string & model_dir, int32_t n_t
         LOG_DEBUG("  Decoder ONNX: deferred (lazy load)");
     }
 
+    last_warmup_ms_ = 0;
+    if (warmup_enabled_ && decoder_loaded_ && profile_.codec_num_codebooks > 0) {
+        // Amortize the decoder's first-run kernel compile (DML shader cache,
+        // CUDA cuDNN search, CoreML MLProgram prep) into load time so the
+        // first user-visible synthesize() call does not pay that cost.
+        const int32_t warmup_frames = 8;
+        const int32_t n_cb = profile_.codec_num_codebooks;
+        std::vector<int32_t> dummy_codes((size_t) warmup_frames * (size_t) n_cb,
+                                         profile_.codec_id_start);
+        std::vector<float> dummy_audio;
+        const int64_t t_wm_start = get_time_ms();
+        if (!decoder_.decode(dummy_codes.data(), warmup_frames, dummy_audio)) {
+            LOG_WARN("Decoder warmup failed (continuing anyway): %s",
+                     decoder_.get_error().c_str());
+        }
+        last_warmup_ms_ = get_time_ms() - t_wm_start;
+        LOG_DEBUG("  Decoder warmup: %lld ms (%d frames x %d codebooks)",
+                  (long long) last_warmup_ms_, warmup_frames, n_cb);
+    }
+
     models_loaded_ = true;
     return true;
 }
 
-bool Qwen3TTS::load_models(const std::string & model_dir, int32_t n_threads) {
+bool Engine::load_models(const std::string & model_dir, int32_t n_threads) {
     int64_t t_start = get_time_ms();
 
+    last_load_ms_ = 0;
     models_loaded_ = false;
     speaker_encoder_loaded_ = false;
     codec_encoder_loaded_ = false;
@@ -699,7 +643,7 @@ bool Qwen3TTS::load_models(const std::string & model_dir, int32_t n_threads) {
     decoder_onnx_path_.clear();
     tokenizer_json_path_.clear();
     model_profile_json_path_.clear();
-    profile_ = RuntimeModelProfile{};
+    profile_ = ModelProfile{};
 
     talker_predictor_.unload();
     assets_.clear();
@@ -707,7 +651,7 @@ bool Qwen3TTS::load_models(const std::string & model_dir, int32_t n_threads) {
     codec_encoder_.unload_model();
     decoder_.unload_model();
 
-    const char * low_mem_env = std::getenv("QWEN3_TTS_LOW_MEM");
+    const char * low_mem_env = std::getenv("LUNAVOX_LOW_MEM");
     low_mem_mode_ = low_mem_env && low_mem_env[0] != '\0' && low_mem_env[0] != '0';
     if (low_mem_mode_) {
         LOG_DEBUG("  Low-memory mode enabled (lazy decoder + deferred encoders)");
@@ -737,11 +681,12 @@ bool Qwen3TTS::load_models(const std::string & model_dir, int32_t n_threads) {
         return false;
     }
 
-    LOG_DEBUG("Loaded models in NEW layout (%lld ms)", (long long) (get_time_ms() - t_start));
+    last_load_ms_ = get_time_ms() - t_start;
+    LOG_DEBUG("Loaded models in NEW layout (%lld ms)", (long long) last_load_ms_);
     return true;
 }
 
-bool Qwen3TTS::preload_hot_embedding_rows() {
+bool Engine::preload_hot_embedding_rows() {
     std::lock_guard<std::mutex> guard(hot_rows_preload_mu_);
     if (hot_rows_preloaded_) {
         return true;
@@ -827,7 +772,7 @@ bool Qwen3TTS::preload_hot_embedding_rows() {
     return true;
 }
 
-tts_result Qwen3TTS::synthesize(const std::string & text, const tts_params & params) {
+tts_result Engine::synthesize(const std::string & text, const tts_params & params) {
     tts_result result;
     if (!models_loaded_) {
         result.error_msg = "Models not loaded";
@@ -840,7 +785,7 @@ tts_result Qwen3TTS::synthesize(const std::string & text, const tts_params & par
     return synthesize_internal(text, nullptr, nullptr, 0, params, result);
 }
 
-tts_result Qwen3TTS::synthesize_with_voice(
+tts_result Engine::synthesize_with_voice(
     const std::string & text,
     const std::string & reference_audio,
     const tts_params & params) {
@@ -879,7 +824,7 @@ tts_result Qwen3TTS::synthesize_with_voice(
             params_copy.ref_text = ref_text_json;
         }
         
-        std::vector<uint8_t> emb_bytes = qwen3_tts::base64_decode(spk_emb_b64);
+        std::vector<uint8_t> emb_bytes = lunavox::base64_decode(spk_emb_b64);
         if (emb_bytes.empty() || emb_bytes.size() % sizeof(float) != 0) {
             result.error_msg = "Invalid spk_emb base64 data";
             return result;
@@ -981,7 +926,7 @@ tts_result Qwen3TTS::synthesize_with_voice(
     return synthesize_with_voice(text, ref_samples.data(), (int32_t) ref_samples.size(), params);
 }
 
-tts_result Qwen3TTS::synthesize_with_voice(
+tts_result Engine::synthesize_with_voice(
     const std::string & text,
     const float * ref_samples,
     int32_t n_ref_samples,
@@ -1111,7 +1056,7 @@ tts_result Qwen3TTS::synthesize_with_voice(
         result);
 }
 
-bool Qwen3TTS::extract_speaker_embedding(
+bool Engine::extract_speaker_embedding(
     const float * ref_samples,
     int32_t n_ref_samples,
     std::vector<float> & embedding,
@@ -1138,7 +1083,7 @@ bool Qwen3TTS::extract_speaker_embedding(
     return true;
 }
 
-tts_result Qwen3TTS::synthesize_with_embedding(
+tts_result Engine::synthesize_with_embedding(
     const std::string & text,
     const float * embedding,
     int32_t embedding_size,
@@ -1166,7 +1111,7 @@ tts_result Qwen3TTS::synthesize_with_embedding(
     return synthesize_internal(text, embedding, nullptr, 0, params, result);
 }
 
-tts_result Qwen3TTS::synthesize_custom(
+tts_result Engine::synthesize_custom(
     const std::string & text,
     const std::string & speaker,
     const std::string & instruct,
@@ -1211,7 +1156,7 @@ tts_result Qwen3TTS::synthesize_custom(
     return synthesize_internal(text, emb, nullptr, 0, p, result);
 }
 
-tts_result Qwen3TTS::synthesize_design(
+tts_result Engine::synthesize_design(
     const std::string & text,
     const std::string & instruct,
     const tts_params & params_in) {
@@ -1245,7 +1190,7 @@ tts_result Qwen3TTS::synthesize_design(
     return synthesize_internal(text, nullptr, nullptr, 0, p, result);
 }
 
-tts_result Qwen3TTS::synthesize_internal(
+tts_result Engine::synthesize_internal(
     const std::string & text,
     const float * speaker_embedding,
     const int32_t * ref_codes,
@@ -1264,7 +1209,7 @@ tts_result Qwen3TTS::synthesize_internal(
     }
 
     auto sample_memory = [&](const char * stage) {
-        process_memory_snapshot mem;
+        ProcessMemorySnapshot mem;
         if (!get_process_memory_snapshot(mem)) return;
         if (result.mem_rss_start_bytes == 0) {
             result.mem_rss_start_bytes = mem.rss_bytes;
@@ -1306,7 +1251,7 @@ tts_result Qwen3TTS::synthesize_internal(
         result.error_msg = "Failed to build ChatML boundary tokens from tokenizer";
         return result;
     }
-    // Match qwen3-tts-gguf semantics: raw text/ref_text are encoded directly.
+    // Match lunavox-gguf semantics: raw text/ref_text are encoded directly.
     std::vector<int32_t> text_tokens = tokenizer_.encode(text);
 
     std::vector<int32_t> ref_text_tokens;
@@ -1399,6 +1344,13 @@ tts_result Qwen3TTS::synthesize_internal(
     minmax_i32(speech_codes.data(), (int32_t) speech_codes.size(), result.gen_code_min, result.gen_code_max);
     result.gen_codes_hash = fnv1a_u64(speech_codes.data(), speech_codes.size());
     result.t_generate_ms = get_time_ms() - t_generate;
+    result.t_llama_prefill_ms = talker_predictor_.last_t_prefill_ms();
+    result.t_llama_decode_loop_ms = talker_predictor_.last_t_decode_loop_ms();
+    result.t_talker_post_ms = talker_predictor_.last_t_talker_post_ms();
+    result.t_predictor_sample_ms = talker_predictor_.last_t_predictor_sample_ms();
+    result.t_talker_decode_ms = talker_predictor_.last_t_talker_decode_ms();
+    result.t_talker_post_prep_ms = talker_predictor_.last_t_talker_post_prep_ms();
+    result.t_talker_post_copy_ms = talker_predictor_.last_t_talker_post_copy_ms();
     sample_memory("synth/after-generate");
 
     const int n_codebooks = profile_.codec_num_codebooks;
@@ -1434,12 +1386,20 @@ tts_result Qwen3TTS::synthesize_internal(
         LOG_DEBUG("  Decoder providers: %s", decoder_.provider_summary().c_str());
     }
     result.ort_provider_decoder = decoder_.provider_summary();
+    const int64_t t_ort_run_start = get_time_ms();
     if (!decoder_.decode(speech_codes.data(), n_frames, result.audio)) {
         result.error_msg = "Failed to decode speech codes: " + decoder_.get_error();
         return result;
     }
-    result.t_decode_ms = get_time_ms() - t_decode;
+    result.t_ort_decoder_run_ms = get_time_ms() - t_ort_run_start;
+    result.t_decoder_tensor_prep_ms = decoder_.last_t_tensor_prep_ms();
+    result.t_decoder_ort_run_ms = decoder_.last_t_ort_run_ms();
+    result.t_decoder_tensor_extract_ms = decoder_.last_t_tensor_extract_ms();
+    result.t_decoder_state_trim_ms = decoder_.last_t_state_trim_ms();
+    const int64_t t_pcm_gather_start = get_time_ms();
     pcm_peak_rms(result.audio, result.pcm_peak, result.pcm_rms);
+    result.t_pcm_gather_ms = get_time_ms() - t_pcm_gather_start;
+    result.t_decode_ms = get_time_ms() - t_decode;
     sample_memory("synth/after-decode");
 
     if (low_mem_mode_) {
@@ -1452,166 +1412,11 @@ tts_result Qwen3TTS::synthesize_internal(
     result.success = true;
     result.t_total_ms = get_time_ms() - t_total_start;
     sample_memory("synth/end");
-
-    if (params.print_timing && false) { // Handled by main.cpp in a prettier way
-        double audio_sec = result.sample_rate > 0 ? (double) result.audio.size() / (double) result.sample_rate : 0.0;
-        double wall_sec = (double) result.t_total_ms / 1000.0;
-        double rtf = audio_sec > 0.0 ? wall_sec / audio_sec : 0.0;
-        double xrt = wall_sec > 0.0 ? audio_sec / wall_sec : 0.0;
-
-        fprintf(stderr, "\nTiming:\n");
-        fprintf(stderr, "  Tokenization:    %lld ms\n", (long long) result.t_tokenize_ms);
-        fprintf(stderr, "  Speaker encode:  %lld ms\n", (long long) result.t_encode_ms);
-        fprintf(stderr, "  Code generation: %lld ms\n", (long long) result.t_generate_ms);
-        fprintf(stderr, "  Decoder ONNX:    %lld ms\n", (long long) result.t_decode_ms);
-        fprintf(stderr, "  Total:           %lld ms\n", (long long) result.t_total_ms);
-        fprintf(stderr, "  Audio duration:  %.2f s\n", audio_sec);
-        fprintf(stderr, "  Throughput:      %.2fx realtime (RTF=%.3f)\n", xrt, rtf);
-    }
     return result;
 }
 
-void Qwen3TTS::set_progress_callback(tts_progress_callback_t callback) {
+void Engine::set_progress_callback(tts_progress_callback_t callback) {
     progress_callback_ = callback;
 }
 
-bool load_audio_file(const std::string & path, std::vector<float> & samples, int & sample_rate) {
-    FILE * f = fopen(path.c_str(), "rb");
-    if (!f) {
-        fprintf(stderr, "ERROR: Cannot open WAV file: %s\n", path.c_str());
-        return false;
-    }
-
-    char riff[4];
-    if (fread(riff, 1, 4, f) != 4 || strncmp(riff, "RIFF", 4) != 0) {
-        fclose(f);
-        fprintf(stderr, "ERROR: Not a RIFF file\n");
-        return false;
-    }
-    uint32_t file_size = 0;
-    if (fread(&file_size, 4, 1, f) != 1) {
-        fclose(f);
-        return false;
-    }
-    (void) file_size;
-    char wave[4];
-    if (fread(wave, 1, 4, f) != 4 || strncmp(wave, "WAVE", 4) != 0) {
-        fclose(f);
-        fprintf(stderr, "ERROR: Not a WAVE file\n");
-        return false;
-    }
-
-    uint16_t audio_format = 0, num_channels = 0, bits_per_sample = 0;
-    uint32_t sr = 0;
-    while (!feof(f)) {
-        char chunk_id[4];
-        uint32_t chunk_size = 0;
-        if (fread(chunk_id, 1, 4, f) != 4) break;
-        if (fread(&chunk_size, 4, 1, f) != 1) break;
-
-        if (strncmp(chunk_id, "fmt ", 4) == 0) {
-            if (fread(&audio_format, 2, 1, f) != 1) break;
-            if (fread(&num_channels, 2, 1, f) != 1) break;
-            if (fread(&sr, 4, 1, f) != 1) break;
-            fseek(f, 6, SEEK_CUR);
-            if (fread(&bits_per_sample, 2, 1, f) != 1) break;
-            if (chunk_size > 16) {
-                fseek(f, chunk_size - 16, SEEK_CUR);
-            }
-        } else if (strncmp(chunk_id, "data", 4) == 0) {
-            sample_rate = (int) sr;
-            if (audio_format == 1 && bits_per_sample == 16) {
-                int n = (int) (chunk_size / (2 * num_channels));
-                std::vector<int16_t> raw((size_t) n * (size_t) num_channels);
-                if (fread(raw.data(), 2, raw.size(), f) != raw.size()) {
-                    fclose(f);
-                    return false;
-                }
-                samples.assign((size_t) n, 0.0f);
-                for (int i = 0; i < n; ++i) {
-                    float sum = 0.0f;
-                    for (int c = 0; c < num_channels; ++c) {
-                        sum += raw[(size_t) i * (size_t) num_channels + (size_t) c] / 32768.0f;
-                    }
-                    samples[(size_t) i] = sum / (float) num_channels;
-                }
-            } else if (audio_format == 3 && bits_per_sample == 32) {
-                int n = (int) (chunk_size / (4 * num_channels));
-                std::vector<float> raw((size_t) n * (size_t) num_channels);
-                if (fread(raw.data(), 4, raw.size(), f) != raw.size()) {
-                    fclose(f);
-                    return false;
-                }
-                samples.assign((size_t) n, 0.0f);
-                for (int i = 0; i < n; ++i) {
-                    float sum = 0.0f;
-                    for (int c = 0; c < num_channels; ++c) {
-                        sum += raw[(size_t) i * (size_t) num_channels + (size_t) c];
-                    }
-                    samples[(size_t) i] = sum / (float) num_channels;
-                }
-            } else {
-                fclose(f);
-                fprintf(stderr, "ERROR: Unsupported WAV format: audio_format=%u, bits=%u\n", audio_format, bits_per_sample);
-                return false;
-            }
-            fclose(f);
-            return true;
-        } else {
-            fseek(f, chunk_size, SEEK_CUR);
-        }
-    }
-    fclose(f);
-    LOG_ERROR("ERROR: No data chunk found");
-    return false;
-}
-
-bool save_audio_file(const std::string & path, const std::vector<float> & samples, int sample_rate) {
-    try {
-        fs::path p(path);
-        if (p.has_parent_path()) {
-            fs::create_directories(p.parent_path());
-        }
-    } catch (...) {
-        // Continue and let fopen report a concrete error if directory creation fails.
-    }
-    FILE * f = fopen(path.c_str(), "wb");
-    if (!f) {
-        LOG_ERROR("ERROR: Cannot create WAV file: %s", path.c_str());
-        return false;
-    }
-    uint16_t num_channels = 1;
-    uint16_t bits_per_sample = 16;
-    uint32_t byte_rate = sample_rate * num_channels * bits_per_sample / 8;
-    uint16_t block_align = num_channels * bits_per_sample / 8;
-    uint32_t data_size = (uint32_t) samples.size() * block_align;
-    uint32_t file_size = 36 + data_size;
-
-    fwrite("RIFF", 1, 4, f);
-    fwrite(&file_size, 4, 1, f);
-    fwrite("WAVE", 1, 4, f);
-    fwrite("fmt ", 1, 4, f);
-    uint32_t fmt_size = 16;
-    fwrite(&fmt_size, 4, 1, f);
-    uint16_t audio_format = 1;
-    fwrite(&audio_format, 2, 1, f);
-    fwrite(&num_channels, 2, 1, f);
-    uint32_t sr = (uint32_t) sample_rate;
-    fwrite(&sr, 4, 1, f);
-    fwrite(&byte_rate, 4, 1, f);
-    fwrite(&block_align, 2, 1, f);
-    fwrite(&bits_per_sample, 2, 1, f);
-    fwrite("data", 1, 4, f);
-    fwrite(&data_size, 4, 1, f);
-
-    for (float s : samples) {
-        if (s > 1.0f) s = 1.0f;
-        if (s < -1.0f) s = -1.0f;
-        int16_t pcm = (int16_t) (s * 32767.0f);
-        fwrite(&pcm, 2, 1, f);
-    }
-    fclose(f);
-    return true;
-}
-
-} // namespace qwen3_tts
+} // namespace lunavox

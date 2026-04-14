@@ -6,7 +6,7 @@
 // but for SessionOptions we really need the header.
 #include <onnxruntime_cxx_api.h>
 
-namespace qwen3_tts {
+namespace lunavox {
 
 enum class ort_session_role {
     cpu_only,
@@ -22,4 +22,4 @@ bool apply_ort_provider_policy(
     std::string & error_msg,
     std::string & policy_summary);
 
-} // namespace qwen3_tts
+} // namespace lunavox

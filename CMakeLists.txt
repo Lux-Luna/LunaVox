@@ -1,27 +1,37 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(qwen3-tts VERSION 0.2.0 LANGUAGES CXX)
+# On macOS pin a minimum deployment target before project() so clang settles
+# ABI decisions early. CMAKE_OSX_ARCHITECTURES is intentionally NOT forced
+# here: the Python build driver passes it explicitly (arm64 on Apple Silicon,
+# x86_64 on Intel). Both variables can also be set from the command line.
+if(APPLE)
+    if(NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET AND NOT DEFINED ENV{MACOSX_DEPLOYMENT_TARGET})
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS deployment target" FORCE)
+    endif()
+endif()
+
+project(lunavox VERSION 2.1.6 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(QWEN3_TTS_TIMING "Enable detailed timing instrumentation" OFF)
-option(QWEN3_TTS_USE_OPENMP "Enable OpenMP when available" ON)
-option(QWEN3_TTS_NATIVE "Enable host-specific native optimizations for this project" OFF)
-option(QWEN3_TTS_COPY_RUNTIME "Copy runtime DLLs near built targets on Windows" ON)
+option(LUNAVOX_TIMING "Enable detailed timing instrumentation" OFF)
+option(LUNAVOX_USE_OPENMP "Enable OpenMP when available" ON)
+option(LUNAVOX_NATIVE "Enable host-specific native optimizations for this project" OFF)
+option(LUNAVOX_COPY_RUNTIME "Copy runtime DLLs near built targets on Windows" ON)
 
-set(QWEN3_TTS_PREBUILT_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/llama" CACHE PATH
+set(LUNAVOX_PREBUILT_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib/llama" CACHE PATH
     "Directory containing prebuilt llama runtime binaries")
-set(QWEN3_TTS_ORT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/lib/onnx" CACHE PATH
+set(LUNAVOX_ORT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/lib/onnx" CACHE PATH
     "Directory containing ONNX Runtime C/C++ SDK (include/ + lib/)")
 
-if(NOT EXISTS "${QWEN3_TTS_PREBUILT_LIB_DIR}")
-    message(FATAL_ERROR "Prebuilt runtime directory not found: ${QWEN3_TTS_PREBUILT_LIB_DIR}")
+if(NOT EXISTS "${LUNAVOX_PREBUILT_LIB_DIR}")
+    message(FATAL_ERROR "Prebuilt runtime directory not found: ${LUNAVOX_PREBUILT_LIB_DIR}")
 endif()
-if(NOT EXISTS "${QWEN3_TTS_ORT_ROOT}/include/onnxruntime_cxx_api.h")
+if(NOT EXISTS "${LUNAVOX_ORT_ROOT}/include/onnxruntime_cxx_api.h")
     message(FATAL_ERROR
-        "ONNX Runtime headers not found under ${QWEN3_TTS_ORT_ROOT}.\n"
+        "ONNX Runtime headers not found under ${LUNAVOX_ORT_ROOT}.\n"
         "Expected: include/onnxruntime_cxx_api.h")
 endif()
 
@@ -31,185 +41,215 @@ else()
     find_package(Threads REQUIRED)
 endif()
 
-set(QWEN3_TTS_HAVE_OPENMP OFF)
-if(QWEN3_TTS_USE_OPENMP)
+set(LUNAVOX_HAVE_OPENMP OFF)
+if(LUNAVOX_USE_OPENMP)
     if(WIN32)
-        message(STATUS "qwen3-tts OpenMP: disabled on Windows for stable configure")
+        message(STATUS "lunavox OpenMP: disabled on Windows for stable configure")
     else()
         find_package(OpenMP QUIET)
         if(OpenMP_CXX_FOUND)
-            set(QWEN3_TTS_HAVE_OPENMP ON)
-            message(STATUS "qwen3-tts OpenMP: enabled")
+            set(LUNAVOX_HAVE_OPENMP ON)
+            message(STATUS "lunavox OpenMP: enabled")
         else()
-            message(STATUS "qwen3-tts OpenMP: not found, building without OpenMP")
+            message(STATUS "lunavox OpenMP: not found, building without OpenMP")
         endif()
     endif()
 else()
-    message(STATUS "qwen3-tts OpenMP: disabled by user")
+    message(STATUS "lunavox OpenMP: disabled by user")
 endif()
 
-if(WIN32)
-    find_library(ONNXRUNTIME_LIBRARY
-        NAMES onnxruntime
-        HINTS "${QWEN3_TTS_ORT_ROOT}/lib"
-        NO_DEFAULT_PATH)
-else()
-    find_library(ONNXRUNTIME_LIBRARY
-        NAMES onnxruntime
-        HINTS "${QWEN3_TTS_ORT_ROOT}/lib"
-        NO_DEFAULT_PATH)
-endif()
+find_library(ONNXRUNTIME_LIBRARY
+    NAMES onnxruntime libonnxruntime
+    HINTS "${LUNAVOX_ORT_ROOT}/lib"
+    NO_DEFAULT_PATH)
 
 if(NOT ONNXRUNTIME_LIBRARY)
     message(FATAL_ERROR
-        "Failed to locate ONNX Runtime library under ${QWEN3_TTS_ORT_ROOT}/lib")
+        "Failed to locate ONNX Runtime library under ${LUNAVOX_ORT_ROOT}/lib")
 endif()
 
 add_library(onnxruntime::onnxruntime UNKNOWN IMPORTED)
 set_target_properties(onnxruntime::onnxruntime PROPERTIES
     IMPORTED_LOCATION "${ONNXRUNTIME_LIBRARY}"
-    INTERFACE_INCLUDE_DIRECTORIES "${QWEN3_TTS_ORT_ROOT}/include")
+    INTERFACE_INCLUDE_DIRECTORIES "${LUNAVOX_ORT_ROOT}/include")
 
-set(QWEN3_TTS_RUNTIME_DIRS "${QWEN3_TTS_PREBUILT_LIB_DIR};${QWEN3_TTS_ORT_ROOT}/lib")
-set(QWEN3_TTS_RUNTIME_DLLS "")
+set(LUNAVOX_RUNTIME_DIRS "${LUNAVOX_PREBUILT_LIB_DIR};${LUNAVOX_ORT_ROOT}/lib")
+set(LUNAVOX_RUNTIME_BINS "")
 if(WIN32)
-    file(GLOB _qwen3_tts_runtime_dlls
-        "${QWEN3_TTS_PREBUILT_LIB_DIR}/ggml*.dll"
-        "${QWEN3_TTS_PREBUILT_LIB_DIR}/llama*.dll"
-        "${QWEN3_TTS_PREBUILT_LIB_DIR}/libomp*.dll"
-        "${QWEN3_TTS_PREBUILT_LIB_DIR}/mtmd*.dll"
-        "${QWEN3_TTS_ORT_ROOT}/lib/onnxruntime*.dll")
-    if(_qwen3_tts_runtime_dlls)
-        list(APPEND QWEN3_TTS_RUNTIME_DLLS ${_qwen3_tts_runtime_dlls})
-        list(REMOVE_DUPLICATES QWEN3_TTS_RUNTIME_DLLS)
-    endif()
+    file(GLOB _lunavox_runtime_bins
+        "${LUNAVOX_PREBUILT_LIB_DIR}/ggml*.dll"
+        "${LUNAVOX_PREBUILT_LIB_DIR}/llama*.dll"
+        "${LUNAVOX_PREBUILT_LIB_DIR}/libomp*.dll"
+        "${LUNAVOX_PREBUILT_LIB_DIR}/mtmd*.dll"
+        "${LUNAVOX_ORT_ROOT}/lib/onnxruntime*.dll")
+elseif(APPLE)
+    file(GLOB _lunavox_runtime_bins
+        "${LUNAVOX_PREBUILT_LIB_DIR}/libggml*.dylib"
+        "${LUNAVOX_PREBUILT_LIB_DIR}/libllama*.dylib"
+        "${LUNAVOX_PREBUILT_LIB_DIR}/libmtmd*.dylib"
+        "${LUNAVOX_ORT_ROOT}/lib/libonnxruntime*.dylib")
+else()
+    file(GLOB _lunavox_runtime_bins
+        "${LUNAVOX_PREBUILT_LIB_DIR}/libggml*.so*"
+        "${LUNAVOX_PREBUILT_LIB_DIR}/libllama*.so*"
+        "${LUNAVOX_PREBUILT_LIB_DIR}/libmtmd*.so*"
+        "${LUNAVOX_ORT_ROOT}/lib/libonnxruntime*.so*")
+endif()
+if(_lunavox_runtime_bins)
+    list(APPEND LUNAVOX_RUNTIME_BINS ${_lunavox_runtime_bins})
+    list(REMOVE_DUPLICATES LUNAVOX_RUNTIME_BINS)
 endif()
 
-function(qwen3_tts_finalize_binary target_name)
+function(lunavox_finalize_binary target_name)
     if(NOT TARGET "${target_name}")
-        message(FATAL_ERROR "qwen3_tts_finalize_binary called for missing target: ${target_name}")
+        message(FATAL_ERROR "lunavox_finalize_binary called for missing target: ${target_name}")
     endif()
 
-    if(QWEN3_TTS_RUNTIME_DIRS)
+    if(LUNAVOX_RUNTIME_DIRS)
         if(APPLE)
-            set(_origin "@loader_path")
+            # @loader_path resolves relative to the binary itself; adding a
+            # second entry one level up keeps install trees bin/+lib/ working.
             set_target_properties(${target_name} PROPERTIES
-                BUILD_RPATH "${QWEN3_TTS_RUNTIME_DIRS}"
-                INSTALL_RPATH "${_origin};${_origin}/../lib")
+                BUILD_RPATH "${LUNAVOX_RUNTIME_DIRS};@loader_path;@loader_path/../lib"
+                INSTALL_RPATH "@loader_path;@loader_path/../lib"
+                MACOSX_RPATH ON)
         elseif(UNIX)
-            set(_origin "$ORIGIN")
             set_target_properties(${target_name} PROPERTIES
-                BUILD_RPATH "${QWEN3_TTS_RUNTIME_DIRS}"
-                INSTALL_RPATH "${_origin};${_origin}/../lib")
+                BUILD_RPATH "${LUNAVOX_RUNTIME_DIRS};$ORIGIN;$ORIGIN/../lib"
+                INSTALL_RPATH "$ORIGIN;$ORIGIN/../lib")
         endif()
     endif()
 
-    if(WIN32 AND QWEN3_TTS_COPY_RUNTIME AND QWEN3_TTS_RUNTIME_DLLS)
-        foreach(_dll IN LISTS QWEN3_TTS_RUNTIME_DLLS)
+    if(LUNAVOX_COPY_RUNTIME AND LUNAVOX_RUNTIME_BINS)
+        foreach(_bin IN LISTS LUNAVOX_RUNTIME_BINS)
             add_custom_command(TARGET ${target_name} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${_dll}" "$<TARGET_FILE_DIR:${target_name}>"
+                    "${_bin}" "$<TARGET_FILE_DIR:${target_name}>"
                 VERBATIM)
         endforeach()
     endif()
 endfunction()
 
-add_library(qwen3_tts_build_options INTERFACE)
-target_compile_features(qwen3_tts_build_options INTERFACE cxx_std_17)
-target_link_libraries(qwen3_tts_build_options INTERFACE Threads::Threads)
+add_library(lunavox_build_options INTERFACE)
+target_compile_features(lunavox_build_options INTERFACE cxx_std_17)
+target_link_libraries(lunavox_build_options INTERFACE Threads::Threads)
 
 if(WIN32)
-    target_compile_definitions(qwen3_tts_build_options INTERFACE
+    target_compile_definitions(lunavox_build_options INTERFACE
         NOMINMAX
         _USE_MATH_DEFINES
         _CRT_SECURE_NO_WARNINGS)
 endif()
 
-if(QWEN3_TTS_HAVE_OPENMP)
-    target_link_libraries(qwen3_tts_build_options INTERFACE OpenMP::OpenMP_CXX)
+if(LUNAVOX_HAVE_OPENMP)
+    target_link_libraries(lunavox_build_options INTERFACE OpenMP::OpenMP_CXX)
 endif()
-if(QWEN3_TTS_TIMING)
-    target_compile_definitions(qwen3_tts_build_options INTERFACE QWEN3_TTS_TIMING)
+if(LUNAVOX_TIMING)
+    target_compile_definitions(lunavox_build_options INTERFACE LUNAVOX_TIMING)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(qwen3_tts_build_options INTERFACE -Wall -Wextra -Wpedantic)
-    if(QWEN3_TTS_NATIVE)
-        target_compile_options(qwen3_tts_build_options INTERFACE
+    target_compile_options(lunavox_build_options INTERFACE -Wall -Wextra -Wpedantic)
+    if(LUNAVOX_NATIVE)
+        target_compile_options(lunavox_build_options INTERFACE
             "$<$<COMPILE_LANGUAGE:CXX>:-march=native>")
     endif()
 elseif(MSVC)
-    target_compile_options(qwen3_tts_build_options INTERFACE /W4 /utf-8)
+    target_compile_options(lunavox_build_options INTERFACE /W4 /utf-8)
 endif()
 
-# Logger
-add_library(qwen3_logger STATIC src/logger.cpp)
-target_include_directories(qwen3_logger PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(qwen3_logger PUBLIC qwen3_tts_build_options)
+# platform_utils: the single home for every OS branch. Must not depend on
+# anything except the standard library and OS headers — all other layers
+# depend on *it*.
+add_library(lunavox_platform_utils STATIC src/platform_utils.cpp)
+target_include_directories(lunavox_platform_utils PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(lunavox_platform_utils PUBLIC lunavox_build_options)
+if(WIN32)
+    target_link_libraries(lunavox_platform_utils PUBLIC psapi)
+elseif(APPLE)
+    target_link_libraries(lunavox_platform_utils PUBLIC "-framework Foundation")
+else()
+    target_link_libraries(lunavox_platform_utils PUBLIC dl)
+endif()
 
-add_library(text_tokenizer STATIC src/text_tokenizer.cpp)
-target_include_directories(text_tokenizer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(text_tokenizer PUBLIC qwen3_tts_build_options qwen3_logger)
+add_library(lunavox_logger STATIC src/logger.cpp)
+target_include_directories(lunavox_logger PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(lunavox_logger PUBLIC lunavox_build_options)
 
-add_library(onnx_audio_runtime STATIC
-    src/onnx_audio_runtime.cpp
-    src/ort_provider_policy.cpp)
-target_include_directories(onnx_audio_runtime PUBLIC
+add_library(lunavox_audio_io STATIC src/audio_io.cpp)
+target_include_directories(lunavox_audio_io PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(lunavox_audio_io PUBLIC lunavox_build_options lunavox_logger)
+
+add_library(lunavox_tokenizer STATIC src/text_tokenizer.cpp)
+target_include_directories(lunavox_tokenizer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(lunavox_tokenizer PUBLIC lunavox_build_options lunavox_logger)
+
+add_library(lunavox_audio_decoder STATIC
+    src/audio_decoder.cpp
+    src/provider_policy.cpp)
+target_include_directories(lunavox_audio_decoder PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${QWEN3_TTS_ORT_ROOT}/include)
-target_link_libraries(onnx_audio_runtime PUBLIC
-    qwen3_tts_build_options
+    ${LUNAVOX_ORT_ROOT}/include)
+target_link_libraries(lunavox_audio_decoder PUBLIC
+    lunavox_build_options
     onnxruntime::onnxruntime
-    qwen3_logger)
+    lunavox_logger
+    lunavox_platform_utils)
 
-add_library(talker_predictor_llama STATIC
+add_library(lunavox_predictor STATIC
     src/llama_wrapper.cpp
     src/assets_manager.cpp
     src/talker_predictor_llama.cpp)
-target_include_directories(talker_predictor_llama PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(talker_predictor_llama PUBLIC qwen3_tts_build_options qwen3_logger)
-if(UNIX AND NOT APPLE)
-    target_link_libraries(talker_predictor_llama PUBLIC dl)
-endif()
+target_include_directories(lunavox_predictor PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(lunavox_predictor PUBLIC
+    lunavox_build_options
+    lunavox_logger
+    lunavox_platform_utils)
 
-add_library(qwen3_tts STATIC src/qwen3_tts.cpp src/nvml_monitor.cpp)
-target_include_directories(qwen3_tts PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(qwen3_tts PUBLIC
-    qwen3_tts_build_options
-    text_tokenizer
-    talker_predictor_llama
-    onnx_audio_runtime
-    qwen3_logger)
-if(WIN32)
-    target_link_libraries(qwen3_tts PUBLIC psapi)
-endif()
+add_library(lunavox_core STATIC src/lunavox_engine.cpp src/nvml_monitor.cpp)
+target_include_directories(lunavox_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(lunavox_core PUBLIC
+    lunavox_build_options
+    lunavox_tokenizer
+    lunavox_predictor
+    lunavox_audio_decoder
+    lunavox_audio_io
+    lunavox_logger
+    lunavox_platform_utils)
 
-add_library(qwen3tts_shared SHARED src/qwen3tts_c_api.cpp)
-set_target_properties(qwen3tts_shared PROPERTIES
-    OUTPUT_NAME "qwen3tts"
+add_library(lunavox_shared SHARED src/lunavox_c_api.cpp)
+set_target_properties(lunavox_shared PROPERTIES
+    OUTPUT_NAME "lunavox"
     VERSION ${PROJECT_VERSION}
-    SOVERSION 0)
-target_include_directories(qwen3tts_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(qwen3tts_shared PRIVATE qwen3_tts)
-qwen3_tts_finalize_binary(qwen3tts_shared)
+    SOVERSION 0
+    # Auto-export every extern "C" symbol from the C API translation
+    # unit without maintaining a .def file. Safe here because
+    # lunavox_c_api.cpp is the only source file in this target, so only
+    # the public C ABI surfaces.
+    WINDOWS_EXPORT_ALL_SYMBOLS ON)
+target_include_directories(lunavox_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(lunavox_shared PRIVATE lunavox_core)
+lunavox_finalize_binary(lunavox_shared)
 
-add_executable(qwen3-tts-cli src/main.cpp)
-target_link_libraries(qwen3-tts-cli PRIVATE qwen3_tts)
-qwen3_tts_finalize_binary(qwen3-tts-cli)
+add_executable(lunavox-cli src/main.cpp)
+target_link_libraries(lunavox-cli PRIVATE lunavox_core)
+lunavox_finalize_binary(lunavox-cli)
 
 include(CTest)
 if(BUILD_TESTING)
-    add_test(NAME cli_help_smoke COMMAND qwen3-tts-cli --help)
+    add_test(NAME cli_help_smoke COMMAND lunavox-cli --help)
 endif()
 
 install(TARGETS
-    qwen3_logger
-    text_tokenizer
-    onnx_audio_runtime
-    talker_predictor_llama
-    qwen3_tts
-    qwen3tts_shared
-    qwen3-tts-cli
+    lunavox_platform_utils
+    lunavox_logger
+    lunavox_audio_io
+    lunavox_tokenizer
+    lunavox_audio_decoder
+    lunavox_predictor
+    lunavox_core
+    lunavox_shared
+    lunavox-cli
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)

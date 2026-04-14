@@ -1,8 +1,9 @@
-#include "onnx_audio_runtime.h"
+#include "audio_decoder.h"
 #include "logger.h"
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -13,13 +14,11 @@
 #include <vector>
 
 #include "onnxruntime_cxx_api.h"
-#include "ort_provider_policy.h"
+#include "provider_policy.h"
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
+#include <filesystem>
 
-namespace qwen3_tts {
+namespace lunavox {
 
 namespace {
 
@@ -54,24 +53,8 @@ Ort::Env & get_ort_env() {
     return holder->env;
 }
 
-#ifdef _WIN32
-std::wstring utf8_to_wide(const std::string & s) {
-    if (s.empty()) {
-        return std::wstring();
-    }
-    int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int) s.size(), nullptr, 0);
-    if (len <= 0) {
-        return std::wstring();
-    }
-    std::wstring w((size_t) len, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int) s.size(), &w[0], len);
-    return w;
-}
-#endif
-
 struct ort_session_data {
     Ort::Session session{nullptr};
-    std::unique_ptr<std::wstring> wide_path; // keep lifetime for Windows constructor args
     std::string provider_summary;
 };
 
@@ -111,12 +94,11 @@ bool create_session_impl(
         }
 
         auto * impl = new ort_session_data();
-#ifdef _WIN32
-        impl->wide_path = std::make_unique<std::wstring>(utf8_to_wide(model_path));
-        impl->session = Ort::Session(get_ort_env(), impl->wide_path->c_str(), opts);
-#else
-        impl->session = Ort::Session(get_ort_env(), model_path.c_str(), opts);
-#endif
+        // fs::path::c_str() returns const wchar_t* on Windows and const char*
+        // on POSIX, which matches ORTCHAR_T — so a single line covers both
+        // narrow and wide ORT entry points with no platform branch.
+        const std::filesystem::path model_fs_path = std::filesystem::u8path(model_path);
+        impl->session = Ort::Session(get_ort_env(), model_fs_path.c_str(), opts);
 
         Ort::AllocatorWithDefaultOptions allocator;
         size_t n_inputs = impl->session.GetInputCount();
@@ -157,37 +139,6 @@ void destroy_session_impl(void *& ptr) {
     auto * impl = as_session(ptr);
     delete impl;
     ptr = nullptr;
-}
-
-int64_t gcd64(int64_t a, int64_t b) {
-    while (b != 0) {
-        int64_t t = a % b;
-        a = b;
-        b = t;
-    }
-    return a < 0 ? -a : a;
-}
-
-inline float sinc(float x) {
-    if (std::fabs(x) < 1e-8f) {
-        return 1.0f;
-    }
-    float px = kPi * x;
-    return std::sin(px) / px;
-}
-
-inline float bessel_i0(float x) {
-    // Numerical approximation used by common Kaiser window implementations.
-    float sum = 1.0f;
-    float y = x * x / 4.0f;
-    float t = y;
-    int k = 1;
-    while (t > 1e-9f * sum) {
-        sum += t;
-        ++k;
-        t *= y / (float) (k * k);
-    }
-    return sum;
 }
 
 float hz_to_mel_slaney(float hz) {
@@ -415,59 +366,6 @@ void set_ort_debug_log(bool enabled) {
 bool ort_debug_log_enabled() {
     std::lock_guard<std::mutex> lock(g_ort_env_mu);
     return g_requested_log_level <= ORT_LOGGING_LEVEL_WARNING;
-}
-
-bool resample_windowed_sinc(
-    const float * input,
-    int32_t input_len,
-    int32_t input_rate,
-    std::vector<float> & output,
-    int32_t output_rate) {
-    output.clear();
-    if (!input || input_len <= 0 || input_rate <= 0 || output_rate <= 0) {
-        return false;
-    }
-    if (input_rate == output_rate) {
-        output.assign(input, input + input_len);
-        return true;
-    }
-
-    const int64_t g = gcd64(input_rate, output_rate);
-    const int64_t up = output_rate / g;
-    const int64_t down = input_rate / g;
-    const double ratio = (double) output_rate / (double) input_rate;
-    const int32_t out_len = std::max(1, (int32_t) std::llround((double) input_len * ratio));
-    output.assign((size_t) out_len, 0.0f);
-
-    const int taps_per_side = 16;
-    const float beta = 5.0f;
-    const float i0_beta = bessel_i0(beta);
-    const float cutoff = 1.0f / (float) std::max<int64_t>(up, down);
-
-    for (int32_t i = 0; i < out_len; ++i) {
-        const double src = (double) i * (double) input_rate / (double) output_rate;
-        const int32_t center = (int32_t) std::floor(src);
-        float sum = 0.0f;
-        float wsum = 0.0f;
-        for (int k = -taps_per_side; k <= taps_per_side; ++k) {
-            const int32_t idx = center + k;
-            if (idx < 0 || idx >= input_len) {
-                continue;
-            }
-            const float x = (float) (src - (double) idx);
-            const float z = (float) k / (float) taps_per_side;
-            const float win = bessel_i0(beta * std::sqrt(std::max(0.0f, 1.0f - z * z))) / i0_beta;
-            const float h = 2.0f * cutoff * sinc(2.0f * cutoff * x) * win;
-            sum += input[idx] * h;
-            wsum += h;
-        }
-        if (std::fabs(wsum) > 1e-8f) {
-            output[(size_t) i] = sum / wsum;
-        } else {
-            output[(size_t) i] = 0.0f;
-        }
-    }
-    return true;
 }
 
 bool CodecEncoderOnnx::load_model(const std::string & model_path, int32_t intra_threads) {
@@ -916,6 +814,10 @@ void StatefulDecoderOnnx::unload_model() {
 
 bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::vector<float> & audio) {
     audio.clear();
+    t_tensor_prep_ms_ = 0;
+    t_ort_run_ms_ = 0;
+    t_tensor_extract_ms_ = 0;
+    t_state_trim_ms_ = 0;
     if (!loaded_ || !session_impl_) {
         error_msg_ = "Decoder is not loaded";
         return false;
@@ -1069,9 +971,15 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
             return true;
         };
 
+        auto now_ms = []() {
+            return std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now().time_since_epoch())
+                .count();
+        };
         for (int32_t frame_offset = 0; frame_offset < n_frames; frame_offset += decode_chunk_frames_) {
             const int32_t chunk_frames = std::min(decode_chunk_frames_, n_frames - frame_offset);
             const bool is_last_chunk = (frame_offset + chunk_frames) >= n_frames;
+            const int64_t t_prep_start = now_ms();
 
             const size_t codes_count = (size_t) chunk_frames * 16;
             if (codes_i64.size() != codes_count) {
@@ -1145,6 +1053,8 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                     return false;
                 }
             }
+            t_tensor_prep_ms_ += now_ms() - t_prep_start;
+            const int64_t t_run_start = now_ms();
             auto out = impl->session.Run(
                 Ort::RunOptions{nullptr},
                 in_names.data(),
@@ -1152,6 +1062,8 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                 in_values.size(),
                 out_names.data(),
                 out_names.size());
+            t_ort_run_ms_ += now_ms() - t_run_start;
+            const int64_t t_extract_start = now_ms();
 
             if (out.size() < (size_t) (5 + 2 * num_layers_)) {
                 error_msg_ = "Decoder returned insufficient outputs";
@@ -1175,6 +1087,13 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                 std::memcpy(audio.data() + old_size, wav, append_count * sizeof(float));
             }
 
+            int64_t trim_accum = 0;
+            auto run_trim = [&](state_buffer::tensor_state & ts, int64_t win, const char * name) -> bool {
+                const int64_t t0 = now_ms();
+                const bool ok = trim_tensor_state_tail(ts, win, name);
+                trim_accum += now_ms() - t0;
+                return ok;
+            };
             if (!extract_state_tensor(
                     out[2],
                     state.pre_conv_history.elem_type,
@@ -1184,7 +1103,7 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                 error_msg_ = "Decoder next_pre_conv_history type is unsupported";
                 return false;
             }
-            if (!trim_tensor_state_tail(state.pre_conv_history, pre_conv_window_, "pre_conv_history")) {
+            if (!run_trim(state.pre_conv_history, pre_conv_window_, "pre_conv_history")) {
                 return false;
             }
             if (!extract_state_tensor(
@@ -1196,7 +1115,7 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                 error_msg_ = "Decoder next_latent_buffer type is unsupported";
                 return false;
             }
-            if (!trim_tensor_state_tail(state.latent_buffer, latent_window_, "latent_buffer")) {
+            if (!run_trim(state.latent_buffer, latent_window_, "latent_buffer")) {
                 return false;
             }
             if (!extract_state_tensor(
@@ -1208,7 +1127,7 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                 error_msg_ = "Decoder next_conv_history type is unsupported";
                 return false;
             }
-            if (!trim_tensor_state_tail(state.conv_history, conv_window_, "conv_history")) {
+            if (!run_trim(state.conv_history, conv_window_, "conv_history")) {
                 return false;
             }
             for (int i = 0; i < num_layers_; ++i) {
@@ -1221,7 +1140,7 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                     error_msg_ = "Decoder next_key type is unsupported";
                     return false;
                 }
-                if (!trim_tensor_state_tail(state.past_keys[(size_t) i], kv_cache_window_, "past_key")) {
+                if (!run_trim(state.past_keys[(size_t) i], kv_cache_window_, "past_key")) {
                     return false;
                 }
             }
@@ -1235,10 +1154,12 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                     error_msg_ = "Decoder next_value type is unsupported";
                     return false;
                 }
-                if (!trim_tensor_state_tail(state.past_values[(size_t) i], kv_cache_window_, "past_value")) {
+                if (!run_trim(state.past_values[(size_t) i], kv_cache_window_, "past_value")) {
                     return false;
                 }
             }
+            t_state_trim_ms_ += trim_accum;
+            t_tensor_extract_ms_ += (now_ms() - t_extract_start) - trim_accum;
         }
         return !audio.empty();
     } catch (const std::exception & e) {
@@ -1247,4 +1168,4 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
     }
 }
 
-} // namespace qwen3_tts
+} // namespace lunavox

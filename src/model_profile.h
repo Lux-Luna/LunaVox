@@ -1,22 +1,15 @@
 #pragma once
 
-#include <algorithm>
-#include <cctype>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-namespace qwen3_tts {
+#include "string_utils.h"
 
-inline std::string profile_to_lower_ascii(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
-        return (char) std::tolower(c);
-    });
-    return s;
-}
+namespace lunavox {
 
-struct RuntimeModelProfile {
+struct ModelProfile {
     int32_t version = 1;
 
     // Canonical runtime model family: "base", "custom", "design".
@@ -141,7 +134,7 @@ struct RuntimeModelProfile {
         if (name_or_alias.empty()) {
             return -1;
         }
-        const std::string k = profile_to_lower_ascii(name_or_alias);
+        const std::string k = to_lower_ascii(name_or_alias);
         if (k == "none" || k == "auto" || k == "unspecified") {
             return -1;
         }
@@ -156,7 +149,7 @@ struct RuntimeModelProfile {
         if (speaker_name.empty()) {
             return -1;
         }
-        const std::string k = profile_to_lower_ascii(speaker_name);
+        const std::string k = to_lower_ascii(speaker_name);
         auto it = speaker_map.find(k);
         if (it == speaker_map.end()) {
             return -1;
@@ -168,7 +161,7 @@ struct RuntimeModelProfile {
         if (speaker_name.empty()) {
             return std::string();
         }
-        const std::string k = profile_to_lower_ascii(speaker_name);
+        const std::string k = to_lower_ascii(speaker_name);
         auto it = speaker_dialect_map.find(k);
         if (it == speaker_dialect_map.end()) {
             return std::string();
@@ -187,4 +180,4 @@ struct RuntimeModelProfile {
     }
 };
 
-} // namespace qwen3_tts
+} // namespace lunavox

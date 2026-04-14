@@ -48,12 +48,12 @@ The following table shows the average performance of LunaVox across different ba
 | **Baseline (GPU)** | 3.788 | 1.59 GB | 2.29 GB | 1.34x |
 | **LunaVox (Full CPU)** | 1.152 | 1.06 GB | — | 4.40x |
 | **LunaVox (CUDA13)** | 0.254 | 1.39 GB | 1.30 GB | 19.94x |
-| **LunaVox (Vulkan + DML)**| **0.206** | 0.91 GB | 1.05 GB | **24.59x** |
+| **LunaVox (Vulkan + DML)**| **0.180** | 1.08 GB | 1.16 GB | **28.21x** |
 
 > [!NOTE]
 > - **Test Model**: Based on **Qwen3-TTS-12Hz-0.6B-Base**, with Voice Cloning enabled using pre-computed `.json` feature files.
 > - **Test Environment**: Intel i9-12900K + NVIDIA RTX 3090
-> - **Test Standard**: Average of **100 runs** after **3 warmup runs**.
+> - **Test Standard**: Average of **100 iterations** across 5 different sentences (steady state) after model/decoder warmup.
 
 ---
 
@@ -105,9 +105,9 @@ LunaVox automatically downloads appropriate ONNX Runtime and Llama.cpp into the 
 
 ## 🎙️ Inference Testing & Modes
 
-After building, the executable is located at `./build/qwen3-tts-cli.exe`.
+After building, the executable is located at `./build/lunavox-cli.exe`.
 > [!NOTE]
-> - On Linux/macOS, use `./build/qwen3-tts-cli`.
+> - On Linux/macOS, use `./build/lunavox-cli`.
 > - `--instruct` is only valid for **Custom** and **Design** modes (disabled in Base mode).
 
 Detailed tutorial: **[CLI Usage Tutorial](docs/en/guide/usage_tutorial.md)**.
@@ -115,7 +115,7 @@ Detailed tutorial: **[CLI Usage Tutorial](docs/en/guide/usage_tutorial.md)**.
 ### 1. Voice Cloning
 Mimic a specific voice using reference audio (.wav) or pre-computed features (.json):
 ```bash
-./build/qwen3-tts-cli.exe `
+./build/lunavox-cli.exe `
   -m models/base_small `
   -r ref/ref_0.6B.json `
   -t "Okay, fine, I'm just gonna leave this sock monkey here. Goodbye." `
@@ -125,7 +125,7 @@ Mimic a specific voice using reference audio (.wav) or pre-computed features (.j
 ### 2. Custom Voice
 Use built-in expert speaker IDs:
 ```bash
-./build/qwen3-tts-cli.exe `
+./build/lunavox-cli.exe `
   -m models/custom `
   --speaker Vivian `
   --instruct "Use angry tone." `
@@ -136,7 +136,7 @@ Use built-in expert speaker IDs:
 ### 3. Voice Design
 Design voice using text descriptions:
 ```bash
-.\build\qwen3-tts-cli.exe `
+.\build\lunavox-cli.exe `
   -m models/design `
   -t "It's in the top drawer... wait, it's empty? No way, that's impossible! I'm sure I put it there!" `
   --instruct "Speak in an incredulous tone, but with a hint of panic beginning to creep into your voice."

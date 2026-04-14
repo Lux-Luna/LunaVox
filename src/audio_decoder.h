@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace qwen3_tts {
+namespace lunavox {
 
 // Configure ORT runtime logging before creating any ONNX session.
 // false (default): ERROR only; true: WARNING and above.
@@ -83,6 +83,12 @@ public:
     bool decode(const int32_t * codes, int32_t n_frames, std::vector<float> & audio);
     int32_t sample_rate() const { return sample_rate_; }
 
+    // Per-decode() call breakdown (reset at each decode() entry)
+    int64_t last_t_tensor_prep_ms() const { return t_tensor_prep_ms_; }
+    int64_t last_t_ort_run_ms() const { return t_ort_run_ms_; }
+    int64_t last_t_tensor_extract_ms() const { return t_tensor_extract_ms_; }
+    int64_t last_t_state_trim_ms() const { return t_state_trim_ms_; }
+
 private:
     struct state_buffer {
         struct tensor_state {
@@ -106,9 +112,12 @@ private:
     int32_t num_layers_ = 0;
     int32_t num_heads_ = 0;
     int32_t head_dim_ = 0;
-    // Keep chunk moderately sized to avoid onset artifacts at very small chunking,
-    // while still controlling peak ONNX workspace usage.
-    int32_t decode_chunk_frames_ = 8;
+    // Chunk size trades per-Run() overhead (DML command submit + state tensor
+    // copies + fence wait) against peak workspace. Sweep on RTX 3090 showed
+    // decode time scaling: 8→984ms, 16→783ms, 24→518ms, 32→452ms (1.7B).
+    // 32 halves decode vs 8 with negligible VRAM impact and imperceptible
+    // numerical drift at chunk boundaries (PSNR 34-42 dB vs chunk=8).
+    int32_t decode_chunk_frames_ = 32;
     int32_t pre_conv_channels_ = 512;
     int32_t latent_channels_ = 1024;
     int32_t conv_channels_ = 1024;
@@ -122,14 +131,11 @@ private:
     void * session_impl_ = nullptr;
     std::vector<std::string> input_names_;
     std::vector<std::string> output_names_;
+
+    int64_t t_tensor_prep_ms_ = 0;
+    int64_t t_ort_run_ms_ = 0;
+    int64_t t_tensor_extract_ms_ = 0;
+    int64_t t_state_trim_ms_ = 0;
 };
 
-// Windowed-sinc resampler (Kaiser window) for better quality than linear interpolation.
-bool resample_windowed_sinc(
-    const float * input,
-    int32_t input_len,
-    int32_t input_rate,
-    std::vector<float> & output,
-    int32_t output_rate);
-
-} // namespace qwen3_tts
+} // namespace lunavox
