@@ -8,16 +8,16 @@
 #include <string>
 #include <vector>
 
-namespace qwen3_tts {
+namespace lunavox {
 
-class TalkerPredictorLlama {
+class TalkerPredictor {
 public:
     bool load(
         const std::string & lib_dir,
         const std::string & talker_model_path,
         const std::string & predictor_model_path,
         const AssetsManager & assets,
-        const RuntimeModelProfile & profile,
+        const ModelProfile & profile,
         int32_t n_threads);
 
     void unload();
@@ -128,7 +128,7 @@ private:
     int64_t t_talker_post_copy_ms_ = 0;
 
     const AssetsManager * assets_ = nullptr;
-    RuntimeModelProfile profile_;
+    ModelProfile profile_;
 
     LlamaModel talker_model_;
     LlamaModel predictor_model_;
@@ -144,4 +144,4 @@ private:
     std::vector<float> scratch_emb_next_;
 };
 
-} // namespace qwen3_tts
+} // namespace lunavox

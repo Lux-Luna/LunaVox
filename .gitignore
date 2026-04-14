@@ -40,6 +40,9 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# Claude Code harness local state
+.claude/
+
 
 代办.txt
 dist/
@@ -48,3 +51,4 @@ dist/
 src/lunavox.egg-info/
 src/lunavox
 pyproject.toml
+temp/

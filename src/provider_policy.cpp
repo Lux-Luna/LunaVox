@@ -1,4 +1,4 @@
-#include "ort_provider_policy.h"
+#include "provider_policy.h"
 
 #include <algorithm>
 #include <fstream>
@@ -12,7 +12,7 @@
 #include "json_utils.h"
 #include "logger.h"
 
-namespace qwen3_tts {
+namespace lunavox {
 
 namespace {
 
@@ -142,7 +142,7 @@ bool apply_ort_provider_policy(
             size_t onnx_start = content.find("\"onnx\"");
             if (onnx_start != std::string::npos) {
                 std::string onnx_section = content.substr(onnx_start);
-                if (qwen3_tts::json_extract_string(onnx_section, "provider", intent)) {
+                if (lunavox::json_extract_string(onnx_section, "provider", intent)) {
                     meta_found = true;
                 }
             }
@@ -183,4 +183,4 @@ bool apply_ort_provider_policy(
     return true;
 }
 
-} // namespace qwen3_tts
+} // namespace lunavox

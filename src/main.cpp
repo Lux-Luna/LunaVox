@@ -1,31 +1,17 @@
-#include "qwen3_tts.h"
+#include "lunavox_engine.h"
 #include "logger.h"
 #include "nvml_monitor.h"
+#include "platform_utils.h"
+#include "string_utils.h"
+#include "audio_io.h"
 
 #include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
-#include <algorithm>
-#include <cctype>
 
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <shellapi.h>
-#endif
-
-using namespace qwen3_tts;
-
-static std::string to_lower_ascii(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
-        return (char)std::tolower(c);
-    });
-    return s;
-}
+using namespace lunavox;
 
 static std::string json_escape(const std::string & s) {
     std::string out;
@@ -51,45 +37,6 @@ static std::string json_escape(const std::string & s) {
         }
     }
     return out;
-}
-
-// Collect command-line arguments as UTF-8 strings, regardless of platform.
-// On Windows argv is encoded in the active ANSI code page which mangles
-// non-ASCII filenames/text; we re-fetch via CommandLineToArgvW and re-encode
-// to UTF-8. On POSIX argv is already UTF-8 by convention so we pass it through.
-static std::vector<std::string> collect_cli_args_utf8(int argc, char ** argv) {
-    std::vector<std::string> args;
-#ifdef _WIN32
-    int wide_argc = 0;
-    LPWSTR * wide_argv = CommandLineToArgvW(GetCommandLineW(), &wide_argc);
-    if (wide_argv && wide_argc > 0) {
-        args.reserve((size_t)wide_argc);
-        for (int i = 0; i < wide_argc; ++i) {
-            const std::wstring ws = wide_argv[i] ? wide_argv[i] : L"";
-            if (ws.empty()) {
-                args.emplace_back();
-                continue;
-            }
-            int size = WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(),
-                                           nullptr, 0, nullptr, nullptr);
-            if (size <= 0) {
-                args.emplace_back();
-                continue;
-            }
-            std::string utf8((size_t)size, '\0');
-            WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), (int)ws.size(),
-                                &utf8[0], size, nullptr, nullptr);
-            args.emplace_back(std::move(utf8));
-        }
-        LocalFree(wide_argv);
-        return args;
-    }
-#endif
-    args.reserve((size_t)argc);
-    for (int i = 0; i < argc; ++i) {
-        args.emplace_back(argv[i] ? argv[i] : "");
-    }
-    return args;
 }
 
 void print_usage(const char * program) {
@@ -134,13 +81,13 @@ int main(int argc, char ** argv) {
     Logger::instance().init("logs/latest.log");
 
     uint64_t vram_start = 0;
-    if (qwen3_tts::NVMLMonitor::instance().init()) {
-        vram_start = qwen3_tts::NVMLMonitor::instance().get_used_vram();
+    if (lunavox::NVMLMonitor::instance().init()) {
+        vram_start = lunavox::NVMLMonitor::instance().get_used_vram();
     }
 
-    std::vector<std::string> args = collect_cli_args_utf8(argc, argv);
+    std::vector<std::string> args = platform::utf8_args(argc, argv);
 
-    const char * program = args.empty() ? "qwen3-tts-cli" : args[0].c_str();
+    const char * program = args.empty() ? "lunavox-cli" : args[0].c_str();
     std::string model_dir;
     std::string text;
     std::string output_file = "output.wav";
@@ -158,7 +105,7 @@ int main(int argc, char ** argv) {
     bool disable_load_warmup = false;
     bool low_mem_mode_cli = false;
 
-    qwen3_tts::tts_params params;
+    lunavox::tts_params params;
     bool user_set_max_tokens = false;
     bool user_set_temperature = false;
     bool user_set_top_k = false;
@@ -375,17 +322,13 @@ int main(int argc, char ** argv) {
     LOG_USER("--------------------------------------------------");
     
     // Initialize TTS
-    qwen3_tts::Qwen3TTS tts;
+    lunavox::Engine tts;
     tts.set_warmup_enabled(!disable_load_warmup);
 
-    qwen3_tts::set_ort_debug_log(params.ort_debug_log);
+    lunavox::set_ort_debug_log(params.ort_debug_log);
 
     if (low_mem_mode_cli) {
-#ifdef _WIN32
-        _putenv_s("QWEN3_TTS_LOW_MEM", "1");
-#else
-        setenv("QWEN3_TTS_LOW_MEM", "1", 1);
-#endif
+        platform::set_env("LUNAVOX_LOW_MEM", "1");
         LOG_USER("[LOAD] Low-memory mode enabled via --low-mem");
     }
 
@@ -551,7 +494,7 @@ int main(int argc, char ** argv) {
     }
 
     // Benchmark Run
-    std::vector<qwen3_tts::tts_result> repeat_results;
+    std::vector<lunavox::tts_result> repeat_results;
     LOG_DEBUG("[BNCH] Starting %d benchmark runs...", repeat);
     
     for (int it = 0; it < repeat; ++it) {
@@ -560,7 +503,7 @@ int main(int argc, char ** argv) {
         }
         
         // Generate speech
-        qwen3_tts::tts_result result;
+        lunavox::tts_result result;
         
         if (mode == "clone") {
             if (reference_audio.empty()) { // Added this check back for safety, though it should be caught earlier
@@ -602,7 +545,7 @@ int main(int argc, char ** argv) {
             }
         }
 
-        if (!qwen3_tts::save_audio_file(current_output, result.audio, result.sample_rate)) {
+        if (!lunavox::save_audio_file(current_output, result.audio, result.sample_rate)) {
             LOG_ERROR("Error: failed to save output file: %s", current_output.c_str());
             return 1;
         }
@@ -617,7 +560,7 @@ int main(int argc, char ** argv) {
     LOG_USER("");
     LOG_USER("[ Backend Configuration ]");
     {
-        std::string binfo = qwen3_tts::Logger::instance().get_llama_backend_info();
+        std::string binfo = lunavox::Logger::instance().get_llama_backend_info();
         if (binfo == "cpu") binfo = "CPU: Native Implementation";
         else if (binfo == "cuda" || binfo == "CUDA") binfo = "CUDA: NVIDIA Acceleration";
         else if (binfo == "vulkan" || binfo == "Vulkan") binfo = "Vulkan: Generic Acceleration";
@@ -640,10 +583,10 @@ int main(int argc, char ** argv) {
     LOG_USER("");
     LOG_USER("[ Resource Usage (Last Run) ]");
     LOG_USER("  - Peak RAM:       %.2f GB", (double)last_res.mem_rss_peak_bytes / (1024.0 * 1024.0 * 1024.0));
-    if (qwen3_tts::NVMLMonitor::instance().is_available()) {
-        uint64_t vram_end = qwen3_tts::NVMLMonitor::instance().get_used_vram();
+    if (lunavox::NVMLMonitor::instance().is_available()) {
+        uint64_t vram_end = lunavox::NVMLMonitor::instance().get_used_vram();
         double delta_gb = (double)(vram_end > vram_start ? vram_end - vram_start : 0) / (1024.0 * 1024.0 * 1024.0);
-        LOG_USER("  - GPU VRAM Delta: %.2f GB (%s)", delta_gb, qwen3_tts::NVMLMonitor::instance().get_device_name().c_str());
+        LOG_USER("  - GPU VRAM Delta: %.2f GB (%s)", delta_gb, lunavox::NVMLMonitor::instance().get_device_name().c_str());
     } else {
         LOG_USER("  - GPU VRAM Delta: N/A (NVML not initialized)");
     }

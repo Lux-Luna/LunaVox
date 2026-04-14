@@ -1,103 +1,35 @@
 #include "llama_wrapper.h"
 #include "logger.h"
+#include "platform_utils.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
 #include <initializer_list>
 #include <vector>
 
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#else
-#include <dlfcn.h>
-#endif
-
-namespace qwen3_tts {
+namespace lunavox {
 
 namespace {
 
-namespace fs = std::filesystem;
-
-// Platform-agnostic dynamic loader. The rest of this file deals only in
-// `void *` handles and named symbols, and never sees LoadLibrary/dlopen.
-struct DynLib {
-    static void * open(const char * path) {
-#ifdef _WIN32
-        return (void *) LoadLibraryA(path);
-#else
-        return dlopen(path, RTLD_NOW | RTLD_LOCAL);
-#endif
-    }
-
-    static void close(void * handle) {
-        if (!handle) return;
-#ifdef _WIN32
-        FreeLibrary((HMODULE) handle);
-#else
-        dlclose(handle);
-#endif
-    }
-
-    static void * lookup_loaded(const char * base_name) {
-#ifdef _WIN32
-        return (void *) GetModuleHandleA(base_name);
-#else
-        (void) base_name;
-        return nullptr;
-#endif
-    }
-
-    static void * symbol(void * handle, const char * name) {
-        if (!handle) return nullptr;
-#ifdef _WIN32
-        return (void *) GetProcAddress((HMODULE) handle, name);
-#else
-        return dlsym(handle, name);
-#endif
-    }
-};
-
-// Try a list of candidate filenames inside `dir`, returning the first that
-// loads. Each candidate is joined via std::filesystem so callers never
-// concatenate separators by hand.
-static void * dynlib_try_open_in(const fs::path & dir,
-                                  std::initializer_list<const char *> candidates,
-                                  std::string * out_path_tried = nullptr) {
-    for (const char * name : candidates) {
-        fs::path p = dir / name;
-        const std::string s = p.string();
-        if (out_path_tried) *out_path_tried = s;
-        void * h = DynLib::open(s.c_str());
-        if (h) return h;
-    }
-    return nullptr;
+// Dependent runtime libraries are discovered by stem; platform_utils expands
+// each stem into the correct filename list for the host OS. The ggml runtime
+// ships as either a single "ggml" library or a pair with "ggml-base", so we
+// probe both stems in order.
+static std::vector<std::string> build_ggml_candidates() {
+    auto names = platform::dynlib_candidate_names("ggml");
+    auto base = platform::dynlib_candidate_names("ggml-base");
+    names.insert(names.end(), base.begin(), base.end());
+    return names;
 }
 
-// OS-specific candidate name tables. Listed most-specific → most-generic.
-#if defined(_WIN32)
-static const std::initializer_list<const char *> kGgmlBaseCandidates = {"ggml.dll", "ggml-base.dll"};
-static const std::initializer_list<const char *> kLlamaCandidates    = {"llama.dll"};
-static const std::initializer_list<const char *> kGgmlBaseLoaded     = {"ggml.dll", "ggml-base.dll"};
-#elif defined(__APPLE__)
-static const std::initializer_list<const char *> kGgmlBaseCandidates = {
-    "libggml.dylib", "libggml-base.dylib", "libggml.so", "libggml-base.so"};
-static const std::initializer_list<const char *> kLlamaCandidates    = {"libllama.dylib", "libllama.so"};
-static const std::initializer_list<const char *> kGgmlBaseLoaded     = {};
-#else
-static const std::initializer_list<const char *> kGgmlBaseCandidates = {
-    "libggml.so", "libggml-base.so"};
-static const std::initializer_list<const char *> kLlamaCandidates    = {"libllama.so"};
-static const std::initializer_list<const char *> kGgmlBaseLoaded     = {};
-#endif
+static std::vector<std::string> build_llama_candidates() {
+    return platform::dynlib_candidate_names("llama");
+}
 
 template <typename T>
 bool load_fn(void * handle, const char * name, T & fn_ptr, std::string & err) {
-    void * sym = DynLib::symbol(handle, name);
+    void * sym = platform::dynlib_symbol(handle, name);
     if (!sym) {
         err = std::string("Missing symbol in llama runtime: ") + name;
         return false;
@@ -108,7 +40,7 @@ bool load_fn(void * handle, const char * name, T & fn_ptr, std::string & err) {
 
 template <typename T>
 bool try_load_fn(void * handle, const char * name, T & fn_ptr) {
-    void * sym = DynLib::symbol(handle, name);
+    void * sym = platform::dynlib_symbol(handle, name);
     if (!sym) {
         fn_ptr = nullptr;
         return false;
@@ -129,29 +61,32 @@ bool LlamaLibrary::ensure_loaded(const std::string & lib_dir, std::string & err)
         return true;
     }
 
-    const fs::path dir = fs::u8path(lib_dir);
+    const std::vector<std::string> ggml_candidates = build_ggml_candidates();
+    const std::vector<std::string> llama_candidates = build_llama_candidates();
 
     // ggml-base may already be mapped in the current process (Windows
     // auto-loads dependent DLLs); probe for that first so we don't pull a
     // second copy.
-    for (const char * name : kGgmlBaseLoaded) {
-        handle_ggml_base_ = DynLib::lookup_loaded(name);
-        if (handle_ggml_base_) break;
+    if (platform::dynlib_supports_loaded_lookup()) {
+        for (const std::string & name : ggml_candidates) {
+            handle_ggml_base_ = platform::dynlib_find_loaded(name.c_str());
+            if (handle_ggml_base_) break;
+        }
     }
     if (!handle_ggml_base_) {
-        handle_ggml_base_ = dynlib_try_open_in(dir, kGgmlBaseCandidates);
+        handle_ggml_base_ = platform::dynlib_try_open_in(lib_dir, ggml_candidates);
     }
 
     std::string llama_path_tried;
-    handle_llama_ = dynlib_try_open_in(dir, kLlamaCandidates, &llama_path_tried);
+    handle_llama_ = platform::dynlib_try_open_in(lib_dir, llama_candidates, &llama_path_tried);
     if (!handle_llama_) {
         err = "Failed to load llama runtime: " + llama_path_tried;
         return false;
     }
 
     if (!load_symbol_table(err)) {
-        DynLib::close(handle_llama_);
-        DynLib::close(handle_ggml_base_);
+        platform::dynlib_close(handle_llama_);
+        platform::dynlib_close(handle_ggml_base_);
         handle_llama_ = nullptr;
         handle_ggml_base_ = nullptr;
         return false;
@@ -499,4 +434,4 @@ void LlamaSampler::accept(int32_t token) const {
     LlamaLibrary::instance().llama_sampler_accept(sampler_, (llama_token) token);
 }
 
-} // namespace qwen3_tts
+} // namespace lunavox

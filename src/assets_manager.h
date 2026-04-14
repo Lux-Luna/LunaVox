@@ -7,7 +7,9 @@
 #include <unordered_map>
 #include <vector>
 
-namespace qwen3_tts {
+#include "platform_utils.h"
+
+namespace lunavox {
 
 enum class npy_storage_kind : uint8_t {
     none = 0,
@@ -24,21 +26,12 @@ struct npy_matrix {
     // Owned path (small buffers or intermediate compatibility payloads).
     std::vector<float> owned_f32;
 
-    // Mapped payload metadata.
-    const uint8_t * mapped_base = nullptr;
-    size_t mapped_bytes = 0;
-    const float * mapped_f32 = nullptr;
-    const uint8_t * mapped_f16_bytes = nullptr;
+    // Underlying mapped file; lifetime owned by this matrix.
+    platform::MmapFile mapping;
 
-    // Native mapping handles.
-    // Windows:
-    //   file_handle    = HANDLE from CreateFile
-    //   mapping_handle = HANDLE from CreateFileMapping
-    // POSIX:
-    //   file_handle    = file descriptor from open()
-    //   mapping_handle = unused (-1)
-    intptr_t file_handle = -1;
-    intptr_t mapping_handle = -1;
+    // Decoded payload pointers into `mapping.data` (or owned_f32).
+    const float *   mapped_f32 = nullptr;
+    const uint8_t * mapped_f16_bytes = nullptr;
 
     // Per-row decode cache for mmap_f16 (lazy decode, no full table expansion).
     mutable std::unordered_map<int32_t, std::vector<float>> f16_row_cache;
@@ -77,7 +70,6 @@ public:
     bool codec_row_predictor(int32_t q, int32_t code, std::vector<float> & out) const;
 
 private:
-    bool map_file_readonly(const std::string & path, npy_matrix & out, size_t & file_size);
     bool load_npy_mmap_2d(const std::string & path, npy_matrix & out);
     bool parse_npy_header(const std::string & path, std::string & descr, std::vector<int64_t> & shape, size_t & data_offset);
 
@@ -93,5 +85,5 @@ private:
     npy_matrix codec_table_[16];
 };
 
-} // namespace qwen3_tts
+} // namespace lunavox
 

@@ -10,7 +10,7 @@
 #include <limits>
 #include <sstream>
 
-namespace qwen3_tts {
+namespace lunavox {
 
 namespace {
 
@@ -852,4 +852,4 @@ std::string TextTokenizer::decode_token(int32_t token_id) const {
     return unicode_to_bytes(id_to_token_[(size_t) token_id]);
 }
 
-} // namespace qwen3_tts
+} // namespace lunavox

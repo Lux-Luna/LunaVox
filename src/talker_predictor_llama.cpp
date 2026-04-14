@@ -6,7 +6,7 @@
 #include <cstring>
 #include <limits>
 
-namespace qwen3_tts {
+namespace lunavox {
 
 namespace {
 
@@ -31,12 +31,12 @@ static inline int64_t now_ms() {
 
 } // namespace
 
-bool TalkerPredictorLlama::load(
+bool TalkerPredictor::load(
     const std::string & lib_dir,
     const std::string & talker_model_path,
     const std::string & predictor_model_path,
     const AssetsManager & assets,
-    const RuntimeModelProfile & profile,
+    const ModelProfile & profile,
     int32_t n_threads) {
     unload();
     assets_ = &assets;
@@ -146,7 +146,7 @@ bool TalkerPredictorLlama::load(
     return true;
 }
 
-void TalkerPredictorLlama::unload() {
+void TalkerPredictor::unload() {
     loaded_ = false;
     error_msg_.clear();
     cur_pos_ = 0;
@@ -169,10 +169,10 @@ void TalkerPredictorLlama::unload() {
     last_ctx_allocated_ = 0;
     last_ctx_cap_ = 0;
     last_ctx_overflow_ = false;
-    profile_ = RuntimeModelProfile{};
+    profile_ = ModelProfile{};
 }
 
-int32_t TalkerPredictorLlama::estimate_prompt_tokens(
+int32_t TalkerPredictor::estimate_prompt_tokens(
     const std::vector<int32_t> & text_tokens,
     const std::vector<int32_t> & ref_text_tokens,
     const std::vector<int32_t> & role_prefix_tokens,
@@ -209,7 +209,7 @@ int32_t TalkerPredictorLlama::estimate_prompt_tokens(
     return (int32_t) total;
 }
 
-bool TalkerPredictorLlama::ensure_talker_runtime(int32_t request_ctx) {
+bool TalkerPredictor::ensure_talker_runtime(int32_t request_ctx) {
     if (request_ctx <= 0) {
         error_msg_ = "Invalid talker request context";
         return false;
@@ -257,7 +257,7 @@ bool TalkerPredictorLlama::ensure_talker_runtime(int32_t request_ctx) {
     return true;
 }
 
-bool TalkerPredictorLlama::sample_with_mask(
+bool TalkerPredictor::sample_with_mask(
     LlamaContext & ctx,
     const LlamaModel & model,
     LlamaSampler & sampler,
@@ -301,7 +301,7 @@ bool TalkerPredictorLlama::sample_with_mask(
     return true;
 }
 
-bool TalkerPredictorLlama::run_prefill(
+bool TalkerPredictor::run_prefill(
     const std::vector<int32_t> & text_tokens,
     const std::vector<int32_t> & ref_text_tokens,
     const std::vector<int32_t> & role_prefix_tokens,
@@ -504,7 +504,7 @@ bool TalkerPredictorLlama::run_prefill(
     return true;
 }
 
-bool TalkerPredictorLlama::predict_frame(
+bool TalkerPredictor::predict_frame(
     const std::vector<float> & master_hidden,
     int32_t code0,
     LlamaSampler & predictor_sampler,
@@ -609,7 +609,7 @@ bool TalkerPredictorLlama::predict_frame(
     return true;
 }
 
-bool TalkerPredictorLlama::run_decode_step(const std::vector<float> & audio_sum, std::vector<float> & hidden_out) {
+bool TalkerPredictor::run_decode_step(const std::vector<float> & audio_sum, std::vector<float> & hidden_out) {
     if (!assets_) return false;
     if ((int32_t) audio_sum.size() != hidden_dim_) {
         error_msg_ = "audio_sum dim mismatch";
@@ -661,7 +661,7 @@ bool TalkerPredictorLlama::run_decode_step(const std::vector<float> & audio_sum,
     return true;
 }
 
-bool TalkerPredictorLlama::generate(
+bool TalkerPredictor::generate(
     const std::vector<int32_t> & text_tokens,
     const std::vector<int32_t> & ref_text_tokens,
     const std::vector<int32_t> & role_prefix_tokens,
@@ -696,7 +696,7 @@ bool TalkerPredictorLlama::generate(
     t_talker_post_copy_ms_ = 0;
 
     if (!loaded_) {
-        error_msg_ = "TalkerPredictorLlama is not loaded";
+        error_msg_ = "TalkerPredictor is not loaded";
         return false;
     }
     if (text_tokens.empty()) {
@@ -937,4 +937,4 @@ bool TalkerPredictorLlama::generate(
     return true;
 }
 
-} // namespace qwen3_tts
+} // namespace lunavox

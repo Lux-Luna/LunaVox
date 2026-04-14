@@ -1,6 +1,6 @@
 """LunaVox baseline benchmark driver.
 
-Runs qwen3-tts-cli across a matrix of {model, mode} configurations and
+Runs lunavox-cli across a matrix of {model, mode} configurations and
 captures:
 
     - Timing from --stats-json (load / tokenize / encode / generate / decode)
@@ -51,7 +51,7 @@ except Exception:
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CLI_BIN = REPO_ROOT / "build" / ("qwen3-tts-cli.exe" if os.name == "nt" else "qwen3-tts-cli")
+CLI_BIN = REPO_ROOT / "build" / ("lunavox-cli.exe" if os.name == "nt" else "lunavox-cli")
 OUTPUT_DIR = REPO_ROOT / "tests" / "results"
 REF_AUDIO = REPO_ROOT / "ref" / "ref.wav"
 

@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <string>
 
-namespace qwen3_tts {
+namespace lunavox {
 
 /**
  * @brief Simple NVML wrapper to monitor VRAM without compile-time dependency on CUDA/NVML headers.
@@ -53,4 +53,4 @@ struct nvml_memory_t {
     uint64_t used;
 };
 
-} // namespace qwen3_tts
+} // namespace lunavox

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "text_tokenizer.h"
-#include "onnx_audio_runtime.h"
+#include "audio_decoder.h"
 #include "assets_manager.h"
 #include "talker_predictor_llama.h"
 #include "model_profile.h"
@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <mutex>
 
-namespace qwen3_tts {
+namespace lunavox {
 
 // TTS generation parameters
 struct tts_params {
@@ -155,19 +155,19 @@ struct tts_result {
 using tts_progress_callback_t = std::function<void(int tokens_generated, int max_tokens)>;
 
 // Main TTS class that orchestrates the full pipeline
-class Qwen3TTS {
+class Engine {
 public:
-    Qwen3TTS();
-    ~Qwen3TTS();
+    Engine();
+    ~Engine();
     
     // Load all models from directory.
     // Required layout:
-    //   qwen3_tts_talker*.gguf
-    //   qwen3_tts_predictor*.gguf
-    //   qwen3_tts_decoder*.onnx
+    //   lunavox_talker*.gguf
+    //   lunavox_predictor*.gguf
+    //   lunavox_decoder*.onnx
     // Optional:
-    //   qwen3_tts_speaker_encoder*.onnx
-    //   qwen3_tts_codec_encoder*.onnx
+    //   lunavox_speaker_encoder*.onnx
+    //   lunavox_codec_encoder*.onnx
     //   embeddings/
     //   tokenizer.json
     bool load_models(const std::string & model_dir, int32_t n_threads = 4);
@@ -238,8 +238,12 @@ public:
     void set_warmup_enabled(bool enabled) { warmup_enabled_ = enabled; }
     int64_t last_warmup_ms() const { return last_warmup_ms_; }
 
+    // Wall time spent inside the most recent load_models() call
+    // (includes warmup). 0 if no load has happened yet.
+    int64_t last_load_ms() const { return last_load_ms_; }
+
     // Runtime profile accessors.
-    const RuntimeModelProfile & profile() const { return profile_; }
+    const ModelProfile & profile() const { return profile_; }
     bool supports_mode(const std::string & mode) const;
     bool resolve_language_id(const std::string & name_or_alias, int32_t & language_id_out) const;
     std::vector<std::string> supported_speakers() const;
@@ -260,7 +264,7 @@ private:
     bool load_models_new_layout(const std::string & model_dir, int32_t n_threads);
     
     TextTokenizer tokenizer_;
-    TalkerPredictorLlama talker_predictor_;
+    TalkerPredictor talker_predictor_;
     AssetsManager assets_;
     SpeakerEncoderOnnx speaker_encoder_;
     CodecEncoderOnnx codec_encoder_;
@@ -275,6 +279,7 @@ private:
     bool low_mem_mode_ = false;
     bool warmup_enabled_ = true;
     int64_t last_warmup_ms_ = 0;
+    int64_t last_load_ms_ = 0;
     bool hot_rows_preloaded_ = false;
     std::mutex hot_rows_preload_mu_;
     std::string error_msg_;
@@ -286,16 +291,8 @@ private:
     std::string decoder_onnx_path_;
     std::string tokenizer_json_path_;
     std::string model_profile_json_path_;
-    RuntimeModelProfile profile_;
+    ModelProfile profile_;
     tts_progress_callback_t progress_callback_;
 };
 
-// Utility: Load audio file (WAV format)
-bool load_audio_file(const std::string & path, std::vector<float> & samples, 
-                     int & sample_rate);
-
-// Utility: Save audio file (WAV format)
-bool save_audio_file(const std::string & path, const std::vector<float> & samples,
-                     int sample_rate);
-
-} // namespace qwen3_tts
+} // namespace lunavox

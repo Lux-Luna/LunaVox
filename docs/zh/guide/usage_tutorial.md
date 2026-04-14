@@ -1,6 +1,6 @@
 # LunaVox CLI 指令使用指南
 
-本教程详细说明 LunaVox C++ 推理引擎（`qwen3-tts-cli.exe`）的实际指令格式、核心参数用法及参数约束说明。
+本教程详细说明 LunaVox C++ 推理引擎（`lunavox-cli.exe`）的实际指令格式、核心参数用法及参数约束说明。
 
 > [!IMPORTANT]
 > LunaVox CLI 采用主命令加可选参数的结构，不同的合成功能通过 `--mode` 参数进行切换。如果未指定 `--mode`，系统将根据 `model_profile.json` 中的 `model_type` 自动选择。
@@ -11,7 +11,7 @@
 最简单的合成方式，仅适用于 `base` 类型的模型。
 
 ```bash
-./build/qwen3-tts-cli `
+./build/lunavox-cli `
   -m models/base_small `
   -t "What do you mean that I'm not real?" `
   -o out.wav
@@ -27,7 +27,7 @@
 
 ### 2.1 使用参考音频 (Reference Audio)
 ```bash
-./build/qwen3-tts-cli `
+./build/lunavox-cli `
   -m models/base_small `
   -r ref/ref.wav `
   -t "Hello world." `
@@ -36,7 +36,7 @@
 
 ### 2.2 使用参考特征 (Reference JSON)
 ```bash
-./build/qwen3-tts-cli `
+./build/lunavox-cli `
   --mode clone `
   -m models/base_small `
   -r ref/ref_0.6B.json `
@@ -50,7 +50,7 @@
 使用系统内置的特定专家发音人 ID。**此功能仅对 `custom` 类型模型有效**。
 
 ```bash
-./build/qwen3-tts-cli `
+./build/lunavox-cli `
   --mode custom `
   -m models/custom `
   --speaker Vivian `
@@ -68,7 +68,7 @@
 根据文字描述动态设计全新音色。**此功能仅对 `design` 类型模型有效**。
 
 ```bash
-./build/qwen3-tts-cli `
+./build/lunavox-cli `
   --mode design `
   -m models/design `
   --instruct "A warm female voice, speaking gently with a hint of a smile." `

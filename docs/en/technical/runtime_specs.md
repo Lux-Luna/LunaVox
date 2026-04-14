@@ -34,7 +34,7 @@ Deterministic sampling strategies for optimized quality:
 
 Verify CLI availability:
 ```bash
-./build/qwen3-tts-cli.exe --help
+./build/lunavox-cli.exe --help
 ```
 
 - **Timeout Requirement**: Single verification inference should be under 20 seconds.

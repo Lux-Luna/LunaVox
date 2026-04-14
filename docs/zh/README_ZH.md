@@ -48,12 +48,12 @@
 | **Baseline (GPU)** | 3.788 | 1.59 GB | 2.29 GB | 1.34x |
 | **LunaVox (Full CPU)** | 1.152 | 1.06 GB | — | 4.40x |
 | **LunaVox (CUDA13)** | 0.254 | 1.39 GB | 1.30 GB | 19.94x |
-| **LunaVox (Llama.cpp (Vulkan) / ORT (DML))** | **0.206** | 0.91 GB | 1.05 GB | **24.59x** |
+| **LunaVox (Llama.cpp (Vulkan) / ORT (DML))** | **0.180** | 1.08 GB | 1.16 GB | **28.21x** |
 
 > [!NOTE]
 > - **测试模型**: 基于 **Qwen3-TTS-12Hz-0.6B-Base**，开启声音克隆模式并在使用 `.json` 预计算特征文件作为参考。
 > - **测试环境**: Intel i9-12900K + NVIDIA RTX 3090
-> - **测试标准**: 在 **3 次预热**后，取 **100 次运行**的平均结果。
+> - **测试标准**: 在模型/解码器预热后，取 5 组不同文本的 **100 次迭代**（稳态）平均结果。
 
 ---
 
@@ -106,9 +106,9 @@ LunaVox 自动下载 `lib/` 下相应的 ONNX Runtime 与 Llama.cpp。如果您�
 
 ## 🎙️ 推理测试与模式说明
 
-编译完成后，可执行程序位于 `./build/qwen3-tts-cli.exe`。
+编译完成后，可执行程序位于 `./build/lunavox-cli.exe`。
 > [!NOTE]
-> - Linux/macOS 系统请使用 `./build/qwen3-tts-cli` 运行。
+> - Linux/macOS 系统请使用 `./build/lunavox-cli` 运行。
 > - `--instruct` 仅对 **Custom** 和 **Design** 模式有效（Base 模式下禁用）。
 
 详细教程请参阅：**[CLI 指令使用指南](guide/usage_tutorial.md)**。
@@ -116,7 +116,7 @@ LunaVox 自动下载 `lib/` 下相应的 ONNX Runtime 与 Llama.cpp。如果您�
 ### 1. 声音克隆 (Voice Cloning)
 通过参考音频（.wav）或预计算特征（.json）模仿特定音色：
 ```bash
-./build/qwen3-tts-cli.exe `
+./build/lunavox-cli.exe `
   -m models/base_small `
   -r ref/ref_0.6B.json `
   -t "Okay, fine, I'm just gonna leave this sock monkey here. Goodbye." `
@@ -126,7 +126,7 @@ LunaVox 自动下载 `lib/` 下相应的 ONNX Runtime 与 Llama.cpp。如果您�
 ### 2. 定制化声音 (Custom Voice)
 使用系统内置的发音人 ID：
 ```bash
-./build/qwen3-tts-cli.exe `
+./build/lunavox-cli.exe `
   -m models/custom `
   --speaker Vivian `
   --instruct "Use angry tone." `
@@ -137,7 +137,7 @@ LunaVox 自动下载 `lib/` 下相应的 ONNX Runtime 与 Llama.cpp。如果您�
 ### 3. 声音设计 (Voice Design)
 使用描述设计声音
 ```bash
-.\build\qwen3-tts-cli.exe `
+.\build\lunavox-cli.exe `
   -m models/design `
   -t "It's in the top drawer... wait, it's empty? No way, that's impossible! I'm sure I put it there!" `
   --instruct "Speak in an incredulous tone, but with a hint of panic beginning to creep into your voice."

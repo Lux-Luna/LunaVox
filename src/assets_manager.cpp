@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -10,23 +9,9 @@
 #include <limits>
 #include <string>
 
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#else
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#endif
-
-namespace qwen3_tts {
+namespace lunavox {
 
 namespace {
-
-static constexpr intptr_t kInvalidNativeHandle = static_cast<intptr_t>(-1);
 
 static std::string trim_copy(const std::string & s) {
     size_t l = 0;
@@ -74,20 +59,6 @@ static float fp16_to_f32(uint16_t h) {
     std::memcpy(&out, &bits, sizeof(float));
     return out;
 }
-
-#ifndef _WIN32
-static std::string errno_to_string(int err_no) {
-    char buf[128] = {};
-#if ((_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600) && !_GNU_SOURCE) || defined(__APPLE__)
-    if (strerror_r(err_no, buf, sizeof(buf)) == 0) {
-        return std::string(buf);
-    }
-    return "errno=" + std::to_string(err_no);
-#else
-    return std::string(strerror_r(err_no, buf, sizeof(buf)));
-#endif
-}
-#endif
 
 } // namespace
 
@@ -153,35 +124,14 @@ const float * npy_matrix::row(int32_t r) const {
 }
 
 void npy_matrix::clear() {
-#ifdef _WIN32
-    if (mapped_base) {
-        UnmapViewOfFile(mapped_base);
-    }
-    if (mapping_handle != kInvalidNativeHandle) {
-        CloseHandle(reinterpret_cast<HANDLE>(mapping_handle));
-    }
-    if (file_handle != kInvalidNativeHandle && file_handle != reinterpret_cast<intptr_t>(INVALID_HANDLE_VALUE)) {
-        CloseHandle(reinterpret_cast<HANDLE>(file_handle));
-    }
-#else
-    if (mapped_base && mapped_bytes > 0) {
-        munmap(const_cast<uint8_t *>(mapped_base), mapped_bytes);
-    }
-    if (file_handle >= 0) {
-        close((int) file_handle);
-    }
-#endif
+    platform::mmap_file_close(mapping);
 
     rows = 0;
     cols = 0;
     storage = npy_storage_kind::none;
     owned_f32.clear();
-    mapped_base = nullptr;
-    mapped_bytes = 0;
     mapped_f32 = nullptr;
     mapped_f16_bytes = nullptr;
-    file_handle = kInvalidNativeHandle;
-    mapping_handle = kInvalidNativeHandle;
 
     {
         std::lock_guard<std::mutex> lock(f16_cache_mu);
@@ -296,91 +246,6 @@ bool AssetsManager::codec_row_predictor(int32_t q, int32_t code, std::vector<flo
     const float * raw = codec_row(q, code);
     if (!raw) return false;
     return project_to_predictor(raw, out);
-}
-
-bool AssetsManager::map_file_readonly(const std::string & path, npy_matrix & out, size_t & file_size) {
-    file_size = 0;
-
-#ifdef _WIN32
-    HANDLE file = CreateFileA(
-        path.c_str(),
-        GENERIC_READ,
-        FILE_SHARE_READ,
-        nullptr,
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr);
-    if (file == INVALID_HANDLE_VALUE) {
-        error_msg_ = "CreateFile failed";
-        return false;
-    }
-
-    LARGE_INTEGER size_li = {};
-    if (!GetFileSizeEx(file, &size_li) || size_li.QuadPart <= 0) {
-        CloseHandle(file);
-        error_msg_ = "GetFileSizeEx failed";
-        return false;
-    }
-    if ((uint64_t) size_li.QuadPart > (uint64_t) std::numeric_limits<size_t>::max()) {
-        CloseHandle(file);
-        error_msg_ = "File too large for mmap on this platform";
-        return false;
-    }
-    file_size = (size_t) size_li.QuadPart;
-
-    HANDLE mapping = CreateFileMappingA(file, nullptr, PAGE_READONLY, 0, 0, nullptr);
-    if (!mapping) {
-        CloseHandle(file);
-        error_msg_ = "CreateFileMapping failed";
-        return false;
-    }
-
-    void * view = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
-    if (!view) {
-        CloseHandle(mapping);
-        CloseHandle(file);
-        error_msg_ = "MapViewOfFile failed";
-        return false;
-    }
-
-    out.file_handle = reinterpret_cast<intptr_t>(file);
-    out.mapping_handle = reinterpret_cast<intptr_t>(mapping);
-    out.mapped_base = reinterpret_cast<const uint8_t *>(view);
-    out.mapped_bytes = file_size;
-    return true;
-#else
-    const int fd = open(path.c_str(), O_RDONLY);
-    if (fd < 0) {
-        error_msg_ = "open failed: " + errno_to_string(errno);
-        return false;
-    }
-
-    struct stat st = {};
-    if (fstat(fd, &st) != 0 || st.st_size <= 0) {
-        close(fd);
-        error_msg_ = "fstat failed: " + errno_to_string(errno);
-        return false;
-    }
-    if ((uint64_t) st.st_size > (uint64_t) std::numeric_limits<size_t>::max()) {
-        close(fd);
-        error_msg_ = "File too large for mmap on this platform";
-        return false;
-    }
-    file_size = (size_t) st.st_size;
-
-    void * view = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
-    if (view == MAP_FAILED) {
-        close(fd);
-        error_msg_ = "mmap failed: " + errno_to_string(errno);
-        return false;
-    }
-
-    out.file_handle = (intptr_t) fd;
-    out.mapping_handle = kInvalidNativeHandle;
-    out.mapped_base = reinterpret_cast<const uint8_t *>(view);
-    out.mapped_bytes = file_size;
-    return true;
-#endif
 }
 
 bool AssetsManager::parse_npy_header(const std::string & path, std::string & descr, std::vector<int64_t> & shape, size_t & data_offset) {
@@ -524,12 +389,13 @@ bool AssetsManager::load_npy_mmap_2d(const std::string & path, npy_matrix & out)
         return false;
     }
 
-    size_t file_size = 0;
-    if (!map_file_readonly(path, out, file_size)) {
-        error_msg_ = "mmap failed for " + path + ": " + error_msg_;
+    std::string mmap_err;
+    if (!platform::mmap_file_open(path, out.mapping, mmap_err)) {
+        error_msg_ = "mmap failed for " + path + ": " + mmap_err;
         out.clear();
         return false;
     }
+    const size_t file_size = out.mapping.size;
 
     if (data_offset >= file_size) {
         error_msg_ = "npy payload offset out of file range";
@@ -551,7 +417,7 @@ bool AssetsManager::load_npy_mmap_2d(const std::string & path, npy_matrix & out)
         return false;
     }
 
-    const uint8_t * payload = out.mapped_base + data_offset;
+    const uint8_t * payload = out.mapping.data + data_offset;
     out.rows = rows;
     out.cols = cols;
 
@@ -575,4 +441,4 @@ bool AssetsManager::load_npy_mmap_2d(const std::string & path, npy_matrix & out)
     return true;
 }
 
-} // namespace qwen3_tts
+} // namespace lunavox

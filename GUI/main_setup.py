@@ -1,6 +1,7 @@
 import customtkinter as ctk
 import os
 import sys
+from pathlib import Path
 
 # Add current dir to path to import components
 cur_dir = os.path.dirname(os.path.abspath(__file__))
@@ -9,13 +10,14 @@ if cur_dir not in sys.path: sys.path.append(cur_dir)
 from engine import LunaVoxEngine
 from i18n import TRANSLATIONS
 from components.setup_page import SetupPage
+from lunavox.core.project import resolve_project_root
 
 class LunaVoxSetup(ctk.CTk):
     def __init__(self):
         super().__init__()
 
         self.lang = "en"
-        self.root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.root_dir = str(resolve_project_root(Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
         self.engine = LunaVoxEngine(self.root_dir)
 
         self.setup_ui()

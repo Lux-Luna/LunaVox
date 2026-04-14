@@ -1,4 +1,4 @@
-#include "onnx_audio_runtime.h"
+#include "audio_decoder.h"
 #include "logger.h"
 
 #include <algorithm>
@@ -14,13 +14,11 @@
 #include <vector>
 
 #include "onnxruntime_cxx_api.h"
-#include "ort_provider_policy.h"
+#include "provider_policy.h"
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
+#include <filesystem>
 
-namespace qwen3_tts {
+namespace lunavox {
 
 namespace {
 
@@ -55,24 +53,8 @@ Ort::Env & get_ort_env() {
     return holder->env;
 }
 
-#ifdef _WIN32
-std::wstring utf8_to_wide(const std::string & s) {
-    if (s.empty()) {
-        return std::wstring();
-    }
-    int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int) s.size(), nullptr, 0);
-    if (len <= 0) {
-        return std::wstring();
-    }
-    std::wstring w((size_t) len, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int) s.size(), &w[0], len);
-    return w;
-}
-#endif
-
 struct ort_session_data {
     Ort::Session session{nullptr};
-    std::unique_ptr<std::wstring> wide_path; // keep lifetime for Windows constructor args
     std::string provider_summary;
 };
 
@@ -112,12 +94,11 @@ bool create_session_impl(
         }
 
         auto * impl = new ort_session_data();
-#ifdef _WIN32
-        impl->wide_path = std::make_unique<std::wstring>(utf8_to_wide(model_path));
-        impl->session = Ort::Session(get_ort_env(), impl->wide_path->c_str(), opts);
-#else
-        impl->session = Ort::Session(get_ort_env(), model_path.c_str(), opts);
-#endif
+        // fs::path::c_str() returns const wchar_t* on Windows and const char*
+        // on POSIX, which matches ORTCHAR_T — so a single line covers both
+        // narrow and wide ORT entry points with no platform branch.
+        const std::filesystem::path model_fs_path = std::filesystem::u8path(model_path);
+        impl->session = Ort::Session(get_ort_env(), model_fs_path.c_str(), opts);
 
         Ort::AllocatorWithDefaultOptions allocator;
         size_t n_inputs = impl->session.GetInputCount();
@@ -158,37 +139,6 @@ void destroy_session_impl(void *& ptr) {
     auto * impl = as_session(ptr);
     delete impl;
     ptr = nullptr;
-}
-
-int64_t gcd64(int64_t a, int64_t b) {
-    while (b != 0) {
-        int64_t t = a % b;
-        a = b;
-        b = t;
-    }
-    return a < 0 ? -a : a;
-}
-
-inline float sinc(float x) {
-    if (std::fabs(x) < 1e-8f) {
-        return 1.0f;
-    }
-    float px = kPi * x;
-    return std::sin(px) / px;
-}
-
-inline float bessel_i0(float x) {
-    // Numerical approximation used by common Kaiser window implementations.
-    float sum = 1.0f;
-    float y = x * x / 4.0f;
-    float t = y;
-    int k = 1;
-    while (t > 1e-9f * sum) {
-        sum += t;
-        ++k;
-        t *= y / (float) (k * k);
-    }
-    return sum;
 }
 
 float hz_to_mel_slaney(float hz) {
@@ -416,59 +366,6 @@ void set_ort_debug_log(bool enabled) {
 bool ort_debug_log_enabled() {
     std::lock_guard<std::mutex> lock(g_ort_env_mu);
     return g_requested_log_level <= ORT_LOGGING_LEVEL_WARNING;
-}
-
-bool resample_windowed_sinc(
-    const float * input,
-    int32_t input_len,
-    int32_t input_rate,
-    std::vector<float> & output,
-    int32_t output_rate) {
-    output.clear();
-    if (!input || input_len <= 0 || input_rate <= 0 || output_rate <= 0) {
-        return false;
-    }
-    if (input_rate == output_rate) {
-        output.assign(input, input + input_len);
-        return true;
-    }
-
-    const int64_t g = gcd64(input_rate, output_rate);
-    const int64_t up = output_rate / g;
-    const int64_t down = input_rate / g;
-    const double ratio = (double) output_rate / (double) input_rate;
-    const int32_t out_len = std::max(1, (int32_t) std::llround((double) input_len * ratio));
-    output.assign((size_t) out_len, 0.0f);
-
-    const int taps_per_side = 16;
-    const float beta = 5.0f;
-    const float i0_beta = bessel_i0(beta);
-    const float cutoff = 1.0f / (float) std::max<int64_t>(up, down);
-
-    for (int32_t i = 0; i < out_len; ++i) {
-        const double src = (double) i * (double) input_rate / (double) output_rate;
-        const int32_t center = (int32_t) std::floor(src);
-        float sum = 0.0f;
-        float wsum = 0.0f;
-        for (int k = -taps_per_side; k <= taps_per_side; ++k) {
-            const int32_t idx = center + k;
-            if (idx < 0 || idx >= input_len) {
-                continue;
-            }
-            const float x = (float) (src - (double) idx);
-            const float z = (float) k / (float) taps_per_side;
-            const float win = bessel_i0(beta * std::sqrt(std::max(0.0f, 1.0f - z * z))) / i0_beta;
-            const float h = 2.0f * cutoff * sinc(2.0f * cutoff * x) * win;
-            sum += input[idx] * h;
-            wsum += h;
-        }
-        if (std::fabs(wsum) > 1e-8f) {
-            output[(size_t) i] = sum / wsum;
-        } else {
-            output[(size_t) i] = 0.0f;
-        }
-    }
-    return true;
 }
 
 bool CodecEncoderOnnx::load_model(const std::string & model_path, int32_t intra_threads) {
@@ -1271,4 +1168,4 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
     }
 }
 
-} // namespace qwen3_tts
+} // namespace lunavox

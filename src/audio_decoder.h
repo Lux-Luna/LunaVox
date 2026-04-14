@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace qwen3_tts {
+namespace lunavox {
 
 // Configure ORT runtime logging before creating any ONNX session.
 // false (default): ERROR only; true: WARNING and above.
@@ -138,12 +138,4 @@ private:
     int64_t t_state_trim_ms_ = 0;
 };
 
-// Windowed-sinc resampler (Kaiser window) for better quality than linear interpolation.
-bool resample_windowed_sinc(
-    const float * input,
-    int32_t input_len,
-    int32_t input_rate,
-    std::vector<float> & output,
-    int32_t output_rate);
-
-} // namespace qwen3_tts
+} // namespace lunavox

@@ -37,15 +37,22 @@ LunaVox 是一个面向 **Qwen3-TTS** 的高性能 C++ 推理引擎，外加一�
 | 主题 | 真源位置 |
 | --- | --- |
 | C++ 引擎实现 | `src/*.cpp` `src/*.h`（根 `src/`，**不是** Python 包） |
-| C API（对外稳定面） | `src/qwen3tts_c_api.{h,cpp}` |
-| C++ 构建系统 | `CMakeLists.txt` |
+| C API（对外稳定面） | `src/lunavox_c_api.{h,cpp}` |
+| C++ 构建系统 | `CMakeLists.txt`（`project(lunavox)`，所有目标 `lunavox_*`） |
+| 平台抽象（#ifdef 单一家） | `src/platform_utils.{h,cpp}` |
+| 音频 I/O (WAV + resample) | `src/audio_io.{h,cpp}` |
 | Python 包（CLI / 构建 / 模型工具链） | `src/lunavox/` |
 | CLI 入口 | `src/lunavox/cli/main.py`（`lunavox = lunavox.cli.main:run`） |
-| 构建驱动（跨平台） | `src/lunavox/build/{base,windows,linux,macos}.py` + `main.py` |
+| ctypes 运行时绑定（GUI / 脚本直调 C API） | `src/lunavox/runtime/binding.py` |
+| 构建驱动（跨平台） | `src/lunavox/build/{base,windows,linux,macos}.py` + `main.py` + factory in `__init__.py` |
 | 预编译库清单 | `src/lunavox/build/libs.json` |
-| 模型下载 / 转换流水线 | `src/lunavox/model/{downloader,pipeline,config}.py` + `model/conversion/` |
+| 模型目录（单一真源） | `src/lunavox/model/config.py`（`MODELS` + `ModelSpec`） |
+| 模型下载 / 转换流水线 | `src/lunavox/model/{downloader,pipeline}.py` + `model/conversion/` |
 | 依赖策略（按需安装 convert 组） | `src/lunavox/core/deps.py` |
-| GUI（customtkinter + pygame） | `GUI/main.py`、`GUI/components/`、`GUI/engine.py` |
+| Rich Console 单例 | `src/lunavox/core/ui.py` |
+| Session 日志 | `src/lunavox/core/logging.py`（`session_start` + `append`） |
+| Python 平台抽象 | `src/lunavox/core/platform.py` |
+| GUI | `GUI/main.py`、`GUI/components/`、`GUI/engine.py` — 通过 `lunavox.runtime` + `lunavox.*` 直接调用，不 subprocess |
 | 用户文档（英文） | `docs/en/{guide,install,technical,benchmark}/` |
 | 用户文档（中文） | `docs/zh/` |
 | 运行时规范 / 合成通路 | `docs/en/technical/{runtime_specs,synthesis_pathway}.md` |
@@ -54,7 +61,7 @@ LunaVox 是一个面向 **Qwen3-TTS** 的高性能 C++ 推理引擎，外加一�
 | 发布 CLI-only 源码分支 | GitHub `cli-only` 分支（不在本仓库内） |
 | 模型权重（本地缓存） | `models/{base,base_small,custom,custom_small,design}/` |
 | 参考音频 / 特征 | `ref/ref.wav`、`ref/ref_0.6B.json`、`ref/ref_1.7B.json` |
-| 构建产物 | `build/`（含 `qwen3-tts-cli[.exe]`） |
+| 构建产物 | `build/`（含 `lunavox-cli[.exe]`） |
 | 运行日志 | `logs/latest.log`（CLI 会话日志） |
 
 > C++ 源码在仓库根 `src/` 下直接平铺，而 Python 包在 `src/lunavox/` 下。修改时注意不要混淆两者——**根 `src/*.cpp` 不属于 `lunavox` Python 包**，`pyproject.toml` 的 `package-dir = { "" = "src" }` 只暴露 `lunavox/` 子目录。
@@ -63,30 +70,33 @@ LunaVox 是一个面向 **Qwen3-TTS** 的高性能 C++ 推理引擎，外加一�
 
 ```
 lunavox/
-├── CMakeLists.txt          # C++ 构建入口
+├── CMakeLists.txt          # C++ 构建入口（project(lunavox) + lunavox_* 目标）
 ├── pyproject.toml          # Python 包定义（name=lunavox, ver=2.1.6）
 ├── README.md               # 用户视角说明（英文）
 ├── 代办.txt                # 滚动 TODO（非正式，持续演进）
 ├── src/                    # C++ 引擎源码 + Python 包
-│   ├── main.cpp            # qwen3-tts-cli 可执行入口
-│   ├── qwen3_tts.{h,cpp}   # 顶层合成流水线
-│   ├── qwen3tts_c_api.*    # C ABI
-│   ├── llama_wrapper.*     # llama.cpp 封装
-│   ├── onnx_audio_runtime.*# ONNX Runtime 音频解码
-│   ├── ort_provider_policy.*# EP 选择策略（CUDA/DML/Vulkan/CoreML/CPU）
-│   ├── talker_predictor_llama.*# LLM 序列预测
-│   ├── text_tokenizer.*    # 文本前处理 / 语言检测
-│   ├── nvml_monitor.*      # GPU 监控
-│   ├── assets_manager.*    # 模型资产定位
-│   ├── model_profile.h     # 模型规格描述
+│   ├── main.cpp                  # lunavox-cli 可执行入口
+│   ├── lunavox_engine.{h,cpp}    # 顶层合成流水线（lunavox::Engine）
+│   ├── lunavox_c_api.{h,cpp}     # C ABI facade (lunavox.dll / liblunavox)
+│   ├── platform_utils.{h,cpp}    # 唯一允许 #ifdef _WIN32/__APPLE__ 的文件
+│   ├── audio_io.{h,cpp}          # WAV load/save + windowed-sinc resample
+│   ├── audio_decoder.{h,cpp}     # ONNX decoder session（原 onnx_audio_runtime）
+│   ├── provider_policy.{h,cpp}   # EP 选择（唯一入口，其他文件禁止 AppendExecutionProvider*）
+│   ├── talker_predictor_llama.*  # LLM 序列预测
+│   ├── llama_wrapper.*           # llama.cpp 动态加载封装
+│   ├── text_tokenizer.*          # 文本前处理 / 语言检测
+│   ├── nvml_monitor.*            # GPU 监控
+│   ├── assets_manager.*          # 模型资产定位
+│   ├── model_profile.h           # 模型规格描述 (lunavox::ModelProfile)
+│   ├── string_utils.h / timing_utils.h / format_utils.h
 │   ├── json_utils.h / logger.*
-│   └── lunavox/            # Python 包
-│       ├── cli/main.py     # typer app（bootstrap/pull-model/convert/build/download-libs/doctor）
-│       ├── build/          # 跨平台构建驱动（base.py + windows/linux/macos）
-│       ├── core/           # project 定位、deps 管理、console UI
-│       └── model/          # downloader、pipeline、config + conversion/
-│           └── conversion/ # torch→onnx/gguf/embedding 导出与校验
-├── GUI/                    # customtkinter 桌面 GUI
+│   └── lunavox/                  # Python 包
+│       ├── cli/main.py           # typer app
+│       ├── runtime/binding.py    # ctypes 绑定 → liblunavox
+│       ├── build/                # base/windows/linux/macos + factory
+│       ├── core/                 # ui, logging, project, platform, deps
+│       └── model/                # config(MODELS), downloader, pipeline + conversion/
+├── GUI/                    # customtkinter 桌面 GUI（薄壳，通过 lunavox.runtime 直调 C API）
 │   ├── main.py  main_setup.py  engine.py  i18n.py
 │   └── components/{header,report,setup_page}.py
 ├── lib/                    # 运行时库（ONNX Runtime / llama.cpp），由 download-libs 填充
@@ -101,15 +111,21 @@ lunavox/
 
 ### 任务路由（常见改动 → 首选入口）
 
-- **改 C++ 推理路径 / 合成质量 / RTF**：`src/qwen3_tts.cpp`、`src/talker_predictor_llama.cpp`、`src/onnx_audio_runtime.cpp`
-- **改后端策略（EP 选择 / DML / Vulkan / CUDA）**：`src/ort_provider_policy.cpp`
+- **改 C++ 推理路径 / 合成质量 / RTF**：`src/lunavox_engine.cpp`、`src/talker_predictor_llama.cpp`、`src/audio_decoder.cpp`
+- **改后端策略（EP 选择 / DML / Vulkan / CUDA）**：`src/provider_policy.cpp`（唯一入口）
+- **改平台差异 (#ifdef / mmap / LoadLibrary / argv / process memory)**：`src/platform_utils.{h,cpp}` —— 其他 C++ 文件禁止出现 `#ifdef _WIN32/__APPLE__/__linux__`
 - **改文本前处理 / 语言检测**：`src/text_tokenizer.cpp`
+- **改音频 I/O (WAV 读写、resample)**：`src/audio_io.{h,cpp}`
 - **改 CLI 命令 / 参数**：`src/lunavox/cli/main.py`
-- **改构建流程（编译、拷 DLL、平台差异）**：`src/lunavox/build/`
+- **改构建流程（编译、拷 DLL、平台差异）**：`src/lunavox/build/`（base + windows/linux/macos + `get_builder_class` 工厂）
 - **改运行时库下载源**：`src/lunavox/build/libs.json` + `lib_downloader.py`
+- **改模型目录清单**：`src/lunavox/model/config.py`（`MODELS` 字典 + `ModelSpec`）—— `downloader.py` 和 CLI 都从这里读
 - **改模型下载 / 转换 / 量化**：`src/lunavox/model/`，特别是 `conversion/`
-- **改 GUI**：`GUI/`（不要触碰 C++ 或 Python 包，除非真的必要）
-- **改 C ABI**：`src/qwen3tts_c_api.*`——注意这是稳定对外面；虽然不保留兼容，也请在同一次改动里同步所有调用方
+- **改 Python 平台差异（`sys.platform`）**：`src/lunavox/core/platform.py`（唯一入口；build factory 是允许的例外）
+- **改 Console / 日志**：`src/lunavox/core/ui.py`（Rich 单例）+ `src/lunavox/core/logging.py`（`session_start` / `append`）
+- **改 GUI**：`GUI/`（薄壳，通过 `lunavox.runtime.Engine` + `lunavox.*` 直调；禁止 subprocess）
+- **改 ctypes 绑定**：`src/lunavox/runtime/binding.py`（随 C API 变更同步）
+- **改 C ABI**：`src/lunavox_c_api.*`——稳定对外面，改动必须同步 `src/lunavox/runtime/binding.py`、`GUI/engine.py` 和任何外部绑定
 - **改依赖自动安装策略**：`src/lunavox/core/deps.py`
 
 ## 5. Commands
@@ -139,13 +155,13 @@ lunavox doctor               # 环境自检
 ```bash
 cmake -S . -B build -G Ninja
 cmake --build build -j
-# 产物：build/qwen3-tts-cli[.exe]
+# 产物：build/lunavox-cli[.exe]
 ```
 
 ### 推理冒烟测试
 ```bash
 # Voice Cloning（最小闭环）
-./build/qwen3-tts-cli.exe \
+./build/lunavox-cli.exe \
   -m models/base_small \
   -r ref/ref_0.6B.json \
   -t "Hello from LunaVox." \
@@ -169,25 +185,31 @@ python GUI/main.py
 
 **C++（根 `src/`）**
 - C++17，`CMAKE_CXX_EXTENSIONS OFF`。不要引入 C++20 特性。
-- 所有对外暴露的运行时错误都走 `logger.h`，不要裸 `std::cerr`。
-- ONNX Runtime EP 选择集中在 `ort_provider_policy.cpp`，其他位置禁止直接 `SessionOptions::AppendExecutionProvider_*`。
-- C API 文件（`qwen3tts_c_api.*`）必须保持 `extern "C"`、无 STL 类型穿越 ABI。
+- **命名空间 `lunavox::`**。所有顶层类型进这个命名空间，没有例外（包括 C API 内部实现）。
+- 所有对外暴露的运行时错误都走 `logger.h`，不要裸 `std::cerr` / `fprintf(stderr,...)`。例外：`main.cpp` 的 `--help` 可以直接 stdout；`cli/stats_reporter` 的成功消息可以 stdout。
+- ONNX Runtime EP 选择集中在 `provider_policy.cpp`，其他位置禁止直接 `SessionOptions::AppendExecutionProvider_*`。
+- C API 文件（`lunavox_c_api.*`）必须保持 `extern "C"`、无 STL 类型穿越 ABI。改动 C API 时必须同步 `src/lunavox/runtime/binding.py`。
+- **所有 `#ifdef _WIN32/__APPLE__/__linux__`** 只允许出现在 `src/platform_utils.cpp`。其他文件需要平台分支时，往 `platform_utils.{h,cpp}` 加接口。
+- 动态库加载必须走 `platform::dynlib_open/close/symbol`。Windows 下使用 `LOAD_WITH_ALTERED_SEARCH_PATH`（已封装），不要直接调 `LoadLibraryA`。
 - Windows 上不启用 OpenMP（见 `CMakeLists.txt`），不要在代码里假设 `_OPENMP` 已定义。
 - 日志输出必须走项目 `logger`，以保证被写入 `logs/latest.log`。
 
 **Python 包（`src/lunavox/`）**
 - `from __future__ import annotations`；类型注解用 `Optional`、`Path`。
-- CLI 用 **typer**（不是 argparse / click），富文本用 **rich**（`lunavox.core.ui.console`）。
+- CLI 用 **typer**（不是 argparse / click），富文本用 **rich** 但只从 `lunavox.core.ui.console` 导入——**禁止**在模块顶部 `Console()`。
 - 所有 CLI 命令必须通过 `_state(ctx)` 获取 `RuntimeState`，不要直接读 `ctx.obj`。
+- 日志必须走 `lunavox.core.logging` (`session_start`/`append`)，不要 `open(log_file, "a")`。
 - 依赖按需安装走 `core.deps.ensure_dependency_group`，不要在模块顶部 `import torch`（会污染纯 CLI 路径）。
-- 路径一律 `pathlib.Path`，不混用字符串路径。
+- 路径一律 `pathlib.Path`，不混用字符串路径。路径解析走 `lunavox.core.project.resolve_project_root`。
 - 用户可见字符串默认英文（README / CLI help / 日志）；中文仅限 `docs/zh/` 与 `代办.txt`。
-- 平台分支通过 `platform.system()` / 构建驱动子类，不要写内联 `if sys.platform == ...` 散落各处。
+- 平台差异走 `lunavox.core.platform` (`shared_lib_name`, `executable_suffix`, `is_*`)。`build/__init__.py` 的 `get_builder_class`/`get_resolver_class` 工厂是允许的例外。
+- 模型目录的唯一真源是 `lunavox.model.config.MODELS` + `ModelSpec`。新增模型只改 `config.py`。
 
 **GUI（`GUI/`）**
 - customtkinter + pygame，i18n 走 `GUI/i18n.py`。
 - UI 组件按页面拆入 `components/`，不要把逻辑塞进 `main.py`。
-- 不要在 GUI 里重新实现 CLI 已有的构建 / 拉模型逻辑——调用 `lunavox.*` 模块，不要 `subprocess` 自己。
+- **薄壳**：GUI 不自己做业务。合成走 `lunavox.runtime.Engine`（ctypes 直调 C API），build/pull-model/download-libs 走 `lunavox.build.main.run_build` / `lunavox.model.ModelDownloader` / `lunavox.build.lib_downloader.download_platform_libs`。
+- **禁止 `subprocess`**：没有任何 `subprocess.Popen(['lunavox', ...])` 或调 `lunavox-cli`。后台长任务用 `threading.Thread(daemon=True)` + `tk.after(0, ...)` 回调主线程。
 
 **通用**
 - 默认 **不写注释**。只有 WHY 不明显（硬件约束、平台差异、兼容性假设、非直觉算法）才加一行。
@@ -201,8 +223,8 @@ python GUI/main.py
 | 改动类型 | 最小验证 |
 | --- | --- |
 | C++ 引擎 | `cmake --build build -j` 通过 + Voice Cloning 冒烟 + `--stats-json` 里 RTF 未劣化 |
-| 后端策略（`ort_provider_policy`） | 至少在一个 GPU EP 和 CPU EP 下分别跑通 |
-| 模型转换 (`conversion/`) | `validate_onnx_models.py` 通过，产物能被 `qwen3-tts-cli` 加载 |
+| 后端策略（`provider_policy`） | 至少在一个 GPU EP 和 CPU EP 下分别跑通 |
+| 模型转换 (`conversion/`) | `validate_onnx_models.py` 通过，产物能被 `lunavox-cli` 加载 |
 | CLI | `lunavox doctor` 通过 + 改动的子命令走一次 |
 | 构建驱动 | 至少在当前宿主平台跑完 `lunavox build --clean` |
 | GUI | 手动启动 + 目标交互路径 + 检查 `logs/latest.log` 无异常栈 |
@@ -222,7 +244,7 @@ python GUI/main.py
 - 修改 `代办.txt`——那是用户自己的滚动清单，不要主动整理它，除非用户让你加/划掉某项。
 
 **需要先确认**：
-- C ABI (`qwen3tts_c_api.*`) 的签名变更（虽然不保留兼容，但 GUI / CLI / 外部绑定都依赖它，改动面大）
+- C ABI (`lunavox_c_api.*`) 的签名变更（虽然不保留兼容，但 GUI / CLI / 外部绑定都依赖它，改动面大）
 - `libs.json` 中运行时库的版本切换（会影响所有平台用户的下一次 `download-libs`）
 - `pull-model` 指向的 HF 仓库名 / 路径
 - 删除 `src/*.cpp` 或 `src/lunavox/` 下整块文件
@@ -272,6 +294,8 @@ python GUI/main.py
 - [docs/en/guide/usage_tutorial.md](docs/en/guide/usage_tutorial.md) — 推理三模式用例
 - [docs/en/technical/runtime_specs.md](docs/en/technical/runtime_specs.md) — 运行时规格
 - [docs/en/technical/synthesis_pathway.md](docs/en/technical/synthesis_pathway.md) — 合成通路细节
+- [docs/en/technical/model_profile_schema.md](docs/en/technical/model_profile_schema.md) — `ModelProfile` 字段契约（C++ ↔ Python ↔ JSON）
+- [docs/en/technical/stats_schema.md](docs/en/technical/stats_schema.md) — `--stats-json` / `LunavoxAudio` 字段契约
 - [docs/en/install/cuda12_windows.md](docs/en/install/cuda12_windows.md) / [cuda13_windows.md](docs/en/install/cuda13_windows.md) — CUDA 依赖
 - [docs/en/benchmark/windows_performance.md](docs/en/benchmark/windows_performance.md) — Windows 性能基准
 - [docs/zh/](docs/zh/) — 中文镜像文档

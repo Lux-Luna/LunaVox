@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace qwen3_tts {
+namespace lunavox {
 
 struct tokenizer_config {
     int32_t vocab_size = 151936;
@@ -53,5 +53,5 @@ private:
     static bool is_cjk(uint32_t cp);
 };
 
-} // namespace qwen3_tts
+} // namespace lunavox
 

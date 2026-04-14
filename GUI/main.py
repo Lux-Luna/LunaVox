@@ -2,6 +2,7 @@ import customtkinter as ctk
 import os
 import sys
 import threading
+from pathlib import Path
 
 # Add current dir to path to import components
 cur_dir = os.path.dirname(os.path.abspath(__file__))
@@ -11,14 +12,16 @@ from engine import LunaVoxEngine
 from i18n import TRANSLATIONS
 from components.header import HeaderFrame
 from components.report import ReportFrame
+from lunavox.core.project import resolve_project_root
 
 class LunaVoxTTS(ctk.CTk):
     def __init__(self):
         super().__init__()
 
         self.lang = "en"
-        # Intelligent pathing: Support both project root and dist root
-        self.root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # Resolve the LunaVox project root via the canonical helper so
+        # GUI / CLI / tests all agree on where models and build/ live.
+        self.root_dir = str(resolve_project_root(Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
         self.engine = LunaVoxEngine(self.root_dir)
         self.models = self.engine.discover_models()
         self.current_model = None
@@ -26,6 +29,16 @@ class LunaVoxTTS(ctk.CTk):
 
         self.setup_ui()
         self.update_texts()
+        # Release the C++ engine cleanly on window close so the DLL is
+        # not left holding mmap'd model files when the process exits.
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _on_close(self):
+        try:
+            self.engine.shutdown()
+        except Exception:
+            pass
+        self.destroy()
 
     def setup_ui(self):
         self.title("LunaVox TTS")
@@ -379,31 +392,38 @@ class LunaVoxTTS(ctk.CTk):
         self.generate_btn.configure(state="disabled")
 
         def run():
-            proc = self.engine.run_synthesis(args)
-            full_output = ""
-            for line in proc.stdout:
-                full_output += line
-                self.after(0, lambda l=line: self.status_label.configure(text=l.strip()[-50:]))
-            
-            proc.wait()
-            metrics = self.engine.parse_metrics(full_output)
-            
-            if proc.returncode == 0:
-                self.after(0, lambda: self.status_label.configure(text=self.t("status_success"), text_color="green"))
+            try:
+                result = self.engine.run_synthesis(args)
+            except Exception as err:
+                msg = str(err)
+                self.after(0, lambda m=msg: self.status_label.configure(text=m[:80], text_color="red"))
+                self.after(0, lambda: self.generate_btn.configure(state="normal"))
+                return
+
+            # Persist the PCM to the requested output path so the report
+            # view can load it back via the existing audio player.
+            try:
                 out_path = args.get("output", "output/out.wav")
-                abs_out = str((self.engine.root_dir / out_path).absolute())
-                backend_info = self.engine.get_backend_info()
-                expected = backend_info.get("llama", {}).get("backend", "") if backend_info else ""
-                self.after(0, lambda m=metrics, p=abs_out, e=expected, s=args["text"]: self.report.display(m, p, e, s))
-                self.after(0, lambda m=metrics: self.header.check_backends(m))
-                if self.header.auto_play_var.get():
-                    self.after(300, lambda: self.report.play_audio())
-            else:
-                self.after(0, lambda: self.status_label.configure(text=self.t("status_error"), text_color="red"))
-            
+                abs_out = str(self.engine.save_audio(result, out_path))
+            except Exception as err:
+                msg = f"save failed: {err}"
+                self.after(0, lambda m=msg: self.status_label.configure(text=m, text_color="red"))
+                self.after(0, lambda: self.generate_btn.configure(state="normal"))
+                return
+
+            metrics = self.engine.format_metrics(result)
+            backend_info = self.engine.get_backend_info()
+            expected = backend_info.get("llama", {}).get("backend", "") if backend_info else ""
+
+            self.after(0, lambda: self.status_label.configure(text=self.t("status_success"), text_color="green"))
+            self.after(0, lambda m=metrics, p=abs_out, e=expected, s=args["text"]:
+                       self.report.display(m, p, e, s))
+            self.after(0, lambda m=metrics: self.header.check_backends(m))
+            if self.header.auto_play_var.get():
+                self.after(300, lambda: self.report.play_audio())
             self.after(0, lambda: self.generate_btn.configure(state="normal"))
 
-        threading.Thread(target=run).start()
+        threading.Thread(target=run, daemon=True).start()
 
     def on_platform_change(self, val):
         self.platform = val

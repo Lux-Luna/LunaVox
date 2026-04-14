@@ -1,6 +1,6 @@
 # LunaVox CLI Usage Guide
 
-This tutorial details the command format, core parameters, and constraints for the LunaVox C++ inference engine (`qwen3-tts-cli.exe`).
+This tutorial details the command format, core parameters, and constraints for the LunaVox C++ inference engine (`lunavox-cli.exe`).
 
 > [!IMPORTANT]
 > LunaVox CLI uses a "Command + Options" structure. Different synthesis features are toggled via the `--mode` parameter. If `--mode` is omitted, the system automatically selects based on the `model_type` in `model_profile.json`.
@@ -11,7 +11,7 @@ This tutorial details the command format, core parameters, and constraints for t
 Simple synthesis, only applicable to `base` type models.
 
 ```bash
-./build/qwen3-tts-cli `
+./build/lunavox-cli `
   -m models/base_small `
   -t "What do you mean that I'm not real?" `
   -o out.wav
@@ -27,7 +27,7 @@ Mimic a specific voice by providing reference audio or features. **This feature 
 
 ### 2.1 Using Reference Audio
 ```bash
-./build/qwen3-tts-cli `
+./build/lunavox-cli `
   -m models/base_small `
   -r ref/ref.wav `
   -t "Hello world." `
@@ -36,7 +36,7 @@ Mimic a specific voice by providing reference audio or features. **This feature 
 
 ### 2.2 Using Reference Features (JSON)
 ```bash
-./build/qwen3-tts-cli `
+./build/lunavox-cli `
   --mode clone `
   -m models/base_small `
   -r ref/ref_0.6B.json `
@@ -50,7 +50,7 @@ Mimic a specific voice by providing reference audio or features. **This feature 
 Use specific expert speaker IDs. **This feature only works for `custom` type models.**
 
 ```bash
-./build/qwen3-tts-cli `
+./build/lunavox-cli `
   --mode custom `
   -m models/custom `
   --speaker Vivian `
@@ -68,7 +68,7 @@ Use specific expert speaker IDs. **This feature only works for `custom` type mod
 Dynamically design a new voice based on text description. **This feature only works for `design` type models.**
 
 ```bash
-./build/qwen3-tts-cli `
+./build/lunavox-cli `
   --mode design `
   -m models/design `
   --instruct "A warm female voice, speaking gently with a hint of a smile." `

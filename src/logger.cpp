@@ -4,7 +4,7 @@
 #include <iostream>
 #include <cstring>
 
-namespace qwen3_tts {
+namespace lunavox {
 
 Logger & Logger::instance() {
     static Logger logger;
@@ -17,6 +17,11 @@ bool Logger::init(const char * filename) {
     }
     file_stream_.open(filename, std::ios::out | std::ios::trunc);
     return file_stream_.is_open();
+}
+
+void Logger::set_external_sink(ExternalLogSink sink) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    external_sink_ = sink;
 }
 
 
@@ -118,6 +123,9 @@ void Logger::log_backend(int backend_level, const char * text) {
         file_stream_ << "[DEBUG] " << buf << std::endl;
         file_stream_.flush();
     }
+    if (external_sink_) {
+        external_sink_((int) LogLevel::DEBUG_LOG, buf);
+    }
     if ((int)LogLevel::DEBUG_LOG >= (int)level_) {
         std::cout << "[DEBUG] " << buf << std::endl;
     }
@@ -152,6 +160,10 @@ void Logger::log(LogLevel level, const char * fmt, ...) {
         file_stream_.flush();
     }
 
+    if (external_sink_) {
+        external_sink_((int) level, buf);
+    }
+
     if ((int)level >= (int)level_ || level == LogLevel::USER_LOG) {
         const char * color = "";
         const char * reset = "\033[0m";
@@ -169,4 +181,4 @@ void Logger::log(LogLevel level, const char * fmt, ...) {
     }
 }
 
-} // namespace qwen3_tts
+} // namespace lunavox

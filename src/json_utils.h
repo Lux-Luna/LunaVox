@@ -1,5 +1,5 @@
-#ifndef QWEN3_TTS_JSON_UTILS_H
-#define QWEN3_TTS_JSON_UTILS_H
+#ifndef LUNAVOX_JSON_UTILS_H
+#define LUNAVOX_JSON_UTILS_H
 
 #include <string>
 #include <vector>
@@ -12,47 +12,16 @@
 #include <cstdlib>
 #include <cerrno>
 
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
+#include "platform_utils.h"
 
-namespace qwen3_tts {
-
-/**
- * Helper: Get the directory of the currently running executable.
- */
-static inline std::string get_executable_dir() {
-#ifdef _WIN32
-    char path[MAX_PATH];
-    DWORD size = GetModuleFileNameA(NULL, path, MAX_PATH);
-    if (size == 0) return ".";
-    std::string s(path);
-    size_t last_slash = s.find_last_of("\\/");
-    if (last_slash != std::string::npos) return s.substr(0, last_slash);
-    return ".";
-#else
-    char path[1024];
-    ssize_t count = readlink("/proc/self/exe", path, sizeof(path));
-    if (count != -1) {
-        std::string s(path, count);
-        size_t last_slash = s.find_last_of("/");
-        if (last_slash != std::string::npos) return s.substr(0, last_slash);
-    }
-    return ".";
-#endif
-}
+namespace lunavox {
 
 /**
  * Helper: Try to find metadata.json near the binary or via environment
  */
 static inline std::string find_metadata_json() {
-    std::string exe_dir = get_executable_dir();
-    const char* lib_dir_env = std::getenv("QWEN3_TTS_LIB_DIR");
+    std::string exe_dir = platform::executable_dir();
+    const char* lib_dir_env = std::getenv("LUNAVOX_LIB_DIR");
 
     std::vector<std::string> p_list = {
         "metadata.json",                    // CWD
@@ -267,6 +236,6 @@ static inline bool json_extract_flat_int_array(const std::string & json, const s
     return depth == 0;
 }
 
-} // namespace qwen3_tts
+} // namespace lunavox
 
-#endif // QWEN3_TTS_JSON_UTILS_H
+#endif // LUNAVOX_JSON_UTILS_H
