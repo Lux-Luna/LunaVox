@@ -19,13 +19,21 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
-from collections.abc import Callable
+import queue
+import threading
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Optional, Union
 
 from . import _capi
 from .errors import LunavoxSynthesisError
-from .params import SynthesisMode, SynthesisParams, SynthesisResult, SynthesisStats
+from .params import (
+    SynthesisChunk,
+    SynthesisMode,
+    SynthesisParams,
+    SynthesisResult,
+    SynthesisStats,
+)
 from .voice import Voice
 
 LogCallback = Callable[[int, str], None]
@@ -272,3 +280,106 @@ class Engine:
         err_ptr = self._lib.lunavox_get_error(self.handle)
         msg = err_ptr.decode("utf-8", errors="replace") if err_ptr else "unknown error"
         raise LunavoxSynthesisError(msg)
+
+    # --- streaming synthesis -------------------------------------------
+
+    def synthesize_stream(
+        self,
+        text: str,
+        voice: Optional[Voice] = None,
+        params: Optional[SynthesisParams] = None,
+    ) -> Iterator[SynthesisChunk]:
+        """Stream PCM chunks as they become available during synthesis.
+
+        Yields :class:`SynthesisChunk` objects. The terminal chunk has
+        ``is_last=True`` and carries the full :class:`SynthesisStats`
+        for the run. Only ``Voice.base()`` is supported in Phase 5A;
+        other voice modes raise :class:`NotImplementedError` until the
+        Phase 5B C++ batching refactor lands.
+
+        Implementation detail — the C engine fires its audio chunk
+        callback from the decoder worker thread. That callback runs
+        under the Python GIL (ctypes trampolines acquire it) but the
+        Python code in the callback must stay short: we only copy the
+        slice into a numpy array and push it onto a ``queue.Queue``.
+        The main thread drives the C synthesize call from a background
+        worker and this generator drains the queue.
+        """
+        import numpy as np
+
+        v = voice if voice is not None else Voice.base()
+        if v.mode is not SynthesisMode.BASE:
+            raise NotImplementedError(
+                f"Streaming synthesis is Phase 5A base-mode only; got {v.mode.value}. "
+                "Other voice modes will gain streaming in 5B."
+            )
+
+        cp, _held = _to_c_params(params)
+        chunk_queue: queue.Queue[Any] = queue.Queue(maxsize=64)
+        SENTINEL = object()  # noqa: N806
+
+        def _on_chunk(
+            samples_ptr: Any,
+            n_samples: int,
+            is_last: int,
+            _user: Optional[int],
+        ) -> None:
+            # Copy the slice into a standalone ndarray before returning:
+            # the C pointer is only valid for the duration of this call.
+            if n_samples > 0 and samples_ptr:
+                arr_type = ctypes.c_float * n_samples
+                buf = ctypes.cast(samples_ptr, ctypes.POINTER(arr_type))
+                audio = np.frombuffer(memoryview(buf.contents), dtype=np.float32).copy()
+            else:
+                audio = np.empty(0, dtype=np.float32)
+            chunk_queue.put((audio, bool(is_last)))
+
+        cb_trampoline = _capi.AUDIO_CHUNK_CALLBACK_T(_on_chunk)
+        sr_holder: dict[str, int] = {"rate": 0}
+        stats_holder: dict[str, Optional[SynthesisStats]] = {"stats": None}
+        err_holder: dict[str, Optional[BaseException]] = {"err": None}
+
+        def _worker() -> None:
+            try:
+                ptr = self._lib.lunavox_synthesize_streaming(
+                    self.handle,
+                    text.encode("utf-8"),
+                    ctypes.byref(cp),
+                    cb_trampoline,
+                    None,
+                )
+                self._raise_for_null(ptr)
+                # The full cumulative audio is still returned here; we
+                # only keep the stats since callers consumed the chunks
+                # progressively through the queue.
+                result = _consume_audio(ptr, SynthesisMode.BASE)
+                sr_holder["rate"] = result.sample_rate
+                stats_holder["stats"] = result.stats
+            except BaseException as err:
+                err_holder["err"] = err
+            finally:
+                chunk_queue.put(SENTINEL)
+
+        worker = threading.Thread(target=_worker, daemon=True, name="lunavox-stream")
+        worker.start()
+
+        # Keep a reference to the trampoline so the GC doesn't drop the
+        # C-visible callback while synthesis is still running.
+        _keep_alive = cb_trampoline  # noqa: F841
+
+        try:
+            while True:
+                item = chunk_queue.get()
+                if item is SENTINEL:
+                    break
+                audio, is_last = item
+                yield SynthesisChunk(
+                    audio=audio,
+                    sample_rate=sr_holder["rate"] or int(self.sample_rate),
+                    is_last=is_last,
+                    stats=stats_holder["stats"] if is_last else None,
+                )
+        finally:
+            worker.join(timeout=60.0)
+            if err_holder["err"] is not None:
+                raise err_holder["err"]

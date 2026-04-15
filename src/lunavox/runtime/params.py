@@ -80,6 +80,25 @@ class SynthesisResult:
     mode: SynthesisMode
 
 
+@dataclass
+class SynthesisChunk:
+    """One PCM slice produced by :meth:`Engine.synthesize_stream`.
+
+    ``audio`` is a ``numpy.float32`` ndarray — the new samples produced
+    for this chunk, not a running total. ``is_last`` is ``True`` for
+    exactly one chunk per stream (the terminal one). On the terminal
+    chunk ``stats`` is populated with the full per-run timing and
+    memory snapshot pulled from the C engine once synthesis finished;
+    it is ``None`` on every intermediate chunk so callers can key the
+    end-of-stream signal off either ``is_last`` or ``stats is not None``.
+    """
+
+    audio: Any
+    sample_rate: int
+    is_last: bool
+    stats: Optional[SynthesisStats] = None
+
+
 def default_params() -> SynthesisParams:
     """Return a fresh :class:`SynthesisParams` with the C-defined defaults."""
     return SynthesisParams()

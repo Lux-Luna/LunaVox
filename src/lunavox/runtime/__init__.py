@@ -26,6 +26,7 @@ from ._capi import library_path
 from .engine import Engine, LogCallback
 from .errors import LunavoxLibraryError, LunavoxSynthesisError
 from .params import (
+    SynthesisChunk,
     SynthesisMode,
     SynthesisParams,
     SynthesisResult,
@@ -39,6 +40,7 @@ __all__ = [
     "LogCallback",
     "LunavoxLibraryError",
     "LunavoxSynthesisError",
+    "SynthesisChunk",
     "SynthesisMode",
     "SynthesisParams",
     "SynthesisResult",

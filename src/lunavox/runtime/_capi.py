@@ -66,6 +66,18 @@ class CAudio(ctypes.Structure):
 # Matches enum LunavoxLogLevel in lunavox_c_api.h: (level, utf8 message, user ptr)
 LOG_CALLBACK_T = ctypes.CFUNCTYPE(None, ctypes.c_int, ctypes.c_char_p, ctypes.c_void_p)
 
+# Streaming audio chunk callback — fired from the C++ decoder worker
+# thread as each PCM slice becomes available. Signature matches
+# LunavoxAudioChunkCallback in lunavox_c_api.h:
+#   (const float * samples, int32_t n_samples, int32_t is_last, void * user_data)
+AUDIO_CHUNK_CALLBACK_T = ctypes.CFUNCTYPE(
+    None,
+    ctypes.POINTER(ctypes.c_float),
+    ctypes.c_int32,
+    ctypes.c_int32,
+    ctypes.c_void_p,
+)
+
 
 # ---------------------------------------------------------------------------
 # Library loader — process-wide, idempotent
@@ -217,6 +229,18 @@ def _bind_symbols(lib: ctypes.CDLL) -> None:
         ctypes.POINTER(CParams),
     ]
     lib.lunavox_synthesize_design.restype = audio_ptr
+
+    # Streaming base-mode synthesis. Same return type as the non-streaming
+    # variant; the chunk callback fires during the call for progressive
+    # PCM delivery, and the cumulative audio is still returned at the end.
+    lib.lunavox_synthesize_streaming.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.POINTER(CParams),
+        AUDIO_CHUNK_CALLBACK_T,
+        ctypes.c_void_p,
+    ]
+    lib.lunavox_synthesize_streaming.restype = audio_ptr
 
     lib.lunavox_set_log_callback.argtypes = [LOG_CALLBACK_T, ctypes.c_void_p]
     lib.lunavox_set_log_callback.restype = None
