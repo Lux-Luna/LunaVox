@@ -1,32 +1,35 @@
 """Widget-level tests for the GUI.
 
-Constructors only — no mainloop, no long-lived CTk root between tests
-(each test creates and destroys its own to keep tkinter state clean).
+Constructors only — no mainloop, no per-test CTk root. Every test
+receives the session-scoped ``gui_root`` fixture defined in the
+top-level conftest, which avoids hammering Tcl interpreter bootstrap
+across the suite.
 """
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
-ctk = pytest.importorskip(
+pytest.importorskip(
     "customtkinter",
     reason="GUI tests need the [gui] extra (customtkinter)",
     exc_type=ImportError,
 )
 
 
-def test_param_slider_group_roundtrip():
+def test_param_slider_group_roundtrip(gui_root: Any):
     from lunavox.gui.widgets.param_slider import FieldSpec, ParamSliderGroup
 
-    root = ctk.CTk()
+    group = ParamSliderGroup(
+        gui_root,
+        fields=[
+            FieldSpec("temperature", "Temperature", 0.0, 1.5, 0.05, 0.6),
+            FieldSpec("top_k", "Top-k", 1, 200, 1, 50, cast=int),
+        ],
+    )
     try:
-        group = ParamSliderGroup(
-            root,
-            fields=[
-                FieldSpec("temperature", "Temperature", 0.0, 1.5, 0.05, 0.6),
-                FieldSpec("top_k", "Top-k", 1, 200, 1, 50, cast=int),
-            ],
-        )
         values = group.values()
         assert isinstance(values["temperature"], float)
         assert values["temperature"] == pytest.approx(0.6)
@@ -38,29 +41,29 @@ def test_param_slider_group_roundtrip():
         assert updated["temperature"] == pytest.approx(0.9)
         assert updated["top_k"] == 20
     finally:
-        root.destroy()
+        # Tear down just this widget subtree so the next test gets a
+        # clean slate on the shared root.
+        group.destroy()
 
 
-def test_stats_card_update_with_none_resets():
+def test_stats_card_update_with_none_resets(gui_root: Any):
     from lunavox.gui.i18n import Translator
     from lunavox.gui.widgets.stats_card import StatsCard
 
-    root = ctk.CTk()
+    card = StatsCard(gui_root, translator=Translator(lang="en"))
     try:
-        card = StatsCard(root, translator=Translator(lang="en"))
         card.update_stats(None)  # should not raise
     finally:
-        root.destroy()
+        card.destroy()
 
 
-def test_stats_card_formats_a_real_stats_object():
+def test_stats_card_formats_a_real_stats_object(gui_root: Any):
     from lunavox.gui.i18n import Translator
     from lunavox.gui.widgets.stats_card import StatsCard
     from lunavox.runtime import SynthesisStats
 
-    root = ctk.CTk()
+    card = StatsCard(gui_root, translator=Translator(lang="en"))
     try:
-        card = StatsCard(root, translator=Translator(lang="en"))
         stats = SynthesisStats(
             t_tokenize_ms=12,
             t_encode_ms=34,
@@ -76,4 +79,4 @@ def test_stats_card_formats_a_real_stats_object():
         # empty placeholder ``—`` after update.
         assert card._rows["rtf"].cget("text") != "—"
     finally:
-        root.destroy()
+        card.destroy()

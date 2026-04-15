@@ -8,9 +8,11 @@ opening a real window.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
-ctk = pytest.importorskip(
+pytest.importorskip(
     "customtkinter",
     reason="GUI tests need the [gui] extra (customtkinter)",
     exc_type=ImportError,
@@ -34,18 +36,17 @@ def test_translator_fallback_to_english():
     assert t("definitely.not.a.real.key") == "definitely.not.a.real.key"
 
 
-def test_voice_picker_builds_base_voice_without_window():
+def test_voice_picker_builds_base_voice_without_window(gui_root: Any):
     """VoicePicker must not crash on a headless CTk root (only widget
     construction — we don't call mainloop)."""
     from lunavox.gui.i18n import Translator
     from lunavox.gui.widgets.voice_picker import VoicePicker
     from lunavox.runtime import SynthesisMode
 
-    root = ctk.CTk()
+    picker = VoicePicker(gui_root, translator=Translator(lang="en"))
     try:
-        picker = VoicePicker(root, translator=Translator(lang="en"))
         voice = picker.build_voice()
         assert voice is not None
         assert voice.mode is SynthesisMode.BASE
     finally:
-        root.destroy()
+        picker.destroy()
