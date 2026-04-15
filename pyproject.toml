@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lunavox"
+version = "2.1.6"
+description = "LunaVox tooling CLI for model setup, conversion, quantization, and build workflows."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "LunaVox Contributors" }]
+dependencies = [
+  "typer>=0.12.0",
+  "rich>=13.7.0",
+  "huggingface_hub>=0.24.0",
+  "customtkinter>=5.2.0",
+  "pygame>=2.5.0",
+]
+
+[project.optional-dependencies]
+convert = [
+  "torch>=2.1",
+  "torchaudio>=2.1",
+  "transformers==4.57.6",
+  "accelerate==1.12.0",
+  "onnx",
+  "onnxruntime",
+  "onnxruntime-tools",
+  "gguf",
+  "numpy",
+  "tqdm",
+  "safetensors",
+  "sentencepiece",
+  "librosa",
+  "scipy",
+  "soundfile",
+  "einops",
+  "onnxscript",
+]
+dev = [
+  "pytest>=8.2",
+  "build>=1.2",
+  "twine>=5.1",
+]
+
+[project.scripts]
+lunavox = "lunavox.cli.main:run"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"lunavox.build" = ["*.json"]

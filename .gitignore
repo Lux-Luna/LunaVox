@@ -25,6 +25,9 @@ debug_*.bin
 reference/debug/
 reference/decoder_debug/
 logs/convert_onnx/
+_tmp_bench.py
+_tmp_bench.json
+tests/results/
 
 # Python
 __pycache__/
@@ -49,6 +52,3 @@ dist/
 
 
 src/lunavox.egg-info/
-src/lunavox
-pyproject.toml
-temp/

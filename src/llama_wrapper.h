@@ -202,7 +202,9 @@ public:
         int32_t n_batch_cap,
         int32_t n_ubatch_cap,
         const char * tag,
-        std::string & err);
+        std::string & err,
+        int32_t type_k = 1,
+        int32_t type_v = 1);
     void free();
     bool is_ready() const { return ctx_ != nullptr; }
 

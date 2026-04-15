@@ -228,20 +228,24 @@ bool TalkerPredictor::ensure_talker_runtime(int32_t request_ctx) {
         talker_batch_.free();
         talker_batch_cap_ = 0;
         talker_ctx_.free();
+        // KV cache kept at F16 (type_k=type_v=1, LlamaContext::init defaults).
+        // Tested type_v=Q8_0 on Vulkan backend: RTF regressed ~90% with only 12-32 MB VRAM
+        // savings (vs theoretical 57 MB). Vulkan FA path does not optimize quantized V cache
+        // (llama.cpp #12526, #9572, #20866). Revisit if/when CUDA is primary backend.
         if (!talker_ctx_.init(
                 talker_model_,
                 request_ctx,
                 n_threads_,
                 true,
-                2048,
                 512,
+                256,
                 "talker",
                 error_msg_)) {
             return false;
         }
     }
 
-    const int64_t desired_batch_cap64 = (int64_t) talker_ctx_.n_ctx() * 4LL;
+    const int64_t desired_batch_cap64 = std::min<int64_t>((int64_t) talker_ctx_.n_ctx(), 2048LL);
     if (desired_batch_cap64 <= 0 || desired_batch_cap64 > (int64_t) std::numeric_limits<int32_t>::max()) {
         error_msg_ = "Talker batch capacity overflow";
         return false;

@@ -170,11 +170,12 @@ cmake --build build -j
 ```
 
 ### 测试 / 检查
-- **没有统一的 pytest 套件**（`[dev]` 装了 pytest 但仓库未托管测试目录）。改动 Python 工具链时：
+- **没有 pytest 套件**（`[dev]` 装了 pytest 但仓库未托管单元测试）。现有自动化只有 `tests/bench_baseline.py`——对所有模型 × 模式跑一轮 CLI 合成并落 `tests/results/baseline_<ts>/`，是 C++ 引擎改动的回归基准。结果目录已 gitignore，不要提交。
+- 改动 Python 工具链时：
   - 跑 `python -c "import lunavox; from lunavox.cli.main import app"` 做 import 级冒烟
   - 跑 `lunavox doctor` 做环境级冒烟
   - 对 `conversion/` 改动，跑 `src/lunavox/model/conversion/validate_onnx_models.py`
-- C++ 改动：`cmake --build build -j` 必须过；随后跑上面的冒烟命令并对比 `--stats-json` 的 RTF。
+- C++ 改动：`cmake --build build -j` 必须过；随后跑 `python tests/bench_baseline.py` 并与前一次 `tests/results/baseline_*/summary.json` 对比 RTF / 延迟，或用下面的冒烟命令对比 `--stats-json` 的 RTF。
 
 ### GUI
 ```bash
@@ -222,7 +223,7 @@ python GUI/main.py
 
 | 改动类型 | 最小验证 |
 | --- | --- |
-| C++ 引擎 | `cmake --build build -j` 通过 + Voice Cloning 冒烟 + `--stats-json` 里 RTF 未劣化 |
+| C++ 引擎 | `cmake --build build -j` 通过 + `python tests/bench_baseline.py` 对上一次 baseline RTF/延迟未劣化（或手动 Voice Cloning 冒烟 + `--stats-json` 对比） |
 | 后端策略（`provider_policy`） | 至少在一个 GPU EP 和 CPU EP 下分别跑通 |
 | 模型转换 (`conversion/`) | `validate_onnx_models.py` 通过，产物能被 `lunavox-cli` 加载 |
 | CLI | `lunavox doctor` 通过 + 改动的子命令走一次 |

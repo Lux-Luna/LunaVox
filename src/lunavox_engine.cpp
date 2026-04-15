@@ -603,7 +603,7 @@ bool Engine::load_models_new_layout(const std::string & model_dir, int32_t n_thr
         // Amortize the decoder's first-run kernel compile (DML shader cache,
         // CUDA cuDNN search, CoreML MLProgram prep) into load time so the
         // first user-visible synthesize() call does not pay that cost.
-        const int32_t warmup_frames = 8;
+        const int32_t warmup_frames = 32;
         const int32_t n_cb = profile_.codec_num_codebooks;
         std::vector<int32_t> dummy_codes((size_t) warmup_frames * (size_t) n_cb,
                                          profile_.codec_id_start);
