@@ -137,14 +137,15 @@ active profile, then environment variables, then defaults.
 
 ```bash
 pip install "lunavox[serve]"
-lunavox serve --host 127.0.0.1 --port 8000
+lunavox serve --host 127.0.0.1 --port 8000 --batch-size 4
 ```
 
 Starts a FastAPI app with `POST /v1/synth`, `WS /v1/stream`, `GET
-/health`, and `GET /v1/models`. Concurrency is serialised on a single
-in-process `Engine` via `asyncio.Lock` — Phase 5A intentionally trades
-throughput for correctness, and Phase 5B will swap the single Engine
-for a C++ `BatchEngine` without changing the handler surface.
+/health`, and `GET /v1/models`. Under the hood a `BatchEngine` pool
+of `N` independent engines handles concurrent requests — the
+`--batch-size` flag sets the pool size (default 4; drop to 1 for
+low-VRAM deployments). Streaming supports every voice mode
+(`base` / `clone` / `custom` / `design`).
 
 Full endpoint reference and protocol details: **[Serve guide](serve.md)**.
 

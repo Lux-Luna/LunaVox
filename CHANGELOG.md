@@ -7,7 +7,47 @@ and this project loosely follows [Semantic Versioning](https://semver.org/spec/v
 
 ## [Unreleased]
 
-### Added
+### Added — Phase 5B
+
+- **`BatchEngine` concurrent-request pool** (`lunavox.runtime.BatchEngine`):
+  owns `N` independent `Engine` instances loaded from the same model
+  directory, dispatches incoming work via an `asyncio.Queue` of idle
+  engines. Public API (`submit`, `synthesize_stream`, `close`) is
+  designed to stay stable across a future true-batching upgrade.
+- **`lunavox serve --batch-size N`** (default 4) — turns on the pool.
+  The `asyncio.Lock` from Phase 5A is gone; multiple clients hit the
+  pool concurrently and back-pressure on its queue instead of racing.
+- **Streaming for every voice mode**:
+  - 3 new C API symbols — `lunavox_synthesize_with_voice_file_streaming`,
+    `lunavox_synthesize_custom_streaming`,
+    `lunavox_synthesize_design_streaming` — mirroring the 5A base
+    streaming entry.
+  - `Engine.synthesize_stream` drops its base-only gate and dispatches
+    the same way `synthesize` does.
+  - `WS /v1/stream` accepts `voice=clone|custom|design` in addition
+    to `base`.
+- **`benchmark/run_serve_benchmark.py`** — concurrent HTTP client
+  firing parallel `POST /v1/synth` calls at a running `lunavox serve`
+  instance. Reports p50 / p95 / p99 latency, throughput, speedup vs
+  sequential baseline. Target: `batch_size=4` → ≥2.5× the
+  `concurrency=1` baseline.
+- **7 new tests**: `test_runtime_batch_engine.py` (6 construction /
+  validation cases) plus a restructured `test_serve_app.py` covering
+  the new `EngineHolder` → `BatchEngine` plumbing.
+
+### Changed — Phase 5B
+- `lunavox.serve.EngineHolder` now wraps a `BatchEngine` instead of
+  a single `Engine`; the `asyncio.Lock` field is gone. `create_app`
+  grows a `batch_size` keyword argument (default 4).
+- `Engine.synthesize_stream` generalized to all four voice modes via
+  a new `_dispatch_stream` helper that mirrors the one-shot
+  `_dispatch`.
+- Bilingual serve guides rewritten to document the context pool,
+  the VRAM trade-off table, streaming for every voice mode, and the
+  new Phase 5C roadmap (true llama.cpp multi-sequence batching).
+
+### Added — Phase 5A
+
 - **Phase 5A serving layer** — new `lunavox serve` subcommand backed
   by a FastAPI app under `src/lunavox/serve/`. Endpoints:
   - `POST /v1/synth` — one-shot synthesis supporting every voice mode,

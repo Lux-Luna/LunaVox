@@ -1,9 +1,15 @@
 # `lunavox serve` — HTTP / WebSocket Serving Layer
 
-`lunavox serve` starts a FastAPI application that wraps the in-process
-`Engine` with an HTTP + WebSocket API. It's the same code path as
-`lunavox synth` and the desktop GUI — there is no subprocess, no CLI
-string-building, no second synthesis code path to maintain.
+`lunavox serve` starts a FastAPI application that wraps a
+concurrent-request `BatchEngine` with an HTTP + WebSocket API. Under
+the hood it's the same `Engine` code path used by `lunavox synth`
+and the desktop GUI — there is no subprocess, no CLI string-building,
+no second synthesis code path to maintain.
+
+Since v2.2.0 (Phase 5B), the server uses a **context pool of N
+engines** so multiple clients synthesize in parallel instead of
+queuing on one GPU. Streaming (`WS /v1/stream`) also supports every
+voice mode now, not just base.
 
 ## Installation
 
@@ -17,8 +23,8 @@ The extra pulls `fastapi`, `uvicorn[standard]`, and `pydantic>=2`.
 
 ```bash
 lunavox serve --host 127.0.0.1 --port 8000
-lunavox serve --model base_small --port 8080
-lunavox --profile quality serve
+lunavox serve --model base_small --port 8080 --batch-size 4
+lunavox --profile quality serve --batch-size 2
 ```
 
 Flags:
@@ -28,6 +34,7 @@ Flags:
 | `--host` | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces. |
 | `--port` | `8000` | Bind port. |
 | `--model` | (profile default) | Model directory name under `models/`. |
+| `--batch-size` | `4` | Concurrent request pool size. Each slot loads its own engine — plan on `N ×` per-engine VRAM. Set `1` for low-VRAM deployments. |
 | `--log-level` | `info` | uvicorn log level (`critical`/`error`/`warning`/`info`/`debug`). |
 
 The active profile, threads, and sampler defaults come from your
@@ -35,12 +42,24 @@ The active profile, threads, and sampler defaults come from your
 
 ## Concurrency model
 
-Phase 5A serialises concurrent requests through a single
-`asyncio.Lock` around one in-process `Engine`. Multiple clients may
-connect at once, but synthesis happens one-at-a-time on one GPU — the
-lock keeps the C engine correct. Phase 5B will swap in a C++
-BatchEngine for continuous batching without changing any of the
-handler shapes below.
+Phase 5B uses a **context pool of N independent `Engine` instances**
+behind the `BatchEngine` class. Incoming requests claim an idle
+engine from an `asyncio.Queue`, synthesize on a background thread,
+then release the engine back into the pool. Excess concurrent
+clients back-pressure on the queue rather than racing for the GPU.
+
+| Config | VRAM footprint | Concurrent requests | Target throughput |
+| :--- | :--- | :--- | :--- |
+| `--batch-size 1` | 1 × engine | 1 (queued) | baseline |
+| `--batch-size 2` | 2 × engine | 2 | ~1.7× baseline |
+| `--batch-size 4` (default) | 4 × engine | 4 | ~2.5× baseline |
+
+The trade-off is VRAM — each pool slot carries its own KV caches
+and ONNX decoder state, so N=4 on a 0.6B model costs ~800 MB extra
+VRAM. On a 24 GB GPU that's negligible; on 8 GB cards consider
+`--batch-size 2`. Phase 5C will explore a true multi-sequence
+llama.cpp upgrade that collapses the N× cost without changing the
+API below.
 
 ## Endpoints
 
@@ -86,8 +105,10 @@ curl -X POST http://127.0.0.1:8000/v1/synth \
 
 ### `WS /v1/stream`
 
-WebSocket sentence-streaming. Phase 5A supports `voice=base` only.
-Other voice modes close with RFC 6455 code `1003`.
+WebSocket sentence-streaming. Since Phase 5B, all four voice modes
+are supported (`base`, `clone`, `custom`, `design`) — the handler
+calls `BatchEngine.synthesize_stream` which dispatches to the
+matching `_streaming` C API symbol.
 
 Protocol:
 
@@ -147,13 +168,15 @@ All endpoints that return a successful synthesis include a
 - `rtf` — real-time factor (`t_total_ms / audio_duration_ms`)
 - `rss_peak_bytes` — peak resident-set memory during synthesis
 
-## What's next (Phase 5B)
+## What's next (Phase 5C)
 
-- C++ `BatchEngine` with `n_seq_max > 1` and continuous batching
-- Streaming for `voice=clone`/`custom`/`design`
-- Prometheus `/metrics`
-- Sentence-level input streaming (client feeds text over WS, server
-  starts synthesising before the full sentence arrives)
+- True llama.cpp continuous batching via `n_seq_max > 1`, collapsing
+  the N× KV cache cost while keeping the same BatchEngine API
+- Prometheus `/metrics` endpoint (queue depth, per-engine RTF, VRAM)
+- Sentence-level **input** streaming (client feeds text over WS as
+  the LLM generates it, server starts synthesising before the full
+  sentence arrives)
+- VRAM-aware `--batch-size auto` that inspects free VRAM at startup
 
-The HTTP / WebSocket surface documented here will stay stable across
-that transition — 5B adds capacity and throughput, not a new API.
+The HTTP / WebSocket surface documented here is stable across those
+upgrades — 5C tunes the internals, not the API.

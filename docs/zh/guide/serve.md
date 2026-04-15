@@ -1,8 +1,14 @@
 # `lunavox serve` —— HTTP / WebSocket 服务层
 
-`lunavox serve` 启动一个 FastAPI 应用，把进程内 `Engine` 封装成 HTTP +
-WebSocket API。底层与 `lunavox synth`、桌面 GUI 完全是同一条代码路径
-——不开子进程，不拼接 CLI 字符串，没有第二条合成实现。
+`lunavox serve` 启动一个 FastAPI 应用，把进程内的 `BatchEngine` 并发
+请求池封装成 HTTP + WebSocket API。底层与 `lunavox synth`、桌面 GUI
+完全是同一条 `Engine` 代码路径 —— 不开子进程，不拼接 CLI 字符串，
+没有第二条合成实现。
+
+从 v2.2.0（Phase 5B）起，服务端使用 **N 个 Engine 组成的 context
+pool**，让多个客户端真正并行合成，而不是在单个 GPU 上排队。流式
+接口 (`WS /v1/stream`) 现在也支持四种 voice 模式，不再限制为
+base。
 
 ## 安装
 
@@ -16,8 +22,8 @@ pip install "lunavox[serve]"
 
 ```bash
 lunavox serve --host 127.0.0.1 --port 8000
-lunavox serve --model base_small --port 8080
-lunavox --profile quality serve
+lunavox serve --model base_small --port 8080 --batch-size 4
+lunavox --profile quality serve --batch-size 2
 ```
 
 命令行开关：
@@ -27,6 +33,7 @@ lunavox --profile quality serve
 | `--host` | `127.0.0.1` | 监听地址，使用 `0.0.0.0` 监听所有网卡。 |
 | `--port` | `8000` | 监听端口。 |
 | `--model` | 当前 profile 默认值 | `models/` 下的模型目录名。 |
+| `--batch-size` | `4` | 并发请求池大小。每个槽位加载一份独立的 Engine —— 按 `N ×` 单 Engine VRAM 预算；低显存部署设为 `1`。 |
 | `--log-level` | `info` | uvicorn 日志级别（`critical`/`error`/`warning`/`info`/`debug`）。 |
 
 当前生效的 profile、线程数、采样默认值全部来自 `~/.lunavox/config.toml`，
@@ -34,11 +41,21 @@ lunavox --profile quality serve
 
 ## 并发模型
 
-Phase 5A 使用一个 `asyncio.Lock` 让并发请求串行化到单个进程内 `Engine`。
-多个客户端可以同时连接，但同一时刻只有一次合成在 GPU 上进行 —— 锁
-保证 C 引擎状态不被破坏。Phase 5B 会在保持现有 handler 签名不变的前
-提下，把这个锁背后的单 Engine 替换成真正的 C++ BatchEngine 实现
-continuous batching。
+Phase 5B 在 `BatchEngine` 类背后使用 **N 个独立 `Engine` 实例组成的
+context pool**。进来的请求从 `asyncio.Queue` 里抢一个空闲 engine，
+在后台线程上跑合成，完成后释放回池子。多余的并发客户端会在队列
+上阻塞等待，而不是抢夺同一个 GPU。
+
+| 配置 | VRAM 占用 | 并发请求 | 吞吐目标 |
+| :--- | :--- | :--- | :--- |
+| `--batch-size 1` | 1 × engine | 1（排队） | baseline |
+| `--batch-size 2` | 2 × engine | 2 | ~1.7× baseline |
+| `--batch-size 4`（默认） | 4 × engine | 4 | ~2.5× baseline |
+
+代价是 VRAM —— 每个 pool 槽位各自持有 KV cache 和 ONNX decoder
+state，所以 N=4 在 0.6B 模型上约占 ~800 MB 额外 VRAM。24 GB 显卡
+上忽略不计；8 GB 卡建议 `--batch-size 2`。Phase 5C 会探索 llama.cpp
+多序列升级，在不改本页 API 的前提下把 N× 的 KV cache 代价合并成 1×。
 
 ## 接口列表
 
@@ -83,8 +100,10 @@ curl -X POST http://127.0.0.1:8000/v1/synth \
 
 ### `WS /v1/stream`
 
-WebSocket 流式合成。Phase 5A 只支持 `voice=base`，其他 voice 模式会
-直接以 RFC 6455 错误码 `1003` 关闭连接。
+WebSocket 流式合成。自 Phase 5B 起支持全部四种 voice 模式
+（`base` / `clone` / `custom` / `design`）—— handler 调用
+`BatchEngine.synthesize_stream`，按 voice 模式 dispatch 到对应的
+`_streaming` C API 符号。
 
 协议：
 
@@ -140,12 +159,13 @@ RTX 3090 + Vulkan+DML 配置下首包通常在 ~200 ms 到达，后续 chunk
 - `rtf` —— 实时率（`t_total_ms / audio_duration_ms`）
 - `rss_peak_bytes` —— 合成期间常驻内存峰值
 
-## 后续计划（Phase 5B）
+## 后续计划（Phase 5C）
 
-- C++ `BatchEngine`，支持 `n_seq_max > 1` 和 continuous batching
-- `voice=clone` / `custom` / `design` 的流式合成
-- Prometheus `/metrics` 端点
-- 句级文本流式输入（客户端通过 WS 持续送文本，服务端边收边合成）
+- 通过 `n_seq_max > 1` 做真正的 llama.cpp continuous batching，把 N×
+  KV cache 代价合并成 1×，BatchEngine API 保持不变
+- Prometheus `/metrics` 端点（队列深度、逐 engine RTF、VRAM）
+- 句级**输入**流式（客户端通过 WS 持续送文本，服务端边收边合成）
+- VRAM 感知的 `--batch-size auto`，启动时检测空闲显存自动定大小
 
-本页记录的 HTTP / WebSocket 接口会在 5B 升级中保持稳定 —— 5B 只增加
-吞吐和并发能力，不引入新的 API 形状。
+本页记录的 HTTP / WebSocket 接口会在这些升级中保持稳定 —— 5C 只调
+内部实现，不改 API。

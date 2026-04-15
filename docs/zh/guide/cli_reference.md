@@ -134,14 +134,14 @@ lunavox synth "就在最上面的抽屉里，不对，怎么是空的？" \
 
 ```bash
 pip install "lunavox[serve]"
-lunavox serve --host 127.0.0.1 --port 8000
+lunavox serve --host 127.0.0.1 --port 8000 --batch-size 4
 ```
 
 启动一个 FastAPI 应用，提供 `POST /v1/synth`、`WS /v1/stream`、
-`GET /health`、`GET /v1/models`。Phase 5A 通过 `asyncio.Lock` 把并
-发请求串行到单个进程内 `Engine` —— 刻意牺牲吞吐换正确性；5B 会
-在保持 handler 签名不变的前提下把单 Engine 换成 C++ BatchEngine
-实现真正的 continuous batching。
+`GET /health`、`GET /v1/models`。底层是 `BatchEngine` 构成的 N 槽
+并发请求池，`--batch-size` 控制池大小（默认 4；低 VRAM 部署可设为
+1）。流式支持全部四种 voice 模式（`base` / `clone` / `custom` /
+`design`）。
 
 完整接口与协议细节请参阅：**[服务层指南](serve.md)**。
 
