@@ -3,14 +3,38 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+#: Marker file used to tag a directory as a valid LunaVox root in
+#: deployment layouts that don't ship the source tree. Created by
+#: ``lunavox build`` and by the Docker image entrypoint. The presence
+#: of this file is an explicit opt-in signal — we deliberately don't
+#: auto-detect by looking for ``build/lunavox.dll`` because a stale
+#: build directory from a different project could otherwise hijack the
+#: resolver.
+#:
+#: Contents are free-form text; we only care that the file exists.
+DEPLOYMENT_MARKER = ".lunavox-root"
+
 
 def _looks_like_project_root(path: Path) -> bool:
-    """Check if the path contains core LunaVox project markers."""
-    required = [
-        path / "CMakeLists.txt",
-        path / "src",
-    ]
-    return all(p.exists() for p in required)
+    """Return True if ``path`` is a valid LunaVox root.
+
+    Two layouts are accepted:
+
+    * **Dev checkout** — has ``CMakeLists.txt`` + ``src/``.
+      This is the historical layout the resolver has always
+      recognised; every `git clone` of LunaVox matches it.
+    * **Deployment** — has a ``.lunavox-root`` marker file.
+      Used by the Docker image (and by anyone shipping LunaVox as
+      a standalone bundle) where the source tree isn't present but
+      a built shared library + models/ + lib/ are. The marker is
+      an explicit opt-in because "looks like a LunaVox build" is
+      too ambiguous to infer automatically.
+    """
+    if (path / DEPLOYMENT_MARKER).exists():
+        return True
+    cmake = path / "CMakeLists.txt"
+    src = path / "src"
+    return cmake.exists() and src.exists()
 
 
 def resolve_project_root(explicit_root: Path | None = None) -> Path:
