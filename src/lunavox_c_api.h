@@ -197,12 +197,45 @@ LunavoxAudio* lunavox_synthesize_design(
  *
  * Returns NULL on failure. Caller must free with lunavox_free_audio().
  * This is the streaming entry used by `lunavox serve` and the
- * FastAPI WebSocket endpoint. Other voice modes remain one-shot in
- * Phase 5A; they will gain streaming variants in 5B along with the
- * C++ continuous-batching refactor. */
+ * FastAPI WebSocket endpoint. */
 LunavoxAudio* lunavox_synthesize_streaming(
     LunavoxEngine* tts,
     const char* text,
+    const LunavoxSynthesisParams* params,
+    LunavoxAudioChunkCallback chunk_cb,
+    void* user_data);
+
+/* Streaming voice-clone synthesis (reference WAV or pre-computed
+ * .json feature file). Same semantics as lunavox_synthesize_streaming;
+ * clone pipeline runs first, then the decoder-chunk callback fires as
+ * each PCM slice becomes available. */
+LunavoxAudio* lunavox_synthesize_with_voice_file_streaming(
+    LunavoxEngine* tts,
+    const char* text,
+    const char* reference_audio_path,
+    const LunavoxSynthesisParams* params,
+    LunavoxAudioChunkCallback chunk_cb,
+    void* user_data);
+
+/* Streaming custom-voice synthesis. speaker must resolve to a
+ * catalog entry in the active model profile; instruct may be NULL
+ * or empty for tone-neutral generation. */
+LunavoxAudio* lunavox_synthesize_custom_streaming(
+    LunavoxEngine* tts,
+    const char* text,
+    const char* speaker,
+    const char* instruct,
+    const LunavoxSynthesisParams* params,
+    LunavoxAudioChunkCallback chunk_cb,
+    void* user_data);
+
+/* Streaming voice-design synthesis. instruct is the required
+ * non-empty voice description; no speaker or reference audio is
+ * accepted. */
+LunavoxAudio* lunavox_synthesize_design_streaming(
+    LunavoxEngine* tts,
+    const char* text,
+    const char* instruct,
     const LunavoxSynthesisParams* params,
     LunavoxAudioChunkCallback chunk_cb,
     void* user_data);
