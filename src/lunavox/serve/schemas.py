@@ -86,3 +86,38 @@ class HealthResponse(BaseModel):
     model: Optional[str]
     sample_rate: Optional[int]
     detail: Optional[str] = None
+
+
+class TextStreamInit(BaseModel):
+    """First JSON frame on ``WS /v1/stream/text``.
+
+    Carries the voice + sampler config; the actual text comes
+    later as a sequence of ``TextStreamChunk`` frames followed by
+    a ``TextStreamEnd`` frame. Mirrors the ``SynthRequest`` field
+    set, minus ``text`` itself.
+    """
+
+    voice: VoiceMode = Field(default="base")
+    reference: Optional[str] = Field(default=None)
+    speaker: Optional[str] = Field(default=None)
+    instruct: Optional[str] = Field(default=None)
+    temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
+    top_p: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    top_k: Optional[int] = Field(default=None, ge=0, le=1000)
+    max_audio_tokens: Optional[int] = Field(default=None, ge=0)
+
+
+class TextStreamChunk(BaseModel):
+    """A chunk of incoming text on the streaming-input WS channel."""
+
+    text: str = Field(min_length=1)
+
+
+class TextStreamEnd(BaseModel):
+    """Sentinel frame that closes the streaming-input channel.
+
+    The server flushes any buffered partial sentence as the final
+    synthesis unit, then closes the WebSocket cleanly.
+    """
+
+    end: Literal[True]

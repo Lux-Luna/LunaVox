@@ -137,6 +137,28 @@ class BatchEngine:
             raise RuntimeError("BatchEngine.load() has not been awaited yet")
         return self._engines[0].sample_rate
 
+    @property
+    def idle_count(self) -> int:
+        """How many engines are currently free in the pool.
+
+        Reads ``asyncio.Queue.qsize`` which is best-effort but
+        accurate enough for telemetry — Prometheus scrapes don't
+        need a strict consistency guarantee.
+        """
+        if self._idle is None:
+            return 0
+        return self._idle.qsize()
+
+    @property
+    def busy_count(self) -> int:
+        """Number of engines currently running synthesis.
+
+        Derived from ``batch_size - idle_count`` so the two metrics
+        always sum to ``batch_size`` exactly (no race window where
+        an engine is in flight between submit and the queue release).
+        """
+        return self.batch_size - self.idle_count
+
     def _require_idle(self) -> asyncio.Queue[Engine]:
         if self._idle is None:
             raise RuntimeError("BatchEngine.load() has not been awaited yet")

@@ -16,6 +16,11 @@ pytest.importorskip(
     reason="serve tests need the [serve] extra",
     exc_type=ImportError,
 )
+pytest.importorskip(
+    "prometheus_client",
+    reason="serve tests need the [serve] extra",
+    exc_type=ImportError,
+)
 
 
 def test_create_app_registers_routes(tmp_path: Path):
@@ -28,7 +33,15 @@ def test_create_app_registers_routes(tmp_path: Path):
     assert app.title == "LunaVox"
 
     paths = {getattr(route, "path", None) for route in app.routes}
-    for expected in {"/health", "/v1/models", "/v1/synth", "/v1/stream"}:
+    expected_routes = {
+        "/health",
+        "/metrics",  # Phase 5C
+        "/v1/models",
+        "/v1/synth",
+        "/v1/stream",
+        "/v1/stream/text",  # Phase 5C
+    }
+    for expected in expected_routes:
         assert expected in paths, f"Missing route {expected}; have {paths}"
 
 
