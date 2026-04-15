@@ -6,6 +6,7 @@
   "exclude": [
     "src/lunavox/model/conversion",
     "src/lunavox/gui",
+    "src/lunavox/serve",
     "**/__pycache__",
     "build",
     "lib",

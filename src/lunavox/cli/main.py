@@ -22,7 +22,15 @@ import typer
 from lunavox.core import logging as lvlog
 from lunavox.core.ui import console
 
-from . import bootstrap_cmd, build_cmd, doctor_cmd, gui_cmd, model_cmd, synth_cmd
+from . import (
+    bootstrap_cmd,
+    build_cmd,
+    doctor_cmd,
+    gui_cmd,
+    model_cmd,
+    serve_cmd,
+    synth_cmd,
+)
 from ._common import RuntimeState
 from ._config import load_config
 
@@ -30,6 +38,7 @@ app = typer.Typer(no_args_is_help=True, help="LunaVox unified CLI")
 app.add_typer(model_cmd.app, name="model")
 app.add_typer(build_cmd.app, name="build")
 synth_cmd.register(app)
+serve_cmd.register(app)
 gui_cmd.register(app)
 bootstrap_cmd.register(app)
 doctor_cmd.register(app)

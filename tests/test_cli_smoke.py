@@ -25,15 +25,15 @@ def test_cli_help_exits_cleanly():
 
 
 def test_cli_top_level_commands_present():
-    """Lock in the public top-level command surface after the 4.2
-    refactor. ``model`` and ``build`` are typer groups; ``synth``,
-    ``gui``, ``bootstrap``, and ``doctor`` are leaf commands."""
+    """Lock in the public top-level command surface. ``model`` and
+    ``build`` are typer groups; ``synth``, ``serve``, ``gui``,
+    ``bootstrap``, and ``doctor`` are leaf commands."""
     from lunavox.cli.main import app
 
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    expected = {"model", "build", "synth", "gui", "bootstrap", "doctor"}
+    expected = {"model", "build", "synth", "serve", "gui", "bootstrap", "doctor"}
     missing = {cmd for cmd in expected if cmd not in result.output}
     assert not missing, f"CLI missing expected commands: {missing}\nOutput:\n{result.output}"
 
@@ -67,6 +67,7 @@ def test_every_leaf_command_help_exits_cleanly():
         ["model", "list"],
         ["build", "libs"],
         ["synth"],
+        ["serve"],
         ["gui"],
         ["bootstrap"],
         ["doctor"],

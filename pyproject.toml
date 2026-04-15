@@ -54,6 +54,12 @@ gui = [
   "pygame>=2.5.0",
   "numpy",
 ]
+serve = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.0",
+  "numpy",
+]
 
 [project.scripts]
 lunavox = "lunavox.cli.main:run"
