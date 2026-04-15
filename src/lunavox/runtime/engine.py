@@ -356,17 +356,37 @@ class Engine:
         # C-visible callback while synthesis is still running.
         _keep_alive = cb_trampoline  # noqa: F841
 
+        # The terminal (is_last=True) chunk lands on the queue from
+        # inside the C chunk callback, which fires BEFORE the worker
+        # has had a chance to call _consume_audio and populate
+        # stats_holder. If we yielded it immediately the caller
+        # would see chunk.stats is None on the last chunk. Instead,
+        # hold the terminal chunk, keep draining until SENTINEL
+        # (which means the worker finished writing stats), then
+        # yield the terminal chunk with the populated stats.
+        held_terminal: Any = None
         try:
             while True:
                 item = chunk_queue.get()
                 if item is SENTINEL:
                     break
                 audio, is_last = item
+                if is_last:
+                    held_terminal = audio
+                    continue
                 yield SynthesisChunk(
                     audio=audio,
                     sample_rate=sr_holder["rate"] or int(self.sample_rate),
-                    is_last=is_last,
-                    stats=stats_holder["stats"] if is_last else None,
+                    is_last=False,
+                    stats=None,
+                )
+
+            if held_terminal is not None:
+                yield SynthesisChunk(
+                    audio=held_terminal,
+                    sample_rate=sr_holder["rate"] or int(self.sample_rate),
+                    is_last=True,
+                    stats=stats_holder["stats"],
                 )
         finally:
             worker.join(timeout=60.0)

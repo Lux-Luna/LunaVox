@@ -81,8 +81,15 @@ def _probe_free_vram_mb() -> int | None:
     AMD / Intel / CPU-only hosts. The caller falls back to the
     default in that case.
     """
+    # `pynvml` has been renamed to `nvidia-ml-py` and emits a
+    # FutureWarning on import from the legacy name. Silence it so
+    # startup doesn't spam the ops console on every `serve` run.
+    import warnings
+
     try:
-        import pynvml  # type: ignore[import-not-found]
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=FutureWarning)
+            import pynvml  # type: ignore[import-not-found]
     except ImportError:
         LOG.info("pynvml unavailable; --batch-size auto cannot probe VRAM.")
         return None
