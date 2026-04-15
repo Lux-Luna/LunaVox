@@ -26,12 +26,12 @@ def register(parent: typer.Typer) -> None:
         model: Optional[str] = typer.Option(
             None, "--model", help="Model directory name under models/ (override config)"
         ),
-        batch_size: int = typer.Option(
-            4,
+        batch_size: str = typer.Option(
+            "4",
             "--batch-size",
-            min=1,
-            help="Concurrent-request pool size. Each slot loads its own engine, "
-            "so N × per-engine VRAM. Default 4.",
+            help="Concurrent-request pool size. Pass an integer (1-16) or 'auto' "
+            "to probe free VRAM via pynvml and pick a safe value. Each slot "
+            "loads its own engine, so N × per-engine VRAM. Default 4.",
         ),
         log_level: str = typer.Option(
             "info", "--log-level", help="uvicorn log level: critical|error|warning|info|debug"
@@ -43,6 +43,9 @@ def register(parent: typer.Typer) -> None:
         try:
             import uvicorn  # pyright: ignore[reportMissingImports]
 
+            from lunavox.serve.auto_batch import (  # pyright: ignore[reportMissingImports]
+                resolve_batch_size,
+            )
             from lunavox.serve.server import create_app  # pyright: ignore[reportMissingImports]
         except ImportError as err:
             console.print(
@@ -62,15 +65,22 @@ def register(parent: typer.Typer) -> None:
             )
             raise typer.Exit(code=1)
 
+        try:
+            resolved_batch = resolve_batch_size(batch_size, model_dir=model_dir)
+        except ValueError as err:
+            console.print(f"[error]{err}[/]")
+            raise typer.Exit(code=1) from err
+
+        batch_label = f"{resolved_batch} (auto)" if batch_size == "auto" else str(resolved_batch)
         console.print(
             f"[stage]Starting LunaVox server at [bold]http://{host}:{port}[/] "
-            f"(model=[bold]{resolved_model}[/], batch_size=[bold]{batch_size}[/], "
+            f"(model=[bold]{resolved_model}[/], batch_size=[bold]{batch_label}[/], "
             f"threads={st.config.n_threads})[/]"
         )
 
         app = create_app(
             model_dir,
             n_threads=st.config.n_threads,
-            batch_size=batch_size,
+            batch_size=resolved_batch,
         )
         uvicorn.run(app, host=host, port=port, log_level=log_level)
