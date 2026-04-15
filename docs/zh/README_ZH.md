@@ -17,6 +17,7 @@
 - **轻量级运行**: 仅需 ONNX Runtime 与自定义 Llama 推理库，无需繁重的 Python 环境即可运行。
 - **多语言原生支持**: 引擎链路内置自动语言检测，完美支持 **中、英、日、韩、俄、德、法、意、西、葡** 十种语言。
 - **统一的 `Voice` API**: 一个 `engine.synthesize(text, voice, params)` 调用即可覆盖 Base、声音克隆、内置发音人、声音设计；不再需要 6 种 `synthesize_*` 方法。
+- **HTTP + WebSocket 服务层** (`lunavox serve`): FastAPI 应用，提供 `POST /v1/synth` 和流式 `WS /v1/stream`，底层与 CLI / GUI 共用同一进程内引擎 —— 详见 [服务层指南](guide/serve.md)。
 - **桌面 GUI** (`lunavox gui`): 左侧栏三视图布局（合成 / 素材库 / 设置），与 CLI 共用同一进程内引擎。
 - **Profile 驱动的 CLI**: `~/.lunavox/config.toml` profile 与环境变量、命令行开关分层合并，让 `lunavox --profile quality synth …` 一行搞定。
 - **现代构建系统**: 全自动工具链识别。支持 Windows (MSVC)、Linux (GCC) 及 macOS (Clang/Apple Silicon)。
@@ -65,6 +66,7 @@
 
 ```powershell
 pip install lunavox               # 核心 CLI
+pip install "lunavox[serve]"      # + HTTP / WebSocket 服务层
 pip install "lunavox[gui]"        # + 桌面 GUI
 pip install "lunavox[convert]"    # + 原始权重 → GGUF 转换工具链
 ```

@@ -107,6 +107,10 @@ lunavox/
 │       │   ├── theme.py i18n.py  #   视觉 token + 翻译
 │       │   ├── views/            #   synth_view / library_view / settings_view
 │       │   └── widgets/          #   voice_picker / param_slider / stats_card
+│       ├── serve/                # FastAPI HTTP/WS 服务层（[serve] 可选 extra）
+│       │   ├── server.py         #   create_app() + /v1/synth + WS /v1/stream
+│       │   ├── engine_holder.py  #   单 Engine + asyncio.Lock
+│       │   └── schemas.py        #   pydantic 请求 / 响应
 │       ├── build/                # base/windows/linux/macos + factory
 │       ├── core/                 # ui, logging, project, platform, deps
 │       └── model/                # config(MODELS), downloader, pipeline + conversion/
@@ -135,6 +139,7 @@ lunavox/
 - **改 Python 平台差异（`sys.platform`）**：`src/lunavox/core/platform.py`（唯一入口；build factory 是允许的例外）
 - **改 Console / 日志**：`src/lunavox/core/ui.py`（Rich 单例）+ `src/lunavox/core/logging.py`（`session_start` / `append`）
 - **改 GUI**：`src/lunavox/gui/`（薄壳，通过 `lunavox.runtime.Engine` + `lunavox.runtime.Voice` 直调；禁止 subprocess；视觉 token 改 `theme.py`）
+- **改 serve 层**：`src/lunavox/serve/`（FastAPI，单 Engine + asyncio.Lock，`[serve]` extra；handler 只做 voice/params 组装和 WS 推送，合成路径走 `Engine.synthesize` / `Engine.synthesize_stream`）
 - **改 ctypes 绑定**：`src/lunavox/runtime/_capi.py`（随 C API 变更同步），高层接口在 `engine.py`
 - **改 C ABI**：`src/lunavox_c_api.*`——稳定对外面，改动必须同步 `src/lunavox/runtime/_capi.py` 的 `_bind_symbols` 与任何外部绑定
 - **新增合成模式**：在 `src/lunavox/runtime/voice.py` 加 `Voice.<mode>()` 工厂 + 在 `engine.py::Engine._dispatch` 加一条分支。其他地方（CLI / GUI）零改动。

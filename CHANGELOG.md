@@ -7,6 +7,33 @@ and this project loosely follows [Semantic Versioning](https://semver.org/spec/v
 
 ## [Unreleased]
 
+### Added
+- **Phase 5A serving layer** — new `lunavox serve` subcommand backed
+  by a FastAPI app under `src/lunavox/serve/`. Endpoints:
+  - `POST /v1/synth` — one-shot synthesis supporting every voice mode,
+    returns a WAV body and a compact stats header.
+  - `WS /v1/stream` — WebSocket sentence-streaming (base voice only
+    in 5A), driven by the existing decoder worker pipeline.
+  - `GET /health`, `GET /v1/models` — standard liveness / catalog.
+- **Streaming C API**: new `lunavox_synthesize_streaming` symbol in
+  `lunavox_c_api.h` — takes an `LunavoxAudioChunkCallback` fired from
+  the decoder worker thread as each PCM slice becomes available. The
+  existing one-shot path is unchanged; callers that want the cumulative
+  audio plus chunks get both.
+- **Engine streaming generator**: `Engine.synthesize_stream(text,
+  voice, params)` yields `SynthesisChunk` objects using a background
+  worker + `queue.Queue`. Terminal chunk carries the full
+  `SynthesisStats`. Phase 5A restricts streaming to base mode; other
+  modes raise `NotImplementedError` until 5B.
+- **`[serve]` optional extra**: `pip install "lunavox[serve]"` adds
+  FastAPI, uvicorn, pydantic, numpy. Core install stays slim.
+- **9 new tests**: `test_serve_schemas.py` (pydantic surface) and
+  `test_serve_app.py` (app factory, route registration, engine holder
+  locking). All gated behind `[serve]` via `importorskip`.
+- **Bilingual serve docs**: `docs/en/guide/serve.md` and
+  `docs/zh/guide/serve.md` with endpoint reference, cURL / Python
+  client examples, and the Phase 5B roadmap.
+
 ## [2.2.0] — 2026-04-15
 
 ### Added

@@ -17,6 +17,7 @@
 - **Lightweight Runtime**: Runs with only ONNX Runtime and a custom Llama inference library, no heavy Python environment required.
 - **Native Multi-language Support**: Built-in automatic language detection, supporting **Chinese, English, Japanese, Korean, Russian, German, French, Italian, Spanish, and Portuguese**.
 - **Unified `Voice` API**: One `engine.synthesize(text, voice, params)` call covers Base, Voice Cloning, Custom Voice, and Voice Design. No more six-method surface.
+- **HTTP + WebSocket serving** (`lunavox serve`): FastAPI app with `POST /v1/synth` and streaming `WS /v1/stream`, powered by the same in-process engine — see [serve guide](docs/en/guide/serve.md).
 - **Desktop GUI** (`lunavox gui`): Sidebar-navigation customtkinter app (Synthesize / Library / Settings) driving the same in-process engine as the CLI.
 - **Profile-driven CLI**: `~/.lunavox/config.toml` profiles layered with env vars and CLI flags so `lunavox --profile quality synth …` is a one-liner.
 - **Modern Build System**: Automatic toolchain detection. Supports Windows (MSVC), Linux (GCC), and macOS (Clang/Apple Silicon).
@@ -65,6 +66,7 @@ The following table shows the average performance of LunaVox across different ba
 
 ```powershell
 pip install lunavox               # core CLI
+pip install "lunavox[serve]"      # + HTTP / WebSocket server
 pip install "lunavox[gui]"        # + desktop GUI
 pip install "lunavox[convert]"    # + source → GGUF conversion toolchain
 ```

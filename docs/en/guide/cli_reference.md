@@ -23,6 +23,7 @@ lunavox
 ├── build                Build the C++ engine (cmake wrapper)
 │   └── libs             Download ONNX Runtime / llama.cpp binaries
 ├── synth TEXT           In-process synthesis via the Python Engine
+├── serve                HTTP + WebSocket serving layer ([serve] extra)
 ├── gui                  Launch the desktop GUI (requires [gui] extra)
 └── doctor               Environment + dependency health check
 ```
@@ -132,7 +133,22 @@ Tunable flags: `--model`, `--temperature`, `--top-p`, `--top-k`.
 Anything not overridden on the command line falls through to the
 active profile, then environment variables, then defaults.
 
-## 6. `gui` — Desktop App
+## 6. `serve` — HTTP / WebSocket Server
+
+```bash
+pip install "lunavox[serve]"
+lunavox serve --host 127.0.0.1 --port 8000
+```
+
+Starts a FastAPI app with `POST /v1/synth`, `WS /v1/stream`, `GET
+/health`, and `GET /v1/models`. Concurrency is serialised on a single
+in-process `Engine` via `asyncio.Lock` — Phase 5A intentionally trades
+throughput for correctness, and Phase 5B will swap the single Engine
+for a C++ `BatchEngine` without changing the handler surface.
+
+Full endpoint reference and protocol details: **[Serve guide](serve.md)**.
+
+## 7. `gui` — Desktop App
 
 ```bash
 lunavox gui
@@ -142,7 +158,7 @@ Requires `pip install "lunavox[gui]"`. The GUI is a three-view
 sidebar layout (Synthesize / Library / Settings) that shares the
 same `Engine` API as `lunavox synth`.
 
-## 7. Model ID Reference
+## 8. Model ID Reference
 
 | Model ID | Full Name | Notes |
 | :--- | :--- | :--- |
@@ -152,7 +168,7 @@ same `Engine` API as `lunavox synth`.
 | `custom` | Qwen3-TTS 1.7B Custom | Large speaker-customised model |
 | `design` | Qwen3-TTS 1.7B Design | Prompt-to-Voice |
 
-## 8. Profiles and Config
+## 9. Profiles and Config
 
 LunaVox reads `~/.lunavox/config.toml` on every invocation. The file
 has a `[default]` table plus any number of `[profile.<name>]`
@@ -186,7 +202,7 @@ temperature = 0.8
 lunavox --profile quality synth "High fidelity please." -o out.wav
 ```
 
-## 9. Global Flags
+## 10. Global Flags
 
 Apply to every `lunavox` subcommand:
 
@@ -200,4 +216,5 @@ Apply to every `lunavox` subcommand:
 
 - [Model profile & runtime contract](../technical/model_profile.md)
 - [Usage tutorial (`lunavox synth` modes)](usage_tutorial.md)
+- [Serve layer (`lunavox serve`)](serve.md)
 - [Runtime API](../api/runtime.md)

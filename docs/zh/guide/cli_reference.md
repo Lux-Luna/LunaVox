@@ -22,6 +22,7 @@ lunavox
 ├── build                构建 C++ 引擎（cmake 封装）
 │   └── libs             下载 ONNX Runtime / llama.cpp 二进制
 ├── synth 文本           走 Python Engine 的进程内合成
+├── serve                HTTP + WebSocket 服务层（需要 [serve] extra）
 ├── gui                  启动桌面 GUI（需要 [gui] extra）
 └── doctor               环境 + 依赖健康检查
 ```
@@ -129,7 +130,22 @@ lunavox synth "就在最上面的抽屉里，不对，怎么是空的？" \
 可覆盖参数：`--model`、`--temperature`、`--top-p`、`--top-k`。命令行
 没显式指定的参数会依次回落到当前 profile → 环境变量 → 默认值。
 
-## 6. `gui` —— 桌面应用
+## 6. `serve` —— HTTP / WebSocket 服务器
+
+```bash
+pip install "lunavox[serve]"
+lunavox serve --host 127.0.0.1 --port 8000
+```
+
+启动一个 FastAPI 应用，提供 `POST /v1/synth`、`WS /v1/stream`、
+`GET /health`、`GET /v1/models`。Phase 5A 通过 `asyncio.Lock` 把并
+发请求串行到单个进程内 `Engine` —— 刻意牺牲吞吐换正确性；5B 会
+在保持 handler 签名不变的前提下把单 Engine 换成 C++ BatchEngine
+实现真正的 continuous batching。
+
+完整接口与协议细节请参阅：**[服务层指南](serve.md)**。
+
+## 7. `gui` —— 桌面应用
 
 ```bash
 lunavox gui
@@ -139,7 +155,7 @@ lunavox gui
 （合成 / 素材库 / 设置），底层调用与 `lunavox synth` 完全相同的
 `Engine` API。
 
-## 7. 模型 ID 对照表
+## 8. 模型 ID 对照表
 
 | 模型 ID | 完整名称 | 备注 |
 | :--- | :--- | :--- |
@@ -149,7 +165,7 @@ lunavox gui
 | `custom` | Qwen3-TTS 1.7B Custom | 大模型发音人定制 |
 | `design` | Qwen3-TTS 1.7B Design | 文字描述生成音色 |
 
-## 8. Profile 与配置文件
+## 9. Profile 与配置文件
 
 LunaVox 在每次执行时都会读取 `~/.lunavox/config.toml`。文件结构是一个
 `[default]` 表 + 任意多个 `[profile.<name>]` 覆盖。优先级从高到低：
@@ -182,7 +198,7 @@ temperature = 0.8
 lunavox --profile quality synth "请用高保真合成。" -o out.wav
 ```
 
-## 9. 全局开关
+## 10. 全局开关
 
 对每一条 `lunavox` 子命令都生效：
 
@@ -196,4 +212,5 @@ lunavox --profile quality synth "请用高保真合成。" -o out.wav
 
 - [模型 Profile 与运行时契约](../technical/model_profile.md)
 - [使用教程（`lunavox synth` 各模式）](usage_tutorial.md)
+- [服务层指南（`lunavox serve`）](serve.md)
 - [Runtime API](../api/runtime.md)
