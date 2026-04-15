@@ -7,27 +7,94 @@ and this project loosely follows [Semantic Versioning](https://semver.org/spec/v
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-04-15
+
+### Added
+- **`Voice` first-class object** (`lunavox.runtime.Voice`) with
+  `.base()`, `.clone_file()`, `.custom()`, `.design()` factories.
+  `Engine.synthesize(text, voice, params)` is now the single
+  synthesis entry point.
+- **`lunavox synth` CLI** — Python in-process synthesis with
+  `--voice {base,clone,custom,design}`, `--ref`, `--speaker`,
+  `--instruct`, `--temperature`, `--top-p`, `--top-k`. Same code
+  path as the GUI and benchmarks.
+- **`lunavox gui` CLI + new desktop GUI** under
+  `src/lunavox/gui/` — customtkinter app with a sidebar layout
+  (Synthesize / Library / Settings), deep-purple Luna theme, and
+  directly imports `lunavox.runtime.Engine` (no CLI string
+  builder). Gated behind the new `[gui]` optional extra.
+- **Profile config** — `~/.lunavox/config.toml` with `[default]` and
+  `[profile.<name>]` tables. Layered precedence: CLI flags > env
+  vars > profile > default > hardcoded. Select with
+  `lunavox --profile NAME …`.
+- **Grouped CLI commands**: `lunavox model {pull,convert,list}` and
+  `lunavox build [libs]` replace the old flat commands.
+- **New runtime package layout** — `engine.py`, `voice.py`,
+  `params.py`, `errors.py`, `_capi.py` each own one concern.
+- **New tests** — `test_runtime_voice.py`, `test_runtime_params.py`,
+  `test_cli_config.py`, `test_cli_common.py`-equivalents,
+  `test_gui_imports.py`, `test_gui_widgets.py` (72 passing locally
+  with the GUI extra installed; CI sees 66 passed + 6 skipped
+  because `[dev]` has no customtkinter).
+
+### Changed
+- **Breaking**: CLI commands reorganized. Old → new mapping:
+  `pull-model` → `model pull`, `convert` → `model convert`,
+  `download-libs` → `build libs`. `bootstrap` / `doctor` /
+  `build` kept their names.
+- **Breaking**: `Engine.synthesize_*` family collapsed into a
+  single `Engine.synthesize(text, voice, params)`. No compat shim —
+  callers migrate to `Voice.*` factories.
+- **Breaking**: Module-level `lunavox.runtime.set_log_callback`
+  replaced by `Engine.on_log(cb)` instance method. Removes a
+  global-state race and ties the lifetime of the log trampoline to
+  the engine instance.
+- **Breaking**: `customtkinter` and `pygame` moved out of core
+  `[project.dependencies]` into the new `[gui]` extra. `pip
+  install lunavox` no longer pulls them; `pip install
+  "lunavox[gui]"` does.
+- `SynthesisMode` shrunk to the four modes Python actually exposes
+  (`BASE`, `CLONE_FILE`, `CUSTOM`, `DESIGN`). `CLONE_SAMPLES` and
+  `CLONE_EMBEDDING` remain in the C ABI but are no longer bound.
+- GUI migrated from top-level `GUI/` to `src/lunavox/gui/` so
+  `pip install lunavox[gui]` ships the desktop app.
+- `src/lunavox/cli/main.py` shrank from 472 LOC to ~80 LOC. Command
+  logic now lives in per-command modules.
+
+### Removed
+- **Breaking**: `GUI/` directory — everything moved into
+  `src/lunavox/gui/`. Legacy `GUI/main_setup.py`,
+  `GUI/engine.py::get_command_string`, and the copy-pasted
+  `_setup_advanced_fields` helper are gone.
+- **Breaking**: `lunavox.runtime.binding` module — callers import
+  from the new `lunavox.runtime` package surface (`Engine`,
+  `Voice`, `SynthesisParams`, …) directly.
+
 ### Fixed
 - CI pyright failure after `huggingface_hub` auto-upgraded to 1.x on
   GitHub runners: removed the deprecated `resume_download=True` and
   `local_dir_use_symlinks=False` kwargs from
   `lunavox.model.downloader`. Both are no-ops in the 1.x API.
+- `tests/test_convert_hf_to_gguf_registry.py` now imports
+  `torch`/`transformers` via `pytest.importorskip(... exc_type=ImportError)`
+  so the `[dev]`-only CI install collects the test suite instead
+  of crashing on a missing `transformers` import.
+- `lunavox.model.pipeline` deferred its `numpy` import so the
+  `model/__init__.py` re-export chain no longer leaks a hard numpy
+  dependency onto `[dev]` installs.
+- Line endings normalized via a new `.gitattributes` so Windows CI
+  no longer trips `ruff format --check`.
 
-### Added
-- `ruff` + `pytest` developer workflow in `pyproject.toml` (`[tool.ruff]`,
-  `[tool.ruff.format]`, `[tool.pytest.ini_options]`).
-- First Python unit test suite under `tests/` — 45 tests covering
-  `core.platform`, `core.project`, `core.stats_schema`, `core.deps`,
-  `model.config`, `runtime.binding` ctypes struct layout,
-  `build/libs.json` manifest integrity, and CLI `--help` smoke.
-- GitHub Actions CI (`.github/workflows/ci.yml`) running ruff + pytest on
-  Windows / Linux / macOS for Python 3.10–3.12. C++ build is
-  intentionally out of scope so the workflow stays under a minute.
-- This `CHANGELOG.md` file.
-
-### Changed
-- Codebase formatted with `ruff format`; ~20 Python files reflowed for
-  consistent spacing and import ordering. No runtime behavior changes.
+### Infrastructure (folded from Phase 1–3 work)
+- `ruff` + `pytest` developer workflow in `pyproject.toml`.
+- Initial Python unit test suite under `tests/` (45 tests then, 66+ now).
+- GitHub Actions CI matrix (Windows / Linux / macOS × Python 3.10–3.12).
+- `pyright` strict zones for `core/`, `model/config.py`, and the new
+  `runtime/errors.py` / `params.py` / `voice.py`.
+- MkDocs Material + mkdocstrings documentation site at
+  [lux-luna.github.io/LunaVox](https://lux-luna.github.io/LunaVox/).
+- Vendored `src/lunavox/model/conversion/hf_export/convert_hf_to_gguf.py`
+  trimmed from 11 433 LOC to 2 390 LOC (Qwen2 / Qwen3 only).
 
 ## [2.1.6] — 2026-04-15
 

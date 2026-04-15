@@ -1,6 +1,6 @@
 # LunaVox Windows CUDA Dependency Guide
 
-Covers both **CUDA 12** and **CUDA 13** runtime sets on Windows x64. Pick the column that matches the binaries you downloaded with `lunavox download-libs --platform win_cuda12` (or `win_cuda13`).
+Covers both **CUDA 12** and **CUDA 13** runtime sets on Windows x64. Pick the column that matches the binaries you downloaded with `lunavox build libs --platform win_cuda12` (or `win_cuda13`).
 
 ## 1. Verified Combinations
 
@@ -56,7 +56,7 @@ Copying only `cudnn64_9.dll` is the most common cause of "CUDA acceleration sile
 
 - **Conda (recommended)**: install `cuda-toolkit` + `cudnn` of the matching major into a dedicated env and ensure `Library\bin` is on `PATH`.
 - **Portable**: drop every DLL listed above next to `lunavox-cli.exe`.
-- After switching CUDA major version, run `lunavox download-libs --platform win_cuda13` (or `win_cuda12`) and rebuild — leftover binaries from the other major will fail with **error 126** because they reference the wrong `cublasLt64_*.dll`.
+- After switching CUDA major version, run `lunavox build libs --platform win_cuda13` (or `win_cuda12`) and rebuild — leftover binaries from the other major will fail with **error 126** because they reference the wrong `cublasLt64_*.dll`.
 
 ## 5. Troubleshooting
 

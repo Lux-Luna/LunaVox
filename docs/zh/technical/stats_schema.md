@@ -92,5 +92,5 @@ Python 绑定以 `SynthesisStats` 镜像同一子集。更细的 `llama_*` / `de
 ## 使用方
 
 - `benchmark/run_benchmark.py` —— 读取 `--stats-json`，计算 100 次跑分的 latency / TTFB / RTF / 内存分布，产出 `benchmark/report.md`。
-- `GUI/engine.py::format_metrics` —— 把 `SynthesisStats` 投影成报告面板的字符串。
+- `lunavox.gui.widgets.stats_card::StatsCard.update_stats` —— 在 GUI 的 stats 卡片上直接渲染 `SynthesisStats`（不再经过 legacy dict 转换）。
 - 新工具应当 `from lunavox.core.stats_schema import ...`，而不是去戳裸 dict。
