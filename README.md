@@ -154,6 +154,20 @@ Design voice using text descriptions:
 
 ---
 
+## 📖 Documentation Site
+
+Full bilingual documentation — guide, CLI reference, technical details,
+benchmarks, and Python API autodoc — is published at:
+
+- **https://lux-luna.github.io/LunaVox/**
+
+Local preview:
+
+```bash
+pip install -e ".[docs]"
+mkdocs serve
+```
+
 ## 📝 Changelog
 
 Release history and per-version highlights are tracked in

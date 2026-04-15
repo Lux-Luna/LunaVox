@@ -1,4 +1,4 @@
-[**English**](../../README.md) | [**中文**](README_ZH.md)
+[**English**](https://github.com/Lux-Luna/LunaVox/blob/main/README.md) | [**中文**](README_ZH.md)
 
 # 🌌 LunaVox: Qwen3-TTS C++ 高性能推理引擎
 
@@ -55,7 +55,7 @@
 > - **测试环境**: Intel i9-12900K + NVIDIA RTX 3090，Windows 11。
 > - **测试标准**: 每种后端 5 次预热（丢弃）+ **100 次正式测量**，固定 25 词英文句子。三种后端基于同一 commit 构建。
 > - **TTFB**（time-to-first-byte）是流式管道从合成开始到首批 PCM 样本可用的墙钟时间 —— 流式调用方实际感受到的延迟。
-> - 逐次分布（p50 / p95 / p99 / stddev）与原始数据见 [`benchmark/report.md`](../../benchmark/report.md)。
+> - 逐次分布（p50 / p95 / p99 / stddev）与原始数据见 [`benchmark/report.md`](https://github.com/Lux-Luna/LunaVox/blob/main/benchmark/report.md)。
 
 ---
 

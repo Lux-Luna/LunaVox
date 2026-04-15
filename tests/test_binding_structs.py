@@ -48,11 +48,12 @@ def test_caudio_field_order_and_types():
         ("rss_peak_bytes", ctypes.c_uint64),
         ("rss_end_bytes", ctypes.c_uint64),
     ]
-    # Compare by name + type; ctypes wraps types so `==` works on the
-    # primitives but we compare names explicitly for clearer failures.
+    # Compare by name + type. ctypes ``_fields_`` entries can be 2- or
+    # 3-tuples (the optional third element is a bitfield width), so we
+    # index explicitly instead of unpacking.
     actual = b._CAudio._fields_
-    assert [name for name, _ in actual] == [name for name, _ in expected]
-    assert [typ for _, typ in actual] == [typ for _, typ in expected]
+    assert [f[0] for f in actual] == [f[0] for f in expected]
+    assert [f[1] for f in actual] == [f[1] for f in expected]
 
 
 def test_synthesis_params_defaults_match_c_defaults():

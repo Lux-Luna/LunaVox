@@ -12,7 +12,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from huggingface_hub import snapshot_download
+from huggingface_hub import snapshot_download  # pyright: ignore[reportUnknownVariableType]
 from huggingface_hub.constants import HF_HUB_CACHE
 
 HF_HUB_ROOT = Path(HF_HUB_CACHE)

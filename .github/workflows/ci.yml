@@ -40,6 +40,9 @@ jobs:
       - name: Ruff format check
         run: python -m ruff format --check src/ tests/
 
+      - name: Pyright
+        run: python -m pyright
+
       - name: Pytest
         run: python -m pytest -q
 

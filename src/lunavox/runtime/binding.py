@@ -28,7 +28,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from lunavox.core.platform import shared_lib_name
 from lunavox.core.project import resolve_project_root
@@ -368,7 +368,10 @@ def _consume_audio(ptr, mode: SynthesisMode) -> SynthesisResult:
     # via numpy.ctypeslib + copy() avoids the intermediate list and is
     # noticeably faster for long-form output.
     pcm_ptr = ctypes.cast(audio.samples, ctypes.POINTER(ctypes.c_float * n))
-    pcm = np.frombuffer(pcm_ptr.contents, dtype=np.float32).copy()
+    # ctypes.Array is a PEP 3118 buffer producer, but pyright's stubs
+    # don't treat it as one. memoryview() accepts the Array directly and
+    # feeds numpy through the buffer protocol without a list detour.
+    pcm = np.frombuffer(memoryview(pcm_ptr.contents), dtype=np.float32).copy()
 
     stats = SynthesisStats(
         t_tokenize_ms=int(audio.t_tokenize_ms),
@@ -398,8 +401,10 @@ def _consume_audio(ptr, mode: SynthesisMode) -> SynthesisResult:
 
 # We hold a module-level reference to the ctypes callback so the trampoline
 # object is not garbage collected while the C engine still has the pointer.
-_log_cb_holder: Optional[Callable] = None
-_log_cb_ctype: Optional[_LOG_CALLBACK_T] = None
+# _LOG_CALLBACK_T is a runtime-constructed ctypes.CFUNCTYPE value, not a
+# static type — pyright rejects it as a type annotation, so store it as Any.
+_log_cb_holder: Optional[Callable[..., Any]] = None
+_log_cb_ctype: Any = None
 
 
 LogCallback = Callable[[int, str], None]

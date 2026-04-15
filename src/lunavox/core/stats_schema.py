@@ -24,7 +24,7 @@ same commit.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 
 class TimingMs(TypedDict, total=False):
@@ -114,14 +114,21 @@ class StatsJSON(TypedDict, total=False):
 # ---------------------------------------------------------------------------
 
 
+RunDict = dict[str, Any]
+
+
+def _empty_run_list() -> list[RunDict]:
+    return []
+
+
 @dataclass
 class ParsedStats:
     load_ms: int = 0
     warmup_ms: int = 0
-    runs: list[dict] = field(default_factory=list)
+    runs: list[RunDict] = field(default_factory=_empty_run_list)
 
     @property
-    def first_run(self) -> dict:
+    def first_run(self) -> RunDict:
         return self.runs[0] if self.runs else {}
 
     def rtf(self, index: int = 0) -> float:
@@ -147,12 +154,15 @@ def parse_stats_json(data: Any) -> ParsedStats:
             f"stats JSON must be an object with t_load_ms / runs, got {type(data).__name__}"
         )
 
-    runs = data.get("runs", [])
-    if not isinstance(runs, list):
-        raise ValueError(f"stats JSON 'runs' must be a list, got {type(runs).__name__}")
+    payload = cast(dict[str, Any], data)
+    runs_raw = payload.get("runs", [])
+    if not isinstance(runs_raw, list):
+        raise ValueError(f"stats JSON 'runs' must be a list, got {type(runs_raw).__name__}")
+    runs_list = cast(list[Any], runs_raw)
+    runs: list[RunDict] = [cast(RunDict, r) for r in runs_list if isinstance(r, dict)]
 
     return ParsedStats(
-        load_ms=int(data.get("t_load_ms", 0) or 0),
-        warmup_ms=int(data.get("t_warmup_ms", 0) or 0),
-        runs=list(runs),
+        load_ms=int(payload.get("t_load_ms", 0) or 0),
+        warmup_ms=int(payload.get("t_warmup_ms", 0) or 0),
+        runs=runs,
     )

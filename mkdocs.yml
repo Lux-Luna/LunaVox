@@ -1,0 +1,127 @@
+site_name: LunaVox
+site_description: High-performance C++ inference engine for Qwen3-TTS
+site_url: https://lux-luna.github.io/LunaVox/
+repo_url: https://github.com/Lux-Luna/LunaVox
+repo_name: Lux-Luna/LunaVox
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - content.code.copy
+    - content.code.annotate
+    - search.highlight
+    - search.suggest
+  icon:
+    logo: material/waveform
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            docstring_style: sphinx
+            merge_init_into_class: true
+            separate_signature: true
+            line_length: 90
+            show_signature_annotations: true
+            signature_crossrefs: true
+            filters:
+              - "!^_"
+              - "^__init__$"
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - English:
+    - Overview: en/index.md
+    - Install:
+      - CUDA on Windows: en/install/cuda_windows.md
+    - Guide:
+      - CLI Reference: en/guide/cli_reference.md
+      - Usage Tutorial: en/guide/usage_tutorial.md
+    - Technical:
+      - Model Profile: en/technical/model_profile.md
+      - Synthesis Pathway: en/technical/synthesis_pathway.md
+      - Stats Schema: en/technical/stats_schema.md
+    - Benchmark:
+      - Windows Performance: en/benchmark/windows_performance.md
+    - Python API:
+      - Runtime Engine: en/api/runtime.md
+      - Model Catalog: en/api/model_config.md
+      - Stats Schema: en/api/stats_schema.md
+      - Core Utilities: en/api/core.md
+  - 中文:
+    - 概览: zh/README_ZH.md
+    - 安装:
+      - CUDA on Windows: zh/install/cuda_windows.md
+    - 指南:
+      - CLI 参考: zh/guide/cli_reference.md
+      - 用法教程: zh/guide/usage_tutorial.md
+    - 技术细节:
+      - 模型 Profile: zh/technical/model_profile.md
+      - 合成通路: zh/technical/synthesis_pathway.md
+      - 统计 Schema: zh/technical/stats_schema.md
+    - 基准:
+      - Windows 性能: zh/benchmark/windows_performance.md
+    - Python API:
+      - 运行时 Engine: zh/api/runtime.md
+      - 模型目录: zh/api/model_config.md
+      - 统计 Schema: zh/api/stats_schema.md
+      - Core 工具: zh/api/core.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Lux-Luna/LunaVox
