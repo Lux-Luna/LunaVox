@@ -93,4 +93,8 @@ addopts = "-q --strict-markers"
 filterwarnings = [
   "error",
   "ignore::DeprecationWarning:huggingface_hub.*",
+  # torch <= 2.6 imports the deprecated `pynvml` shim, which itself emits
+  # a FutureWarning via a custom finder. Not actionable in LunaVox.
+  "ignore::FutureWarning:_pynvml_redirector",
+  "ignore::FutureWarning:torch.cuda",
 ]
