@@ -26,6 +26,13 @@ def register(parent: typer.Typer) -> None:
         model: Optional[str] = typer.Option(
             None, "--model", help="Model directory name under models/ (override config)"
         ),
+        batch_size: int = typer.Option(
+            4,
+            "--batch-size",
+            min=1,
+            help="Concurrent-request pool size. Each slot loads its own engine, "
+            "so N × per-engine VRAM. Default 4.",
+        ),
         log_level: str = typer.Option(
             "info", "--log-level", help="uvicorn log level: critical|error|warning|info|debug"
         ),
@@ -57,8 +64,13 @@ def register(parent: typer.Typer) -> None:
 
         console.print(
             f"[stage]Starting LunaVox server at [bold]http://{host}:{port}[/] "
-            f"(model=[bold]{resolved_model}[/], threads={st.config.n_threads})[/]"
+            f"(model=[bold]{resolved_model}[/], batch_size=[bold]{batch_size}[/], "
+            f"threads={st.config.n_threads})[/]"
         )
 
-        app = create_app(model_dir, n_threads=st.config.n_threads)
+        app = create_app(
+            model_dir,
+            n_threads=st.config.n_threads,
+            batch_size=batch_size,
+        )
         uvicorn.run(app, host=host, port=port, log_level=log_level)

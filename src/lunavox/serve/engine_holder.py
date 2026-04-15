@@ -1,59 +1,68 @@
-"""Thin wrapper around a single :class:`lunavox.runtime.Engine`.
+"""Pool holder sitting between the FastAPI app and :class:`BatchEngine`.
 
-In Phase 5A the HTTP layer owns exactly one Engine instance; requests
-serialise on an ``asyncio.Lock`` so there is never more than one
-synthesis in flight per GPU. This keeps the server correct (no C++
-state corruption) and lines up the abstraction so Phase 5B can swap
-the single Engine for a C++ BatchEngine without changing any of the
-FastAPI handlers.
+Phase 5A held a single :class:`Engine` and an ``asyncio.Lock`` to
+serialise concurrent requests. 5B replaces that with a
+:class:`BatchEngine` pool of ``N`` engines whose internal
+``asyncio.Queue`` already provides back-pressure — so the lock is
+gone and handlers just call into the pool directly.
+
+The class name :class:`EngineHolder` is kept for backwards
+compatibility of the import site (the serve module's handlers); it
+now wraps a :class:`BatchEngine` instead of a single engine.
 """
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import Optional
 
-from lunavox.runtime import Engine, SynthesisParams
+from lunavox.runtime import BatchEngine, SynthesisParams
 
 
 class EngineHolder:
-    """Own a lazily-loaded Engine and a lock that serialises synth calls."""
+    """Thin adapter around :class:`BatchEngine` for the FastAPI layer.
 
-    def __init__(self, model_dir: Path, n_threads: int = 4) -> None:
+    Construction is lazy — the underlying pool is loaded by
+    :meth:`load`, which the FastAPI ``lifespan`` context manager
+    awaits on startup. Handlers read ``batch`` directly once loaded.
+    """
+
+    def __init__(
+        self,
+        model_dir: Path,
+        *,
+        batch_size: int = 4,
+        n_threads: int = 4,
+    ) -> None:
         self.model_dir = Path(model_dir)
+        self.batch_size = batch_size
         self.n_threads = n_threads
-        self._engine: Optional[Engine] = None
-        self._lock = asyncio.Lock()
+        self._batch: Optional[BatchEngine] = None
 
     async def load(self) -> None:
-        """Load the underlying C++ engine in a background thread.
-
-        Engine construction is synchronous and can take seconds to
-        warm up, so we run it via ``run_in_executor`` to keep the
-        FastAPI startup event non-blocking.
-        """
-        if self._engine is not None:
+        if self._batch is not None:
             return
-        loop = asyncio.get_running_loop()
-        self._engine = await loop.run_in_executor(
-            None, lambda: Engine(self.model_dir, n_threads=self.n_threads)
+        self._batch = BatchEngine(
+            self.model_dir,
+            batch_size=self.batch_size,
+            n_threads=self.n_threads,
         )
+        await self._batch.load()
 
     def close(self) -> None:
-        if self._engine is not None:
-            self._engine.close()
-            self._engine = None
+        if self._batch is not None:
+            self._batch.close()
+            self._batch = None
 
     @property
-    def engine(self) -> Engine:
-        if self._engine is None:
+    def batch(self) -> BatchEngine:
+        if self._batch is None:
             raise RuntimeError("EngineHolder.load() has not been awaited yet")
-        return self._engine
+        return self._batch
 
     @property
-    def lock(self) -> asyncio.Lock:
-        return self._lock
+    def sample_rate(self) -> int:
+        return self.batch.sample_rate
 
     def build_params(
         self,

@@ -23,6 +23,7 @@ variants to remember.
 from __future__ import annotations
 
 from ._capi import library_path
+from .batch_engine import BatchEngine
 from .engine import Engine, LogCallback
 from .errors import LunavoxLibraryError, LunavoxSynthesisError
 from .params import (
@@ -36,6 +37,7 @@ from .params import (
 from .voice import Voice
 
 __all__ = [
+    "BatchEngine",
     "Engine",
     "LogCallback",
     "LunavoxLibraryError",

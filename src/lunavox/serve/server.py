@@ -1,27 +1,24 @@
 """FastAPI application for ``lunavox serve``.
 
-Exposes:
+Phase 5B update: the app now drives a :class:`BatchEngine` pool
+under the hood, so the old ``asyncio.Lock`` that serialised 5A
+requests is gone. Multiple clients hit :meth:`BatchEngine.submit`
+and :meth:`BatchEngine.synthesize_stream` concurrently; the pool's
+internal idle queue provides back-pressure when every engine is
+busy. WebSocket streaming now supports every voice mode (base /
+clone / custom / design).
 
-* ``POST /v1/synth`` — one-shot synthesis; accepts all four voice modes
-  (base, clone, custom, design), returns a WAV body with metadata in
-  the ``X-Lunavox-Stats`` header.
-* ``WS /v1/stream`` — WebSocket sentence-streaming. Client sends a
-  :class:`SynthRequest` JSON frame, the server pushes binary PCM
-  chunks as they become available, and closes with a terminal JSON
-  frame carrying :class:`SynthStatsResponse` stats. Base voice only
-  in Phase 5A (see Engine.synthesize_stream).
-* ``GET /health``, ``GET /v1/models`` — standard liveness / catalog.
+Exposed endpoints:
 
-Concurrency: a single :class:`EngineHolder` owned by the app state
-holds an ``asyncio.Lock``. Every request acquires the lock before
-entering the C engine, so concurrent clients queue politely on one
-GPU. Phase 5B will swap this for a real BatchEngine without changing
-the handler shape.
+* ``POST /v1/synth`` — one-shot synthesis, all voice modes, WAV
+  body + stats header.
+* ``WS /v1/stream`` — streaming WebSocket, all voice modes. Binary
+  PCM chunks followed by a terminal JSON frame.
+* ``GET /health``, ``GET /v1/models``.
 """
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import io
 import json
@@ -86,13 +83,34 @@ def _pcm_to_wav_bytes(audio: Any, sample_rate: int) -> bytes:
     return buf.getvalue()
 
 
-def create_app(model_dir: Path, n_threads: int = 4) -> FastAPI:
+def _f32_to_pcm16_bytes(audio: Any) -> bytes:
+    """Convert float32 samples in [-1, 1] to raw int16 LE PCM bytes."""
+    out = bytearray()
+    for sample in audio:
+        clipped = max(-1.0, min(1.0, float(sample)))
+        out += struct.pack("<h", int(clipped * 32767.0))
+    return bytes(out)
+
+
+def create_app(
+    model_dir: Path,
+    *,
+    n_threads: int = 4,
+    batch_size: int = 4,
+) -> FastAPI:
     """Build the FastAPI app bound to one :class:`EngineHolder`.
 
-    Kept as a factory so tests (and future multi-model deployments)
-    can instantiate isolated apps without module-level globals.
+    ``batch_size`` controls how many concurrent requests the pool
+    can service — the Phase 5B default is 4, matching the CLI
+    ``--batch-size`` flag. Pass ``batch_size=1`` for low-VRAM
+    deployments; the class falls back to single-engine behaviour
+    transparently.
     """
-    holder = EngineHolder(model_dir=model_dir, n_threads=n_threads)
+    holder = EngineHolder(
+        model_dir=model_dir,
+        batch_size=batch_size,
+        n_threads=n_threads,
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -114,12 +132,12 @@ def create_app(model_dir: Path, n_threads: int = 4) -> FastAPI:
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
-        if holder._engine is None:
+        if holder._batch is None:
             return HealthResponse(status="loading", model=None, sample_rate=None)
         return HealthResponse(
             status="ok",
             model=holder.model_dir.name,
-            sample_rate=holder.engine.sample_rate,
+            sample_rate=holder.sample_rate,
         )
 
     @app.get("/v1/models", response_model=ModelsResponse)
@@ -151,12 +169,11 @@ def create_app(model_dir: Path, n_threads: int = 4) -> FastAPI:
             max_audio_tokens=req.max_audio_tokens,
         )
 
-        async with holder.lock:
-            loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: holder.engine.synthesize(req.text, voice=voice, params=params),
-            )
+        # BatchEngine.submit acquires one idle engine from the pool,
+        # runs synthesis on a background thread, and releases the
+        # engine on completion. Concurrent callers queue on the pool's
+        # internal asyncio.Queue, no explicit lock needed.
+        result = await holder.batch.submit(req.text, voice=voice, params=params)
 
         wav_bytes = _pcm_to_wav_bytes(result.audio, result.sample_rate)
         meta = SynthResponseMeta(
@@ -180,15 +197,14 @@ def create_app(model_dir: Path, n_threads: int = 4) -> FastAPI:
 
     @app.websocket("/v1/stream")
     async def stream_ws(websocket: WebSocket) -> None:
-        """Sentence-streaming endpoint.
+        """Sentence-streaming endpoint — all four voice modes.
 
         Protocol:
-          1. Client sends one text JSON frame matching :class:`SynthRequest`
-             (voice must be ``base`` in Phase 5A — other modes close 1003).
+          1. Client sends one text JSON frame matching :class:`SynthRequest`.
           2. Server sends binary frames containing raw int16 little-endian
              PCM chunks at the engine's sample rate (typically 24000).
-          3. Server sends one terminal JSON frame with key ``done=true``
-             and the :class:`SynthStatsResponse` payload, then closes.
+          3. Server sends one terminal JSON frame with ``done=true`` and
+             the :class:`SynthStatsResponse` payload, then closes.
         """
         await websocket.accept()
 
@@ -199,11 +215,10 @@ def create_app(model_dir: Path, n_threads: int = 4) -> FastAPI:
             await websocket.close(code=1003, reason=f"invalid request: {err}")
             return
 
-        if req.voice != "base":
-            await websocket.close(
-                code=1003,
-                reason=f"WebSocket streaming is base-only in Phase 5A (got {req.voice})",
-            )
+        try:
+            voice = _build_voice(req)
+        except HTTPException as err:
+            await websocket.close(code=1003, reason=str(err.detail))
             return
 
         params = holder.build_params(
@@ -213,61 +228,30 @@ def create_app(model_dir: Path, n_threads: int = 4) -> FastAPI:
             max_audio_tokens=req.max_audio_tokens,
         )
 
+        final_stats: Optional[SynthStatsResponse] = None
         try:
-            async with holder.lock:
-                loop = asyncio.get_running_loop()
-                chunk_queue: asyncio.Queue[Any] = asyncio.Queue()
-                sentinel: dict[str, Any] = {"done": False}
+            async for chunk in holder.batch.synthesize_stream(req.text, voice=voice, params=params):
+                if len(chunk.audio) > 0:
+                    await websocket.send_bytes(_f32_to_pcm16_bytes(chunk.audio))
+                if chunk.is_last and chunk.stats is not None:
+                    final_stats = SynthStatsResponse(
+                        t_total_ms=chunk.stats.t_total_ms,
+                        audio_duration_ms=chunk.stats.audio_duration_ms,
+                        rtf=chunk.stats.rtf,
+                        rss_peak_bytes=chunk.stats.rss_peak_bytes,
+                    )
 
-                def _producer() -> None:
-                    try:
-                        for chunk in holder.engine.synthesize_stream(
-                            req.text, voice=Voice.base(), params=params
-                        ):
-                            loop.call_soon_threadsafe(chunk_queue.put_nowait, chunk)
-                    except BaseException as err:
-                        loop.call_soon_threadsafe(
-                            chunk_queue.put_nowait,
-                            {"error": str(err)},
-                        )
-                    finally:
-                        loop.call_soon_threadsafe(chunk_queue.put_nowait, sentinel)
-
-                producer = loop.run_in_executor(None, _producer)
-                final_stats: Optional[SynthStatsResponse] = None
-
-                while True:
-                    item = await chunk_queue.get()
-                    if item is sentinel:
-                        break
-                    if isinstance(item, dict) and "error" in item:
-                        await websocket.send_text(json.dumps({"error": item["error"]}))
-                        break
-                    # Convert float32 to int16 PCM and push as binary frame.
-                    int16 = bytearray()
-                    for sample in item.audio:
-                        clipped = max(-1.0, min(1.0, float(sample)))
-                        int16 += struct.pack("<h", int(clipped * 32767.0))
-                    if int16:
-                        await websocket.send_bytes(bytes(int16))
-                    if item.is_last and item.stats is not None:
-                        final_stats = SynthStatsResponse(
-                            t_total_ms=item.stats.t_total_ms,
-                            audio_duration_ms=item.stats.audio_duration_ms,
-                            rtf=item.stats.rtf,
-                            rss_peak_bytes=item.stats.rss_peak_bytes,
-                        )
-
-                await producer  # reap worker
-
-                terminal = {
-                    "done": True,
-                    "sample_rate": holder.engine.sample_rate,
-                    "stats": final_stats.model_dump() if final_stats else None,
-                }
-                await websocket.send_text(json.dumps(terminal))
+            terminal = {
+                "done": True,
+                "sample_rate": holder.sample_rate,
+                "stats": final_stats.model_dump() if final_stats else None,
+            }
+            await websocket.send_text(json.dumps(terminal))
         except WebSocketDisconnect:
             return
+        except Exception as err:
+            with contextlib.suppress(Exception):
+                await websocket.send_text(json.dumps({"error": str(err)}))
         finally:
             # Closing an already-closed socket raises; suppress quietly.
             with contextlib.suppress(Exception):

@@ -32,15 +32,12 @@ def test_create_app_registers_routes(tmp_path: Path):
         assert expected in paths, f"Missing route {expected}; have {paths}"
 
 
-def test_engine_holder_serialises_access(tmp_path: Path):
-    import asyncio
-
+def test_engine_holder_build_params(tmp_path: Path):
     from lunavox.serve.engine_holder import EngineHolder
 
-    holder = EngineHolder(model_dir=tmp_path, n_threads=1)
-    # The lock must exist and be an asyncio.Lock; tests don't load a
-    # real engine so .load() is intentionally skipped.
-    assert isinstance(holder.lock, asyncio.Lock)
+    holder = EngineHolder(model_dir=tmp_path, n_threads=1, batch_size=2)
+    assert holder.batch_size == 2
+    assert holder.n_threads == 1
 
     params = holder.build_params(temperature=0.9, top_k=20)
     assert params.temperature == 0.9
@@ -48,3 +45,15 @@ def test_engine_holder_serialises_access(tmp_path: Path):
     # Untouched fields keep their defaults.
     assert params.top_p == 1.0
     assert params.n_threads == 1
+
+
+def test_engine_holder_batch_raises_before_load(tmp_path: Path):
+    from lunavox.serve.engine_holder import EngineHolder
+
+    holder = EngineHolder(model_dir=tmp_path, batch_size=1)
+    import pytest
+
+    with pytest.raises(RuntimeError, match="load"):
+        _ = holder.batch
+    with pytest.raises(RuntimeError, match="load"):
+        _ = holder.sample_rate

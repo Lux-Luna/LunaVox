@@ -291,29 +291,24 @@ class Engine:
     ) -> Iterator[SynthesisChunk]:
         """Stream PCM chunks as they become available during synthesis.
 
-        Yields :class:`SynthesisChunk` objects. The terminal chunk has
+        Yields :class:`SynthesisChunk` objects; the terminal chunk has
         ``is_last=True`` and carries the full :class:`SynthesisStats`
-        for the run. Only ``Voice.base()`` is supported in Phase 5A;
-        other voice modes raise :class:`NotImplementedError` until the
-        Phase 5B C++ batching refactor lands.
+        for the run. All four voice modes are supported — dispatch is
+        the same idea as :meth:`_dispatch` for the one-shot path, but
+        the call goes into the ``_streaming`` C API variant with a
+        chunk callback attached.
 
         Implementation detail — the C engine fires its audio chunk
         callback from the decoder worker thread. That callback runs
         under the Python GIL (ctypes trampolines acquire it) but the
         Python code in the callback must stay short: we only copy the
         slice into a numpy array and push it onto a ``queue.Queue``.
-        The main thread drives the C synthesize call from a background
-        worker and this generator drains the queue.
+        A background thread drives the C streaming call while the
+        generator drains the queue on the caller's thread.
         """
         import numpy as np
 
         v = voice if voice is not None else Voice.base()
-        if v.mode is not SynthesisMode.BASE:
-            raise NotImplementedError(
-                f"Streaming synthesis is Phase 5A base-mode only; got {v.mode.value}. "
-                "Other voice modes will gain streaming in 5B."
-            )
-
         cp, _held = _to_c_params(params)
         chunk_queue: queue.Queue[Any] = queue.Queue(maxsize=64)
         SENTINEL = object()  # noqa: N806
@@ -341,18 +336,12 @@ class Engine:
 
         def _worker() -> None:
             try:
-                ptr = self._lib.lunavox_synthesize_streaming(
-                    self.handle,
-                    text.encode("utf-8"),
-                    ctypes.byref(cp),
-                    cb_trampoline,
-                    None,
-                )
+                ptr = self._dispatch_stream(text, v, cp, cb_trampoline)
                 self._raise_for_null(ptr)
                 # The full cumulative audio is still returned here; we
                 # only keep the stats since callers consumed the chunks
                 # progressively through the queue.
-                result = _consume_audio(ptr, SynthesisMode.BASE)
+                result = _consume_audio(ptr, v.mode)
                 sr_holder["rate"] = result.sample_rate
                 stats_holder["stats"] = result.stats
             except BaseException as err:
@@ -383,3 +372,57 @@ class Engine:
             worker.join(timeout=60.0)
             if err_holder["err"] is not None:
                 raise err_holder["err"]
+
+    def _dispatch_stream(
+        self,
+        text: str,
+        voice: Voice,
+        cp: _capi.CParams,
+        cb: Any,
+    ) -> Any:
+        """Route one streaming synthesis call to the right ``_streaming`` C symbol.
+
+        Mirrors :meth:`_dispatch` exactly but for the streaming variant
+        family. Adding a voice mode adds one branch here and one
+        classmethod to :class:`Voice` — no other caller changes.
+        """
+        text_b = text.encode("utf-8")
+        if voice.mode is SynthesisMode.BASE:
+            return self._lib.lunavox_synthesize_streaming(
+                self.handle, text_b, ctypes.byref(cp), cb, None
+            )
+        if voice.mode is SynthesisMode.CLONE_FILE:
+            if voice.reference_path is None:
+                raise LunavoxSynthesisError("Voice.clone_file requires reference_path")
+            return self._lib.lunavox_synthesize_with_voice_file_streaming(
+                self.handle,
+                text_b,
+                str(voice.reference_path).encode("utf-8"),
+                ctypes.byref(cp),
+                cb,
+                None,
+            )
+        if voice.mode is SynthesisMode.CUSTOM:
+            if not voice.speaker:
+                raise LunavoxSynthesisError("Voice.custom requires speaker id")
+            return self._lib.lunavox_synthesize_custom_streaming(
+                self.handle,
+                text_b,
+                voice.speaker.encode("utf-8"),
+                (voice.instruct or "").encode("utf-8"),
+                ctypes.byref(cp),
+                cb,
+                None,
+            )
+        if voice.mode is SynthesisMode.DESIGN:
+            if not (voice.instruct and voice.instruct.strip()):
+                raise LunavoxSynthesisError("Voice.design requires non-empty instruct")
+            return self._lib.lunavox_synthesize_design_streaming(
+                self.handle,
+                text_b,
+                voice.instruct.encode("utf-8"),
+                ctypes.byref(cp),
+                cb,
+                None,
+            )
+        raise LunavoxSynthesisError(f"Unsupported voice mode: {voice.mode}")
