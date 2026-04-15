@@ -11,8 +11,7 @@ The same JSON is the source of truth for:
 
 Keep the two views aligned: every field added to ``ModelProfile`` here
 must also exist in ``src/model_profile.h``, and vice versa.
-See ``docs/en/technical/model_profile_schema.md`` for the shared
-contract.
+See ``docs/en/technical/model_profile.md`` for the shared contract.
 """
 
 from __future__ import annotations

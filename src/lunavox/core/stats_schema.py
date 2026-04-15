@@ -13,7 +13,7 @@ Three producers emit the same shape:
 
 This module ties all three together with :class:`StatsJSON` (the
 top-level object) and :class:`RunStats` (per-run entry). Consumers like
-``tests/bench_baseline.py`` and the GUI can ``from lunavox.core.stats_schema
+``benchmark/run_benchmark.py`` and the GUI can ``from lunavox.core.stats_schema
 import StatsJSON`` instead of reaching into free-form dicts.
 
 The schema is intentionally flat and boring: adding a new field means
@@ -108,7 +108,7 @@ class StatsJSON(TypedDict, total=False):
 
 
 # ---------------------------------------------------------------------------
-# Lightweight parser used by bench_baseline and the GUI. It's not a schema
+# Lightweight parser used by run_benchmark and the GUI. It's not a schema
 # validator — just a structural load that catches the common "file exists
 # but is truncated / wrong shape" failure mode early with a clear message.
 # ---------------------------------------------------------------------------

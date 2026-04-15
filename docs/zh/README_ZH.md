@@ -42,18 +42,20 @@
 
 下表展示了 LunaVox 在不同后端配置下的平均性能表现。详细报告请参阅 **[Windows 性能评估报告](benchmark/windows_performance.md)**。
 
-| 测试配置 | 平均 RTF | 峰值内存 (RAM) | 显存 (VRAM) | 相对加速比 (Speedup) |
-| :--- | :---: | :---: | :---: | :---: |
-| **Baseline (CPU)** | 5.066 | 5.06 GB | — | 1.00x |
-| **Baseline (GPU)** | 3.788 | 1.59 GB | 2.29 GB | 1.34x |
-| **LunaVox (Full CPU)** | 1.152 | 1.06 GB | — | 4.40x |
-| **LunaVox (CUDA13)** | 0.254 | 1.39 GB | 1.30 GB | 19.94x |
-| **LunaVox (Llama.cpp (Vulkan) / ORT (DML))** | **0.180** | 1.08 GB | 1.16 GB | **28.21x** |
+| 测试配置 | **TTFB (ms)** | RTF | 峰值 RAM | 显存 VRAM | 相对加速比 |
+| :--- | ---: | ---: | ---: | ---: | ---: |
+| 官方 PyTorch 基线 (CPU) | — | 5.066 | 5.06 GB | — | 1.00× |
+| 官方 PyTorch 基线 (GPU) | — | 3.788 | 1.59 GB | 2.29 GB | 1.34× |
+| **LunaVox (Full CPU)** | 1248 | 0.858 | 1.19 GB | — | 5.90× |
+| **LunaVox (CUDA 13)** | 175 | 0.213 | 1.41 GB | 1.33 GB | 23.78× |
+| **LunaVox (Vulkan + DML)** | **194** | **0.152** | **0.97 GB** | 1.00 GB | **33.33×** |
 
 > [!NOTE]
-> - **测试模型**: 基于 **Qwen3-TTS-12Hz-0.6B-Base**，开启声音克隆模式并在使用 `.json` 预计算特征文件作为参考。
-> - **测试环境**: Intel i9-12900K + NVIDIA RTX 3090
-> - **测试标准**: 在模型/解码器预热后，取 5 组不同文本的 **100 次迭代**（稳态）平均结果。
+> - **测试模型**: **Qwen3-TTS-12Hz-0.6B-Base**，语音克隆使用预计算特征文件 `ref/ref_0.6B.json`。
+> - **测试环境**: Intel i9-12900K + NVIDIA RTX 3090，Windows 11。
+> - **测试标准**: 每种后端 5 次预热（丢弃）+ **100 次正式测量**，固定 25 词英文句子。三种后端基于同一 commit 构建。
+> - **TTFB**（time-to-first-byte）是流式管道从合成开始到首批 PCM 样本可用的墙钟时间 —— 流式调用方实际感受到的延迟。
+> - 逐次分布（p50 / p95 / p99 / stddev）与原始数据见 [`benchmark/report.md`](../../benchmark/report.md)。
 
 ---
 
@@ -98,8 +100,7 @@ lunavox build --clean
 ## 🧱 运行库依赖 (Libraries)
 
 LunaVox 自动下载 `lib/` 下相应的 ONNX Runtime 与 Llama.cpp。如果您需要针对 CUDA 环境进行精细化配置，请参阅：
-- **[CUDA 12 Windows 依赖指南](install/cuda12_windows.md)**
-- **[CUDA 13 Windows 依赖指南](install/cuda13_windows.md)**
+- **[CUDA Windows 依赖指南 (CUDA 12 / 13)](install/cuda_windows.md)**
 
 ---
 

@@ -82,7 +82,12 @@ struct tts_params {
 struct tts_result {
     // Generated audio samples (24kHz, mono)
     std::vector<float> audio;
-    
+
+    // Number of samples originally produced. Mirrors audio.size() at the
+    // moment the engine returns, but callers that release `audio` after
+    // consuming it (e.g. CLI --repeat loops) can still read the count.
+    int32_t n_samples = 0;
+
     // Sample rate
     int32_t sample_rate = 24000;
     

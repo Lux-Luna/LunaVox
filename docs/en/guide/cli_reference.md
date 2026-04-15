@@ -1,137 +1,89 @@
-# 🌌 LunaVox CLI Comprehensive Reference Manual
+# LunaVox CLI Reference
 
-This document provides detailed documentation for the LunaVox Unified Command Line Interface (CLI). Ordered by execution flow, you can choose between one-key guided setup or manual step-by-step configuration.
+The `lunavox` CLI is the single entry point for environment setup, model management, and the C++ build. Commands below are listed in execution order — pick `bootstrap` for the one-key path, or run the steps individually.
 
----
-
-## 🛠️ 1. Environment Preparation & Diagnosis
-
-Before performing any model work, run this tool to ensure your system environment (CMake, C++, Python dependencies) is ready.
 ```powershell
-# Install core inference tooling
 pip install lunavox
 ```
 
-### `doctor` - System Health Check
-Check project structure, toolchain paths, and runtime library integrity.
+## 1. `doctor` — System Health Check
 
-**Example Command:**
+Verifies project layout, toolchain, and runtime libraries. Run this before opening any issue.
+
 ```bash
 lunavox doctor
 ```
 
-**Checks Include:**
-- Presence of project root and key subdirectories (`src`, `lib`, `models`).
-- `cmake` availability in system PATH.
-- Integrity of ONNX Runtime SDK headers and Llama.cpp runtime libraries.
-- Whether the `[convert]` optional package is installed.
+Checks: project root + `src` / `lib` / `models`; `cmake` on `PATH`; ONNX Runtime SDK headers; llama.cpp runtime libs; whether the `[convert]` extra is installed.
 
----
+## 2. `bootstrap` — One-Key Setup
 
-## 🚀 2. Core Guided Setup (The One-Key Solution)
+Runs **pull-model → download-libs → build → interactive test** in sequence.
 
-Recommended for first-time users or those wanting to start inference quickly.
-
-### `bootstrap` - One-Key Setup
-A highly automated composite command that executes:
-1.  **Pull Model**: Download the selected model from HuggingFace.
-2.  **Download Libs**: Detect system and download appropriate ONNX/Llama runtime libraries.
-3.  **Build**: Configure and compile the C++ inference engine.
-4.  **Interactive Test**: Start an interactive test to hear synthesis results immediately.
-
-**Usage Example:**
 ```bash
-# Start interactive setup
 lunavox bootstrap
-
-# Or specify parameters
 lunavox bootstrap --model base_small --platform win_cuda12
 ```
 
----
+## 3. Model Management
 
-## 📦 3. Model Management
+### `pull-model` (recommended)
 
-You can choose to download pre-converted models (recommended) or convert from raw weights locally.
+Pull pre-converted GGUF / ONNX artifacts from the official mirror.
 
-### `pull-model` - Pull Pre-converted Models (Recommended)
-Sync optimized runtime formats (GGUF/ONNX) directly from the official repository.
-
-**Usage Example:**
 ```bash
-# Start interactive selection
 lunavox pull-model
-
-# Download specific model
 lunavox pull-model --model base_small
 ```
 
-### `convert` - Local Model Conversion
-Use this if you have raw Qwen3-TTS weights (`.safetensors`) or need custom conversion parameters.
+### `convert`
 
-**Usage Example:**
+Convert from raw `.safetensors` weights locally. Requires the `[convert]` extra and takes several minutes.
+
 ```bash
-# Local conversion
 lunavox convert --model base_small --force
 ```
-*Note: Local conversion may take several minutes and requires the Python conversion environment.*
 
----
+## 4. Manual Build
 
-## ⚙️ 4. Manual Build Workflow
+### `download-libs`
 
-If you prefer not to use `bootstrap`, follow these steps manually.
+Fetch the platform-specific ONNX Runtime + llama.cpp binaries.
 
-### `download-libs` - Download Runtime Libraries
-Download platform-specific binary cores (ONNX Runtime / Llama.cpp).
-
-**Usage Example:**
 ```bash
-# Smart download (interactive)
 lunavox download-libs
-
-# Specified platform download
-lunavox download-libs --platform win_cuda12
+lunavox download-libs --platform win_cuda12   # win_cuda13 / win_vulkan / win_cpu / linux_cuda / mac_arm64
 ```
 
-### `build` - Compile C++ Inference Engine
-Local build based on CMake to generate the `lunavox-cli` executable.
+### `build`
 
-**Usage Example:**
+CMake build of `lunavox-cli` (and the C ABI shared library).
+
 ```bash
-# Minimal build
 lunavox build
-
-# Clean and parallel build
 lunavox build --clean --j 8
 ```
 
----
+## 5. Model ID Reference
 
-## 📜 Appendix: Model ID Reference Table
-
-| Model ID | Full Name | Inference Capability |
+| Model ID | Full Name | Notes |
 | :--- | :--- | :--- |
-| `base_small` | Qwen3-TTS 0.6B Base | Fast & Balanced, good for low-resource devices |
-| `custom_small` | Qwen3-TTS 0.6B Custom | Supports fixed speaker ID switching |
-| `base` | Qwen3-TTS 1.7B Base | High fidelity, GPU recommended |
-| `custom` | Qwen3-TTS 1.7B Custom | Large speaker-customized model |
-| `design` | Qwen3-TTS 1.7B Design | Prompt-to-Voice (Design voice using text) |
+| `base_small` | Qwen3-TTS 0.6B Base | Fast, balanced, low-resource friendly |
+| `custom_small` | Qwen3-TTS 0.6B Custom | Built-in speaker IDs |
+| `base` | Qwen3-TTS 1.7B Base | High fidelity; GPU recommended |
+| `custom` | Qwen3-TTS 1.7B Custom | Large speaker-customised model |
+| `design` | Qwen3-TTS 1.7B Design | Prompt-to-Voice |
 
----
+## 6. Global Flags
 
-## 🌍 Global Parameters
+Apply to every `lunavox` subcommand:
 
-Applicable to **all** `lunavox` commands:
+- `--project-root <PATH>` — explicit project root (development).
+- `--yes` — auto-confirm all prompts (CI).
+- `--no-install` — disable automatic Python module fixing.
+- `--verbose` — raw output for builds and downloads.
 
-- `--project-root <PATH>`: Manually specify root directory (often used in dev).
-- `--yes`: Auto-confirm all risky operations and downloads (required for CI).
-- `--no-install`: Disable automatic Python module detection/fixing.
-- `--verbose`: Show detailed raw output for builds and downloads.
+## See also
 
----
-
-## 📜 More Information
-
-See also:
-- **[Runtime Design Constraints (Runtime Specs)](../technical/runtime_specs.md)**
+- [Model profile & runtime contract](../technical/model_profile.md)
+- [Usage tutorial (`lunavox-cli` modes)](usage_tutorial.md)

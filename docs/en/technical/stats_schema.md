@@ -2,24 +2,20 @@
 
 Three producers emit the same structured stats:
 
-| Producer | Surface | Path |
+| Producer | Surface | Source |
 | --- | --- | --- |
 | `lunavox-cli --stats-json report.json` | JSON file | `src/main.cpp` |
-| `LunavoxAudio` struct returned by the C API | In-memory | `src/lunavox_c_api.h` |
-| `lunavox.runtime.SynthesisStats` dataclass | Python | `src/lunavox/runtime/binding.py` |
+| `LunavoxAudio` from the C API | In-memory struct | `src/lunavox_c_api.h` |
+| `lunavox.runtime.SynthesisStats` | Python dataclass | `src/lunavox/runtime/binding.py` |
 
-The shared schema is pinned in `src/lunavox/core/stats_schema.py` as
-`TimingMs` / `MemoryBytes` / `RunStats` / `StatsJSON` TypedDicts.
-Adding a field means editing that module **and** `src/main.cpp` +
-`src/lunavox_c_api.h` + `src/lunavox/runtime/binding.py` in the same
-commit.
+The shared shape is pinned in `src/lunavox/core/stats_schema.py`. Adding a field means editing that module **and** `src/main.cpp` + `src/lunavox_c_api.h` + `src/lunavox/runtime/binding.py` in the same commit.
 
 ## Top-level `StatsJSON`
 
 ```jsonc
 {
-  "t_load_ms":   1714,     // Wall time spent inside Engine::load_models
-  "t_warmup_ms":  565,     // Warmup portion of t_load_ms (decoder first-run)
+  "t_load_ms":    1714,    // wall time inside Engine::load_models
+  "t_warmup_ms":   565,    // warmup portion of t_load_ms (decoder first-run)
   "runs": [ ... RunStats ... ]
 }
 ```
@@ -34,28 +30,33 @@ commit.
   "audio_duration_s":    2.96,
   "rtf":                 0.175,
   "effective_language_id": -1,
-  "timing_ms":           { ... TimingMs ... },
-  "mem":                 { ... MemoryBytes ... }
+  "timing_ms": { ... TimingMs ... },
+  "stream":    { ... StreamStats ... },
+  "mem":       { ... MemoryBytes ... }
 }
 ```
 
-`rtf = timing_ms.total / 1000 / audio_duration_s`. Lower is faster;
-`< 1.0` is faster than realtime.
+`rtf = timing_ms.total / 1000 / audio_duration_s`. Lower is faster; `< 1.0` is faster than realtime.
 
 ## `TimingMs` (milliseconds)
 
 | Field | Always populated | Description |
 | --- | :---: | --- |
 | `tokenize` | ✓ | Text → token IDs |
-| `encode` | ✓ | Speaker encoder (0 when using pre-computed embedding JSON) |
+| `encode` | ✓ | Speaker encoder (0 when using a pre-computed embedding JSON) |
 | `generate` | ✓ | LLM sequence generation (talker + predictor + sampling) |
 | `decode` | ✓ | ONNX decoder session + post-processing |
 | `total` | ✓ | Sum of the above + overhead |
-| `llama_prefill` |   | Detailed breakdown; requires `LUNAVOX_TIMING` build flag |
-| `llama_decode_loop` |   | Same |
-| `talker_post` / `predictor_sample` / `talker_decode` |   | Same |
-| `decoder_tensor_prep` / `decoder_ort_run` / `decoder_tensor_extract` / `decoder_state_trim` |   | Same |
-| `pcm_gather` |   | Same |
+| `first_audio` | ✓ | Wall time to first decoded PCM chunk (streaming pipeline) |
+| `llama_prefill` / `llama_decode_loop` / `talker_post` / `predictor_sample` / `talker_decode` |   | Detailed sub-timings; require the `LUNAVOX_TIMING` build flag |
+| `decoder_tensor_prep` / `decoder_ort_run` / `decoder_tensor_extract` / `decoder_state_trim` / `pcm_gather` |   | Same |
+
+## `StreamStats`
+
+| Field | Description |
+| --- | --- |
+| `first_chunk_frames` | Frames in the first decoded chunk (TTFB tuning knob) |
+| `t_first_audio_ms` | Same value the C API exposes as `audio.first_audio_ms` |
 
 ## `MemoryBytes` (bytes)
 
@@ -63,12 +64,11 @@ commit.
 | --- | --- |
 | `rss_start` / `rss_end` | Process RSS at synth entry / exit |
 | `rss_peak` | High-water RSS during the synth |
-| `phys_start` / `phys_end` / `phys_peak` | macOS `phys_footprint` (equal to RSS on Windows/Linux) |
+| `phys_start` / `phys_end` / `phys_peak` | macOS `phys_footprint` (equal to RSS on Windows / Linux) |
 
-## C API fields on `LunavoxAudio`
+## C API Subset
 
-The C API exposes a **flat** subset of the above directly on the audio
-struct for convenience (no extra round-trip through `lunavox_get_stats`):
+`LunavoxAudio` exposes a flat subset of the above directly on the audio struct, so the C / Python binding does not need an extra round-trip:
 
 ```c
 typedef struct LunavoxAudio {
@@ -87,16 +87,10 @@ typedef struct LunavoxAudio {
 } LunavoxAudio;
 ```
 
-The Python binding (`lunavox.runtime.SynthesisStats`) mirrors this
-subset. The finer `llama_*` / `decoder_*` sub-timings only appear in
-the `--stats-json` file output.
+The Python binding mirrors this subset as `SynthesisStats`. The finer `llama_*` / `decoder_*` sub-timings only appear in the JSON file output.
 
 ## Consumers
 
-- `tests/bench_baseline.py` — reads the CLI `--stats-json` file to
-  build the regression matrix. Uses `stats_schema.parse_stats_json` for
-  the structural load.
-- `GUI/engine.py::format_metrics` — projects `SynthesisStats` into the
-  string dict the report panel displays.
-- Any future notebook / benchmark should import from
-  `lunavox.core.stats_schema` instead of reaching into free-form dicts.
+- `benchmark/run_benchmark.py` — reads `--stats-json` to compute the 100-run latency / TTFB / RTF / memory distribution that powers `benchmark/report.md`.
+- `GUI/engine.py::format_metrics` — projects `SynthesisStats` into the report panel strings.
+- New tooling should import from `lunavox.core.stats_schema` instead of poking at free-form dicts.

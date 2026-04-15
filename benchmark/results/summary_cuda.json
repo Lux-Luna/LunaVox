@@ -1,0 +1,108 @@
+{
+  "config": {
+    "text": "LunaVox is a lightweight on-device text-to-speech engine built on Qwen3, optimized for low-latency streaming synthesis on consumer GPUs.",
+    "text_length_chars": 136,
+    "warmup_runs": 5,
+    "repeat_runs": 100,
+    "model_dir": "models/base_small",
+    "ref": "ref/ref_0.6B.json",
+    "first_chunk_frames": 8,
+    "sample_rate": 24000
+  },
+  "load": {
+    "t_load_ms": 2471,
+    "t_warmup_ms": 687
+  },
+  "wall_elapsed_s": 225.09,
+  "total_ms": {
+    "n": 100,
+    "mean": 2108.14,
+    "median": 2110.0,
+    "stddev": 18.941,
+    "min": 2029.0,
+    "max": 2151.0,
+    "p50": 2110.0,
+    "p95": 2135.05,
+    "p99": 2145.06
+  },
+  "ttfb_ms": {
+    "n": 100,
+    "mean": 175.24,
+    "median": 175.0,
+    "stddev": 3.771,
+    "min": 164.0,
+    "max": 187.0,
+    "p50": 175.0,
+    "p95": 182.05,
+    "p99": 184.03
+  },
+  "rtf": {
+    "n": 100,
+    "mean": 0.213,
+    "median": 0.213,
+    "stddev": 0.002,
+    "min": 0.205,
+    "max": 0.217,
+    "p50": 0.213,
+    "p95": 0.215,
+    "p99": 0.216
+  },
+  "realtime_multiplier": 4.706,
+  "stage_mean_ms": {
+    "tokenize": 0.37,
+    "encode": 0.0,
+    "generate": 1997.6,
+    "decode": 613.02
+  },
+  "audio_duration_s": {
+    "n": 100,
+    "mean": 9.92,
+    "median": 9.92,
+    "stddev": 0.0,
+    "min": 9.92,
+    "max": 9.92,
+    "p50": 9.92,
+    "p95": 9.92,
+    "p99": 9.92
+  },
+  "throughput_chars_per_sec": {
+    "n": 100,
+    "mean": 64.517,
+    "median": 64.455,
+    "stddev": 0.585,
+    "min": 63.226,
+    "max": 67.028,
+    "p50": 64.455,
+    "p95": 65.517,
+    "p99": 65.966
+  },
+  "memory": {
+    "rss_peak_max_mb": 1446.82,
+    "rss_peak_mean_mb": 1446.29,
+    "phys_peak_max_mb": 1446.82,
+    "vram_peak_mb": 1450.85,
+    "vram_steady_mb": 1364.35,
+    "vram_baseline_mb": 2392.2,
+    "vram_peak_absolute_mb": 3843.05,
+    "vram_n_samples": 2072,
+    "vram_skipped_reason": null
+  },
+  "meta": {
+    "backend": "cuda",
+    "timestamp_utc": "2026-04-15T03:49:40+00:00",
+    "git_commit": "2fb5887769f2cbc8999628700a50db43b6c4e676",
+    "git_branch": "dev",
+    "conda_env": "cuda13",
+    "python_version": "3.13.12",
+    "platform": {
+      "system": "Windows",
+      "release": "11",
+      "version": "10.0.26200",
+      "machine": "AMD64",
+      "processor": "Intel64 Family 6 Model 151 Stepping 2, GenuineIntel",
+      "node": "AngelPlayer"
+    },
+    "cli_binary": "build/lunavox-cli.exe",
+    "cli_binary_mtime": "2026-04-15T03:49:31+00:00"
+  }
+}

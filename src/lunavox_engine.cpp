@@ -1535,6 +1535,7 @@ tts_result Engine::synthesize_internal(
                         result.t_decoder_tensor_extract_ms + result.t_decoder_state_trim_ms;
     const int64_t t_pcm_gather_start = get_time_ms();
     pcm_peak_rms(result.audio, result.pcm_peak, result.pcm_rms);
+    result.n_samples = (int32_t) result.audio.size();
     result.t_pcm_gather_ms = get_time_ms() - t_pcm_gather_start;
     sample_memory("synth/after-decode");
 

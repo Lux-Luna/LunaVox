@@ -1,53 +1,28 @@
-# LunaVox Synthesis Pathway Encoder Requirements Analysis
+# Synthesis Pathway: When Do We Need the Encoders?
 
-This report evaluates the dependency of LunaVox synthesis pathways on `codec_encoder.fp16.onnx` and `speaker_encoder.fp16.onnx`.
+`codec_encoder.fp16.onnx` and `speaker_encoder.fp16.onnx` are only required when the engine has to extract speaker / codec features from a raw WAV in real time. Every other path is "cold inference" — it consumes text, instructions, a built-in speaker ID, or a pre-computed JSON.
 
-## 1. Core Conclusion
+## Cold-inference pathways (no encoder needed)
 
-Due to rule updates, **Voice Cloning (clone)** mode is **no longer supported** for `custom` and `design` model types. `custom` models only support built-in expert speakers or standard synthesis, while `design` models only support voice design via text instructions.
+Only `talker` (GGUF), `predictor` (GGUF), and `decoder` (ONNX) are touched.
 
-Most valid pathways **do not require** loading or running `codec_encoder` and `speaker_encoder`.
+| Model type | Pathway | Notes |
+| --- | --- | --- |
+| Base (0.6B / 1.7B) | Standard TTS | Text only; `speaker_embedding` / `ref_codes` are null. |
+| Base (0.6B / 1.7B) | Clone from JSON | `--reference foo.json` — features already cached. |
+| Custom (0.6B / 1.7B) | Standard TTS | Default voice. |
+| Custom (0.6B / 1.7B) | Custom voice | `--speaker Vivian` — embeddings loaded from `embeddings/`. |
+| Design (1.7B) | Standard TTS | Text only. |
+| Design (1.7B) | Voice design | `--instruct` only. |
 
-These are referred to as **"Cold Inference"** pathways because they don't require real-time feature extraction from raw audio, but instead use text, instructions, predefined speaker IDs, or pre-computed JSON data.
+## The one path that still needs encoders
 
-## 2. Pathway List Without Encoder Dependencies
+| Model type | Pathway | Why |
+| --- | --- | --- |
+| Base (0.6B / 1.7B) | Clone from WAV | Real-time extraction of acoustic codes + speaker embedding from `--reference foo.wav`. |
 
-The following pathways rely only on `talker` (GGUF), `predictor` (GGUF), and `decoder` (ONNX):
+`custom` and `design` models **do not support clone** at all (the loader rejects `--reference`).
 
-### 2.1 Base Models
-*   **Base (1.7B/0.6B)**: `Standard TTS` (Standard synthesis - from text)
-*   **Base (1.7B/0.6B)**: `Clone (JSON)` (Using pre-extracted JSON data, no audio encoding needed)
+## Cleanup tip
 
-### 2.2 Custom Models
-*   **Custom (1.7B/0.6B)**: `Standard TTS` (Using default voice)
-*   **Custom (1.7B/0.6B)**: `Custom Voice` (Using Expert speaker names like Vivian)
-    *   System loads pre-computed matrices from `embeddings/`.
-
-### 2.3 Design Models
-*   **Design (1.7B)**: `Standard TTS`
-*   **Design (1.7B)**: `Voice Design` (Using `--instruct` only)
-
----
-
-## 3. Why These Pathways Don't Need Encoders?
-
-1.  **Standard TTS / Design**: `speaker_embedding` and `ref_codes` are set to `nullptr` or use model defaults.
-2.  **Custom Voice**: Uses solidified embedding vectors from Experts, bypassing real-time extraction.
-3.  **Clone (JSON)**: Features are already stored in the JSON file.
-
-## 4. Pathways Requiring Encoders
-
-Currently, **only Base models doing WAV reference cloning** require encoders:
-
-*   **Base (1.7B/0.6B)**: `Clone (WAV)`
-    *   Extracts acoustic features (Codes) and Speaker Embedding from WAV.
-
----
-
-## 5. Cleaning & Recommendations
-
-> [!TIP]
-> **Optimization**:
-> 1.  **Custom/Design Models**: Since they don't support `clone`, you **can safely delete** all `speaker_encoder` and `codec_encoder` files in these model directories.
-> 2.  **Base Models**: If you only use `JSON` or `Standard TTS`, you can also delete them.
-> 3.  **Benefit**: Saves about **130MB - 140MB** per model directory.
+If you only ever use cold-inference pathways, both `speaker_encoder.fp16.onnx` and `codec_encoder.fp16.onnx` can be deleted from any `models/<name>/` directory. Saves ~130–140 MB per model. The runtime tolerates their absence.

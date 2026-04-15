@@ -1,0 +1,18 @@
+{
+  "backend": "cuda",
+  "timestamp_utc": "2026-04-15T03:49:40+00:00",
+  "git_commit": "2fb5887769f2cbc8999628700a50db43b6c4e676",
+  "git_branch": "dev",
+  "conda_env": "cuda13",
+  "python_version": "3.13.12",
+  "platform": {
+    "system": "Windows",
+    "release": "11",
+    "version": "10.0.26200",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 151 Stepping 2, GenuineIntel",
+    "node": "AngelPlayer"
+  },
+  "cli_binary": "build/lunavox-cli.exe",
+  "cli_binary_mtime": "2026-04-15T03:49:31+00:00"
+}

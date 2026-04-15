@@ -1,14 +1,10 @@
-# LunaVox CLI Usage Guide
+# `lunavox-cli` Usage Tutorial
 
-This tutorial details the command format, core parameters, and constraints for the LunaVox C++ inference engine (`lunavox-cli.exe`).
-
-> [!IMPORTANT]
-> LunaVox CLI uses a "Command + Options" structure. Different synthesis features are toggled via the `--mode` parameter. If `--mode` is omitted, the system automatically selects based on the `model_type` in `model_profile.json`.
-
----
+`lunavox-cli` follows a **command + options** layout. The `--mode` flag picks the synthesis path; if omitted, the engine routes by `model_profile.model_type` (see [model_profile.md](../technical/model_profile.md)).
 
 ## 1. Base Mode
-Simple synthesis, only applicable to `base` type models.
+
+Plain text-to-speech for `base` models.
 
 ```bash
 ./build/lunavox-cli `
@@ -18,14 +14,12 @@ Simple synthesis, only applicable to `base` type models.
 ```
 
 > [!WARNING]
-> **Base models do not support `--instruct`**. If you provide instruction text in base mode, the engine will error and terminate.
+> Base models reject `--instruct`. Passing it is a hard error, not a warning.
 
----
+## 2. Voice Cloning (Base only)
 
-## 2. Voice Cloning / Reference
-Mimic a specific voice by providing reference audio or features. **This feature only works for `base` type models.**
+### From reference audio
 
-### 2.1 Using Reference Audio
 ```bash
 ./build/lunavox-cli `
   -m models/base_small `
@@ -34,7 +28,8 @@ Mimic a specific voice by providing reference audio or features. **This feature 
   -o out.wav
 ```
 
-### 2.2 Using Reference Features (JSON)
+### From pre-computed reference JSON
+
 ```bash
 ./build/lunavox-cli `
   --mode clone `
@@ -44,10 +39,9 @@ Mimic a specific voice by providing reference audio or features. **This feature 
   -o out.wav
 ```
 
----
+The JSON path skips the speaker / codec encoders entirely — see [synthesis_pathway.md](../technical/synthesis_pathway.md).
 
-## 3. Custom Voice
-Use specific expert speaker IDs. **This feature only works for `custom` type models.**
+## 3. Custom Voice (Custom models only)
 
 ```bash
 ./build/lunavox-cli `
@@ -59,13 +53,10 @@ Use specific expert speaker IDs. **This feature only works for `custom` type mod
   -o out.wav
 ```
 
-- **--speaker**: Required. Specify speaker (e.g., `Vivian`, `Aiden`, `Ryan`).
-- **--instruct**: Optional. Adjust emotion or tone of the preset character.
+- `--speaker` — required; e.g. `Vivian`, `Aiden`, `Ryan`.
+- `--instruct` — optional; tunes emotion / tone.
 
----
-
-## 4. Voice Design
-Dynamically design a new voice based on text description. **This feature only works for `design` type models.**
+## 4. Voice Design (Design models only)
 
 ```bash
 ./build/lunavox-cli `
@@ -76,28 +67,23 @@ Dynamically design a new voice based on text description. **This feature only wo
   -o out.wav
 ```
 
-- **--instruct**: Required. Provide detailed physical features of the voice.
+- `--instruct` — required; describe the target voice.
 
----
+## Compatibility Matrix
 
-## 📜 Core Constraints & Compatibility Matrix
-
-To ensure best quality and stability, follow these mappings:
-
-| Model Type (`model_type`) | Supported Modes (`--mode`) | Support `--instruct`? | Support `--reference`? |
+| `model_type` | Allowed `--mode` | `--instruct` | `--reference` |
 | :--- | :--- | :---: | :---: |
-| **Base** | `base` (default), `clone` | ❌ Disabled | ✅ Supported |
-| **Custom** | `custom` | ✅ Supported (Tuning) | ❌ Disabled |
-| **Design** | `design` | ✅ Required (Definition) | ❌ Disabled |
+| Base | `base` (default), `clone` | ❌ forbidden | ✅ supported |
+| Custom | `custom` | ✅ tuning | ❌ forbidden |
+| Design | `design` | ✅ required | ❌ forbidden |
 
-### Common Errors
-- **Base + Instruct**: Throws `Error: --instruct is forbidden in base mode`.
-- **Custom/Design + Reference**: Throws `Error: mode 'clone' is incompatible with model_type ...`.
+Hard errors:
 
----
+- Base + `--instruct` → `Error: --instruct is forbidden in base mode`
+- Custom / Design + `--reference` → `Error: mode 'clone' is incompatible with model_type ...`
 
-## 5. Performance & Threading
+## Performance Knobs
 
-- **Thread Control**: Use `-j` or `--threads` (default 4) to control CPU resources.
-- **Stats**: Add `--stats-json <path>` to get detailed time, RTF, and memory reports.
-- **Build**: Use `python manage.py build --portable` on Windows to bundle all runtime DLLs.
+- `-j` / `--threads` (default 4) — CPU thread count.
+- `--stats-json <path>` — dump structured timing / RTF / memory ([stats_schema.md](../technical/stats_schema.md)).
+- For Windows portable builds bundling all DLLs, use `lunavox build --clean` after `lunavox download-libs --platform win_*`.

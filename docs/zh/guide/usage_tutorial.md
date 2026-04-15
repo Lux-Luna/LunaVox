@@ -1,14 +1,10 @@
-# LunaVox CLI 指令使用指南
+# `lunavox-cli` 使用教程
 
-本教程详细说明 LunaVox C++ 推理引擎（`lunavox-cli.exe`）的实际指令格式、核心参数用法及参数约束说明。
+`lunavox-cli` 采用 **主命令 + 选项** 结构。`--mode` 决定合成路径；省略时引擎按 `model_profile.model_type` 自动路由（参见 [model_profile.md](../technical/model_profile.md)）。
 
-> [!IMPORTANT]
-> LunaVox CLI 采用主命令加可选参数的结构，不同的合成功能通过 `--mode` 参数进行切换。如果未指定 `--mode`，系统将根据 `model_profile.json` 中的 `model_type` 自动选择。
+## 1. Base 模式
 
----
-
-## 1. 基础模式 (Base Mode)
-最简单的合成方式，仅适用于 `base` 类型的模型。
+普通文本合成，仅适用于 `base` 模型。
 
 ```bash
 ./build/lunavox-cli `
@@ -18,14 +14,12 @@
 ```
 
 > [!WARNING]
-> **Base 模型不支持 `--instruct`**。如果您在 base 模式下提供指令文本，引擎将报错并终止运行。
+> Base 模型不接受 `--instruct`，传入会直接抛硬错误。
 
----
+## 2. 声音克隆（仅 Base 模型）
 
-## 2. 声音克隆 (Voice Cloning / Reference)
-通过提供参考音频或特征来模仿特定音色。**此功能仅对 `base` 类型模型有效**。
+### 使用参考音频
 
-### 2.1 使用参考音频 (Reference Audio)
 ```bash
 ./build/lunavox-cli `
   -m models/base_small `
@@ -34,7 +28,8 @@
   -o out.wav
 ```
 
-### 2.2 使用参考特征 (Reference JSON)
+### 使用预计算 JSON
+
 ```bash
 ./build/lunavox-cli `
   --mode clone `
@@ -44,10 +39,9 @@
   -o out.wav
 ```
 
----
+JSON 路径完全跳过 speaker / codec encoder，详见 [synthesis_pathway.md](../technical/synthesis_pathway.md)。
 
-## 3. 定制化声音 (Custom Voice)
-使用系统内置的特定专家发音人 ID。**此功能仅对 `custom` 类型模型有效**。
+## 3. 定制化声音（仅 Custom 模型）
 
 ```bash
 ./build/lunavox-cli `
@@ -59,13 +53,10 @@
   -o out.wav
 ```
 
-- **--speaker**: 必需参数。指定发音人（如 `Vivian`, `Aiden`, `Ryan` 等）。
-- **--instruct**: 可选参数。用于调节预设人物的情感或语气。
+- `--speaker` —— 必需，如 `Vivian`、`Aiden`、`Ryan`。
+- `--instruct` —— 可选，用于调节情感 / 语气。
 
----
-
-## 4. 声音设计 (Voice Design)
-根据文字描述动态设计全新音色。**此功能仅对 `design` 类型模型有效**。
+## 4. 声音设计（仅 Design 模型）
 
 ```bash
 ./build/lunavox-cli `
@@ -76,28 +67,23 @@
   -o out.wav
 ```
 
-- **--instruct**: 必需参数。提供详尽的音色物理特征描述。
+- `--instruct` —— 必需，描述目标音色。
 
----
+## 兼容性矩阵
 
-## 📜 核心约束与兼容性矩阵
-
-为了确保最佳合成质量及运行时稳定性，请遵循以下模式与模型类型的对应关系：
-
-| 模型类型 (`model_type`) | 支持的模式 (`--mode`) | 支持 `--instruct` ? | 支持 `--reference` ? |
+| `model_type` | 允许 `--mode` | `--instruct` | `--reference` |
 | :--- | :--- | :---: | :---: |
-| **Base** | `base` (默认), `clone` | ❌ 禁用 | ✅ 支持 |
-| **Custom** | `custom` | ✅ 支持 (调优) | ❌ 禁用 |
-| **Design** | `design` | ✅ 必需 (定义) | ❌ 禁用 |
+| Base | `base`（默认）、`clone` | ❌ 禁用 | ✅ 支持 |
+| Custom | `custom` | ✅ 调优 | ❌ 禁用 |
+| Design | `design` | ✅ 必需 | ❌ 禁用 |
 
-### 常见错误说明
-- **Base + Instruct**: 运行时将抛出 `Error: --instruct is forbidden in base mode`。
-- **Custom/Design + Reference**: 运行时将抛出 `Error: mode 'clone' is incompatible with model_type ...`。
+硬错误：
 
----
+- Base + `--instruct` → `Error: --instruct is forbidden in base mode`
+- Custom / Design + `--reference` → `Error: mode 'clone' is incompatible with model_type ...`
 
-## 5. 环境依赖与性能统计
+## 性能旋钮
 
-- **线程控制**: 使用 `-j` 或 `--threads`（默认 4）来控制 CPU 资源占用。
-- **性能统计**: 运行命令时添加 `--stats-json <path>` 可获取详细的耗时、RTF 以及内存占用报告。
-- **便携式构建**: Windows 端使用 `python manage.py build --portable` 可打包所有运行库 DLL。
+- `-j` / `--threads`（默认 4）—— CPU 线程数。
+- `--stats-json <path>` —— 输出结构化耗时 / RTF / 内存（参见 [stats_schema.md](../technical/stats_schema.md)）。
+- Windows 绿色打包：先 `lunavox download-libs --platform win_*`，再 `lunavox build --clean`，DLL 会被一并拷贝到 `build/`。

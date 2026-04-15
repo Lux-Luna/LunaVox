@@ -55,7 +55,7 @@ LunaVox 是一个面向 **Qwen3-TTS** 的高性能 C++ 推理引擎，外加一�
 | GUI | `GUI/main.py`、`GUI/components/`、`GUI/engine.py` — 通过 `lunavox.runtime` + `lunavox.*` 直接调用，不 subprocess |
 | 用户文档（英文） | `docs/en/{guide,install,technical,benchmark}/` |
 | 用户文档（中文） | `docs/zh/` |
-| 运行时规范 / 合成通路 | `docs/en/technical/{runtime_specs,synthesis_pathway}.md` |
+| 运行时规范 / 合成通路 | `docs/en/technical/{model_profile,synthesis_pathway}.md` |
 | CLI 参考 | `docs/en/guide/cli_reference.md` |
 | Python 包元数据 / 版本 | `pyproject.toml`（当前 2.1.6） |
 | 发布 CLI-only 源码分支 | GitHub `cli-only` 分支（不在本仓库内） |
@@ -170,12 +170,12 @@ cmake --build build -j
 ```
 
 ### 测试 / 检查
-- **没有 pytest 套件**（`[dev]` 装了 pytest 但仓库未托管单元测试）。现有自动化只有 `tests/bench_baseline.py`——对所有模型 × 模式跑一轮 CLI 合成并落 `tests/results/baseline_<ts>/`，是 C++ 引擎改动的回归基准。结果目录已 gitignore，不要提交。
+- **没有 pytest 套件**（`[dev]` 装了 pytest 但仓库未托管单元测试）。现有自动化只有 `benchmark/run_benchmark.py`——对 0.6B `base_small` 模型跑 100 次 CLI 合成并落 `benchmark/results/`，是 C++ 引擎改动的回归基准。最终报告写入 `benchmark/report.md`。
 - 改动 Python 工具链时：
   - 跑 `python -c "import lunavox; from lunavox.cli.main import app"` 做 import 级冒烟
   - 跑 `lunavox doctor` 做环境级冒烟
   - 对 `conversion/` 改动，跑 `src/lunavox/model/conversion/validate_onnx_models.py`
-- C++ 改动：`cmake --build build -j` 必须过；随后跑 `python tests/bench_baseline.py` 并与前一次 `tests/results/baseline_*/summary.json` 对比 RTF / 延迟，或用下面的冒烟命令对比 `--stats-json` 的 RTF。
+- C++ 改动：`cmake --build build -j` 必须过；随后跑 `python benchmark/run_benchmark.py --backend <b>` 并与前一次 `benchmark/results/summary_<b>.json` 对比 RTF / TTFB / 延迟，或用下面的冒烟命令对比 `--stats-json` 的 RTF。
 
 ### GUI
 ```bash
@@ -223,7 +223,7 @@ python GUI/main.py
 
 | 改动类型 | 最小验证 |
 | --- | --- |
-| C++ 引擎 | `cmake --build build -j` 通过 + `python tests/bench_baseline.py` 对上一次 baseline RTF/延迟未劣化（或手动 Voice Cloning 冒烟 + `--stats-json` 对比） |
+| C++ 引擎 | `cmake --build build -j` 通过 + `python benchmark/run_benchmark.py --backend <b>` 对上一次 baseline RTF/TTFB/延迟未劣化（或手动 Voice Cloning 冒烟 + `--stats-json` 对比） |
 | 后端策略（`provider_policy`） | 至少在一个 GPU EP 和 CPU EP 下分别跑通 |
 | 模型转换 (`conversion/`) | `validate_onnx_models.py` 通过，产物能被 `lunavox-cli` 加载 |
 | CLI | `lunavox doctor` 通过 + 改动的子命令走一次 |
@@ -293,11 +293,10 @@ python GUI/main.py
 - [README.md](README.md) — 用户视角总览
 - [docs/en/guide/cli_reference.md](docs/en/guide/cli_reference.md) — CLI 参数手册
 - [docs/en/guide/usage_tutorial.md](docs/en/guide/usage_tutorial.md) — 推理三模式用例
-- [docs/en/technical/runtime_specs.md](docs/en/technical/runtime_specs.md) — 运行时规格
+- [docs/en/technical/model_profile.md](docs/en/technical/model_profile.md) — `ModelProfile` 字段契约与运行时规范
 - [docs/en/technical/synthesis_pathway.md](docs/en/technical/synthesis_pathway.md) — 合成通路细节
-- [docs/en/technical/model_profile_schema.md](docs/en/technical/model_profile_schema.md) — `ModelProfile` 字段契约（C++ ↔ Python ↔ JSON）
 - [docs/en/technical/stats_schema.md](docs/en/technical/stats_schema.md) — `--stats-json` / `LunavoxAudio` 字段契约
-- [docs/en/install/cuda12_windows.md](docs/en/install/cuda12_windows.md) / [cuda13_windows.md](docs/en/install/cuda13_windows.md) — CUDA 依赖
+- [docs/en/install/cuda_windows.md](docs/en/install/cuda_windows.md) — Windows CUDA 12 / 13 依赖
 - [docs/en/benchmark/windows_performance.md](docs/en/benchmark/windows_performance.md) — Windows 性能基准
 - [docs/zh/](docs/zh/) — 中文镜像文档
 

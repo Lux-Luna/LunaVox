@@ -42,18 +42,20 @@
 
 The following table shows the average performance of LunaVox across different backend configurations. For detailed reports, see the **[Windows Performance Evaluation Report](docs/en/benchmark/windows_performance.md)**.
 
-| Configuration | Average RTF | Peak RAM | VRAM | Relative Speedup |
-| :--- | :---: | :---: | :---: | :---: |
-| **Baseline (CPU)** | 5.066 | 5.06 GB | — | 1.00x |
-| **Baseline (GPU)** | 3.788 | 1.59 GB | 2.29 GB | 1.34x |
-| **LunaVox (Full CPU)** | 1.152 | 1.06 GB | — | 4.40x |
-| **LunaVox (CUDA13)** | 0.254 | 1.39 GB | 1.30 GB | 19.94x |
-| **LunaVox (Vulkan + DML)**| **0.180** | 1.08 GB | 1.16 GB | **28.21x** |
+| Configuration | **TTFB (ms)** | RTF | Peak RAM | VRAM | Speedup |
+| :--- | ---: | ---: | ---: | ---: | ---: |
+| Official PyTorch Baseline (CPU) | — | 5.066 | 5.06 GB | — | 1.00× |
+| Official PyTorch Baseline (GPU) | — | 3.788 | 1.59 GB | 2.29 GB | 1.34× |
+| **LunaVox (Full CPU)** | 1248 | 0.858 | 1.19 GB | — | 5.90× |
+| **LunaVox (CUDA 13)** | 175 | 0.213 | 1.41 GB | 1.33 GB | 23.78× |
+| **LunaVox (Vulkan + DML)** | **194** | **0.152** | **0.97 GB** | 1.00 GB | **33.33×** |
 
 > [!NOTE]
-> - **Test Model**: Based on **Qwen3-TTS-12Hz-0.6B-Base**, with Voice Cloning enabled using pre-computed `.json` feature files.
-> - **Test Environment**: Intel i9-12900K + NVIDIA RTX 3090
-> - **Test Standard**: Average of **100 iterations** across 5 different sentences (steady state) after model/decoder warmup.
+> - **Test Model**: **Qwen3-TTS-12Hz-0.6B-Base** with voice cloning using the pre-computed `ref/ref_0.6B.json` feature file.
+> - **Test Environment**: Intel i9-12900K + NVIDIA RTX 3090, Windows 11.
+> - **Test Standard**: 5 warm-up runs (discarded) + **100 measurement runs** per backend, fixed 25-word English sentence. All three backends built from the same commit.
+> - **TTFB** (time-to-first-byte) is the streaming-pipeline delay from synth start to the first PCM sample becoming available — the latency a streaming caller actually observes.
+> - Full per-run distribution (p50 / p95 / p99 / stddev) and raw stats in [`benchmark/report.md`](benchmark/report.md).
 
 ---
 
@@ -98,8 +100,7 @@ lunavox build --clean
 ## 🧱 Runtime Libraries
 
 LunaVox automatically downloads appropriate ONNX Runtime and Llama.cpp into the `lib/` directory. For CUDA configurations, see:
-- **[CUDA 12 Windows Dependency Guide](docs/en/install/cuda12_windows.md)**
-- **[CUDA 13 Windows Dependency Guide](docs/en/install/cuda13_windows.md)**
+- **[CUDA Windows Dependency Guide (CUDA 12 / 13)](docs/en/install/cuda_windows.md)**
 
 ---
 

@@ -549,7 +549,11 @@ int main(int argc, char ** argv) {
             LOG_ERROR("Error: failed to save output file: %s", current_output.c_str());
             return 1;
         }
-        
+
+        // Drop the per-run PCM buffer once it's on disk; only scalar stats
+        // remain in `repeat_results` so RSS doesn't grow with --repeat.
+        std::vector<float>().swap(repeat_results.back().audio);
+
         if (repeat == 1) {
             LOG_USER("\rGenerating: [####################] 100%%          \n");
         } else {
@@ -600,7 +604,7 @@ int main(int argc, char ** argv) {
     double avg_rtf = 0;
     
     for (const auto & r : repeat_results) {
-        double audio_sec = (double)r.audio.size() / r.sample_rate;
+        double audio_sec = (double)r.n_samples / r.sample_rate;
         double wall_sec = (double)r.t_total_ms / 1000.0;
         double rtf = audio_sec > 0 ? wall_sec / audio_sec : 0;
         
@@ -648,7 +652,7 @@ int main(int argc, char ** argv) {
             fprintf(jf, "  \"runs\": [\n");
             for (size_t it = 0; it < repeat_results.size(); ++it) {
                 const auto & r = repeat_results[it];
-                double audio_sec = (double)r.audio.size() / r.sample_rate;
+                double audio_sec = (double)r.n_samples / r.sample_rate;
                 double wall_sec = (double)r.t_total_ms / 1000.0;
                 double rtf = audio_sec > 0 ? wall_sec / audio_sec : 0;
                 
@@ -723,7 +727,7 @@ int main(int argc, char ** argv) {
                     "  }%s\n",
                     (int)it + 1,
                     r.sample_rate,
-                    (int) r.audio.size(),
+                    r.n_samples,
                     audio_sec,
                     (long long) r.t_tokenize_ms,
                     (long long) r.t_encode_ms,
