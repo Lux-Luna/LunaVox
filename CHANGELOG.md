@@ -7,6 +7,12 @@ and this project loosely follows [Semantic Versioning](https://semver.org/spec/v
 
 ## [Unreleased]
 
+### Fixed
+- CI pyright failure after `huggingface_hub` auto-upgraded to 1.x on
+  GitHub runners: removed the deprecated `resume_download=True` and
+  `local_dir_use_symlinks=False` kwargs from
+  `lunavox.model.downloader`. Both are no-ops in the 1.x API.
+
 ### Added
 - `ruff` + `pytest` developer workflow in `pyproject.toml` (`[tool.ruff]`,
   `[tool.ruff.format]`, `[tool.pytest.ini_options]`).

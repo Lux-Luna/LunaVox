@@ -28,6 +28,18 @@ HF_EXPORT = (
 )
 
 
+pytest.importorskip(
+    "torch",
+    reason="converter requires torch (install [convert] extra)",
+    exc_type=ImportError,
+)
+pytest.importorskip(
+    "transformers",
+    reason="converter requires transformers (install [convert] extra)",
+    exc_type=ImportError,
+)
+
+
 @pytest.fixture(scope="module")
 def converter():
     """Import the vendored converter with its sibling ``gguf-py`` path

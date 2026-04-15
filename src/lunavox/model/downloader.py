@@ -22,7 +22,6 @@ class ModelDownloader:
         path = snapshot_download(
             repo_id=spec.repo_id,
             local_files_only=False,
-            resume_download=True,
         )
         console.print(f"[info][model_manager:downloader] Download complete: {path}[/info]")
         return Path(path)
@@ -41,7 +40,6 @@ class ModelDownloader:
             repo_id=repo_id,
             allow_patterns=[f"{model_name}/*"],
             local_dir=str(project_root / "models"),
-            local_dir_use_symlinks=False,
         )
         console.print(f"[success]Pull complete: {dest_dir}[/success]")
         return dest_dir
