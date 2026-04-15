@@ -7,6 +7,47 @@ and this project loosely follows [Semantic Versioning](https://semver.org/spec/v
 
 ## [Unreleased]
 
+### Added
+- **`examples/voice_agent_demo.py`** — end-to-end voice-agent
+  demonstration against `lunavox serve`. Fakes an LLM by streaming
+  a scripted reply word-by-word over `WS /v1/stream/text`, receives
+  PCM chunks, writes them to a WAV, and prints timing stats
+  (first-audio TTFB, audio/wall ratio, per-sentence breakdown).
+  Verified locally: 5 sentences detected, 508 ms TTFB, 4.86× audio
+  faster than wall clock.
+- **`examples/README.md`** — index of example scripts with run
+  instructions and a snippet showing how to swap the fake LLM for
+  a real OpenAI / Ollama / llama.cpp source.
+- **Deployment-layout project root** — `lunavox.core.project`
+  recognises a `.lunavox-root` marker file as a valid project root,
+  so containers and standalone bundles that don't ship the source
+  tree can still use the CLI. Backwards-compatible — dev-checkout
+  layouts with `CMakeLists.txt` + `src/` continue to work. Two new
+  tests lock the behaviour.
+- **`Dockerfile` + `compose.yml`** — multi-stage CPU image builds
+  the C++ engine inside the builder stage (`lunavox build libs
+  --platform linux_cpu` + `lunavox build`) then copies the artifacts
+  into a slim `python:3.11-slim-bookworm` runtime that pip-installs
+  `lunavox[serve]==2.2.0` from PyPI. Non-root user (UID 10001),
+  `dumb-init` as PID 1 for clean `SIGTERM` handling, `/metrics` +
+  `/health` exposed on port 8000. `compose.yml` mounts
+  `./models/`, `./ref/`, `./output/` and defaults to
+  `--batch-size auto`.
+- **Bilingual `docs/{en,zh}/guide/docker.md`** — full Docker
+  deployment guide including build steps, compose usage,
+  standalone `docker run`, image internals breakdown, and
+  production notes (healthchecks, Prometheus scraping, batch-size
+  trade-offs).
+
+### Changed
+- **Test suite GUI fixture** — `tests/conftest.py` adds a
+  session-scoped `gui_root` fixture providing a single shared
+  `customtkinter.CTk` root to every GUI test. Replaces the
+  per-test `ctk.CTk()` construction which occasionally tripped a
+  transient `TclError: couldn't read file auto.tcl` on miniconda
+  setups by hammering Tcl interpreter bootstrap four times per
+  suite run. Strictly less risky — one root per session now.
+
 ## [2.2.0] — 2026-04-15
 
 This is a milestone release that bundles the full

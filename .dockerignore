@@ -1,0 +1,53 @@
+# Docker build context — keep it tight so `docker build` stays
+# fast and the image layer hashes stay stable across host edits
+# of test/benchmark output.
+
+# Version control and editor state
+.git
+.gitignore
+.gitattributes
+.github
+.vscode
+.idea
+*.swp
+
+# Existing build outputs — we rebuild inside the image
+/build
+/lib
+/site
+_tmp_*
+_pip_tmp
+
+# Python virtualenvs / caches
+.venv
+venv
+_release_venv
+_pypi_check_venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.pyright
+src/lunavox.egg-info
+
+# Model weights / reference audio — always mount at runtime
+/models
+/ref
+/output
+
+# Release artifacts and runtime logs
+/dist
+/logs
+
+# Docs site build output
+/site
+docs/**/__pycache__
+
+# Claude Code harness state
+.claude
+
+# Platform-specific scratch
+.DS_Store
+Thumbs.db

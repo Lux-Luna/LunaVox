@@ -1,0 +1,62 @@
+# LunaVox one-line deployment for `docker compose up`.
+#
+# Prereqs:
+#
+#   1. Build the image:
+#        docker build -t lunavox:2.2.0 .
+#
+#   2. Pull a model to ./models/ on the host (this is a one-shot, the
+#      container doesn't do it because model downloads are ~GB):
+#        python -m pip install lunavox
+#        lunavox model pull --model base_small
+#
+#   3. Start the server:
+#        docker compose up
+#
+# The compose file mounts three host directories into the container:
+#
+#   ./models → /app/models   (read-only; the engine just reads weights)
+#   ./ref    → /app/ref      (reference audio for voice cloning)
+#   ./output → /app/output   (writable; for debug WAV dumps)
+#
+# Override ports or flags via environment variables:
+#
+#   LUNAVOX_PORT=9000 docker compose up
+#   LUNAVOX_BATCH_SIZE=2 docker compose up
+
+services:
+  lunavox:
+    image: lunavox:2.2.0
+    container_name: lunavox
+    restart: unless-stopped
+
+    ports:
+      - "${LUNAVOX_PORT:-8000}:8000"
+
+    volumes:
+      - ./models:/app/models:ro
+      - ./ref:/app/ref:ro
+      - ./output:/app/output
+
+    environment:
+      # Honor container-level config knobs. --batch-size auto probes
+      # free RAM/VRAM but you can override with a hard number.
+      - LUNAVOX_PROJECT_ROOT=/app
+      # Suppress huggingface-hub telemetry inside containers.
+      - HF_HUB_DISABLE_TELEMETRY=1
+
+    # Override the default CMD if you want a specific batch size or
+    # a different log level. Keep the first three args in sync with
+    # the Dockerfile CMD so uvicorn binds to all interfaces.
+    command: >
+      lunavox serve
+      --host 0.0.0.0
+      --port 8000
+      --batch-size ${LUNAVOX_BATCH_SIZE:-auto}
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=2).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
