@@ -9,8 +9,6 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
-
 from lunavox.core import logging as lvlog
 
 
@@ -387,6 +385,8 @@ class ModelConvertPipeline:
         codec_num_codebooks: int,
         require_projection: bool,
     ) -> bool:
+        import numpy as np  # deferred so `[dev]` installs without numpy
+
         def _dtype(path: Path) -> str:
             arr = np.load(path, mmap_mode="r")
             return str(arr.dtype)
