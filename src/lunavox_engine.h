@@ -69,13 +69,25 @@ struct tts_params {
     // Reference text for Voice Clone mode (matches reference audio)
     std::string ref_text;
 
+    // Streaming pipeline: number of frames to accumulate before the first
+    // decoder chunk fires. Smaller value = lower time-to-first-audio but
+    // slightly worse steady-state decoder RTF (the first chunk has fixed
+    // ORT overhead). Steady-state chunks use the decoder's internal
+    // chunk size (see StatefulDecoderOnnx::decode_chunk_frames()).
+    // Set to <=0 to use the default (8).
+    int32_t first_chunk_frames = 8;
 };
 
 // TTS generation result
 struct tts_result {
     // Generated audio samples (24kHz, mono)
     std::vector<float> audio;
-    
+
+    // Number of samples originally produced. Mirrors audio.size() at the
+    // moment the engine returns, but callers that release `audio` after
+    // consuming it (e.g. CLI --repeat loops) can still read the count.
+    int32_t n_samples = 0;
+
     // Sample rate
     int32_t sample_rate = 24000;
     
@@ -106,6 +118,13 @@ struct tts_result {
     int64_t t_decoder_state_trim_ms = 0;
     int64_t t_pcm_gather_ms = 0;
     int64_t t_total_ms = 0;
+
+    // Streaming pipeline diagnostics. t_first_audio_ms is the wall-clock time
+    // (relative to synth start) at which the first decoder chunk completed
+    // and PCM samples became available to the caller. first_chunk_frames_used
+    // records the chunk size that was actually consumed for the first chunk.
+    int64_t t_first_audio_ms = 0;
+    int32_t first_chunk_frames_used = 0;
 
     // Language used for generation after explicit override (-1 means no language token).
     int32_t effective_language_id = -1;

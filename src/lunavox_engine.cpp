@@ -10,11 +10,15 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <limits>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 #include <filesystem>
 namespace fs = std::filesystem;
@@ -603,7 +607,7 @@ bool Engine::load_models_new_layout(const std::string & model_dir, int32_t n_thr
         // Amortize the decoder's first-run kernel compile (DML shader cache,
         // CUDA cuDNN search, CoreML MLProgram prep) into load time so the
         // first user-visible synthesize() call does not pay that cost.
-        const int32_t warmup_frames = 8;
+        const int32_t warmup_frames = 32;
         const int32_t n_cb = profile_.codec_num_codebooks;
         std::vector<int32_t> dummy_codes((size_t) warmup_frames * (size_t) n_cb,
                                          profile_.codec_id_start);
@@ -1303,12 +1307,137 @@ tts_result Engine::synthesize_internal(
         effective_max_audio_tokens = profile_.default_max_new_tokens;
     }
 
-    int64_t t_generate = get_time_ms();
     std::vector<int32_t> speech_codes;
     if (!talker_predictor_loaded_) {
         result.error_msg = "Talker/predictor runtime is not loaded";
         return result;
     }
+
+    // Ensure decoder is loaded BEFORE the talker generate loop so the
+    // inline streaming driver can feed chunks from within the per-frame
+    // callback. Loading cost was historically measured inside t_decode,
+    // but it is really a one-shot setup so we keep it out of both t_decode
+    // and t_generate in the streaming path.
+    if (!decoder_loaded_) {
+        if (!decoder_.load_model(decoder_onnx_path_, params.n_threads)) {
+            result.error_msg = "Failed to load decoder ONNX: " + decoder_.get_error();
+            return result;
+        }
+        decoder_loaded_ = true;
+        LOG_DEBUG("  Decoder providers: %s", decoder_.provider_summary().c_str());
+    }
+    result.ort_provider_decoder = decoder_.provider_summary();
+
+    // Streaming pipeline: the decoder runs on a dedicated worker thread that
+    // pulls chunks of frame codes from a bounded queue fed by the talker
+    // generate callback. Talker work (llama.cpp Vulkan) and decoder work
+    // (ONNX Runtime DirectML) are synchronous CPU calls per step, but on
+    // separate threads they can run concurrently — the talker's Vulkan
+    // submit + compute overlaps with ORT DML Run on the other thread. An
+    // earlier inline-consumer prototype could not overlap because both
+    // calls lived on the same main thread; measurements showed a ~5% total
+    // wall regression. The threaded design recovers full overlap and keeps
+    // TTFB low (first chunk fires as soon as first_chunk_frames are ready).
+    const int n_codebooks_stream = profile_.codec_num_codebooks;
+    StatefulDecoderOnnx::DecoderStreamState decoder_state;
+    decoder_.reset_stream_timings();
+    if (!decoder_.begin_stream(decoder_state)) {
+        result.error_msg = "Failed to begin decoder stream: " + decoder_.get_error();
+        return result;
+    }
+    result.audio.clear();
+
+    const int32_t first_chunk_cfg = params.first_chunk_frames > 0 ? params.first_chunk_frames : 8;
+    const int32_t steady_chunk_size = std::max(1, decoder_.decode_chunk_frames());
+    int32_t consumed_frames = 0;
+    int32_t next_chunk_target = first_chunk_cfg;
+    result.first_chunk_frames_used = 0;
+    result.t_first_audio_ms = 0;
+
+    struct DecodeJob {
+        std::vector<int32_t> codes;
+        int32_t n_frames = 0;
+        bool is_last = false;
+    };
+
+    std::mutex q_mtx;
+    std::condition_variable q_cv;
+    std::deque<DecodeJob> q;
+    bool producer_done = false;
+    bool worker_ok = true;
+    std::string worker_err;
+
+    const int64_t t_synth_stream_start = get_time_ms();
+
+    std::thread worker([&]() {
+        while (true) {
+            DecodeJob job;
+            {
+                std::unique_lock<std::mutex> lk(q_mtx);
+                q_cv.wait(lk, [&]() { return !q.empty() || producer_done; });
+                if (q.empty()) {
+                    return;
+                }
+                job = std::move(q.front());
+                q.pop_front();
+            }
+            if (!decoder_.decode_chunk(decoder_state, job.codes.data(), job.n_frames, job.is_last, result.audio)) {
+                {
+                    std::lock_guard<std::mutex> lk(q_mtx);
+                    worker_ok = false;
+                    worker_err = decoder_.get_error();
+                }
+                return;
+            }
+            if (result.first_chunk_frames_used == 0) {
+                result.first_chunk_frames_used = job.n_frames;
+                result.t_first_audio_ms = get_time_ms() - t_synth_stream_start;
+            }
+            if (job.is_last) {
+                return;
+            }
+        }
+    });
+
+    auto enqueue_job = [&](int32_t chunk_start, int32_t chunk_frames, bool is_last) {
+        DecodeJob job;
+        const int32_t * base = speech_codes.data() + (size_t) chunk_start * (size_t) n_codebooks_stream;
+        job.codes.assign(base, base + (size_t) chunk_frames * (size_t) n_codebooks_stream);
+        job.n_frames = chunk_frames;
+        job.is_last = is_last;
+        {
+            std::lock_guard<std::mutex> lk(q_mtx);
+            q.push_back(std::move(job));
+        }
+        q_cv.notify_one();
+    };
+
+    auto finalize_worker = [&]() {
+        {
+            std::lock_guard<std::mutex> lk(q_mtx);
+            producer_done = true;
+        }
+        q_cv.notify_all();
+        if (worker.joinable()) {
+            worker.join();
+        }
+    };
+
+    int64_t t_generate = get_time_ms();
+    talker_predictor_.set_on_frames_ready([&](const int32_t * /*new_codes*/, int32_t /*n_new*/) {
+        // Hold back at least one frame so the post-generate flush can fire
+        // the final is_last=true chunk. Strict '>' against next_chunk_target.
+        const int32_t total_frames = (int32_t) (speech_codes.size() / (size_t) n_codebooks_stream);
+        const int32_t pending = total_frames - consumed_frames;
+        if (pending <= next_chunk_target) {
+            return;
+        }
+        const int32_t chunk_frames = next_chunk_target;
+        const int32_t chunk_start = consumed_frames;
+        consumed_frames += chunk_frames;
+        next_chunk_target = steady_chunk_size;
+        enqueue_job(chunk_start, chunk_frames, /*is_last=*/false);
+    });
     const bool gen_ok = talker_predictor_.generate(
             text_tokens,
             ref_text_tokens,
@@ -1330,11 +1459,13 @@ tts_result Engine::synthesize_internal(
             params.seed,
             params.predictor_seed,
             speech_codes);
+    talker_predictor_.clear_on_frames_ready();
     result.ctx_required = talker_predictor_.last_ctx_required();
     result.ctx_allocated = talker_predictor_.last_ctx_allocated();
     result.ctx_cap = talker_predictor_.last_ctx_cap();
     result.ctx_overflow = talker_predictor_.last_ctx_overflow();
     if (!gen_ok) {
+        finalize_worker();
         result.error_msg = "Failed to generate speech codes: " + talker_predictor_.get_error();
         return result;
     }
@@ -1356,10 +1487,12 @@ tts_result Engine::synthesize_internal(
     const int n_codebooks = profile_.codec_num_codebooks;
     int n_frames = (int) speech_codes.size() / n_codebooks;
     if (n_frames <= 0) {
+        finalize_worker();
         result.error_msg = "No speech codes generated";
         return result;
     }
     if ((int32_t) speech_codes.size() != n_frames * n_codebooks) {
+        finalize_worker();
         result.error_msg = "[generate] Invalid generated codes shape; expected T x codec_num_codebooks";
         return result;
     }
@@ -1367,6 +1500,7 @@ tts_result Engine::synthesize_internal(
         (profile_.suppress_to > profile_.codec_id_end) ? profile_.suppress_to : profile_.codec_id_end;
     for (int32_t c : speech_codes) {
         if (c < profile_.codec_id_start || c >= generated_code_upper_bound) {
+            finalize_worker();
             result.error_msg =
                 "[generate] Invalid generated code id out of runtime codec/special range from model_profile.json";
             return result;
@@ -1376,30 +1510,33 @@ tts_result Engine::synthesize_internal(
         LOG_INFO("Speech codes generated: %d frames x %d codebooks", n_frames, n_codebooks);
     }
 
-    int64_t t_decode = get_time_ms();
-    if (!decoder_loaded_) {
-        if (!decoder_.load_model(decoder_onnx_path_, params.n_threads)) {
-            result.error_msg = "Failed to load decoder ONNX: " + decoder_.get_error();
-            return result;
-        }
-        decoder_loaded_ = true;
-        LOG_DEBUG("  Decoder providers: %s", decoder_.provider_summary().c_str());
+    // Enqueue the residual frames in steady-state chunks with is_last on
+    // the final chunk, then signal the worker to drain and join.
+    while (consumed_frames < n_frames) {
+        const int32_t remaining = n_frames - consumed_frames;
+        const int32_t chunk_frames = std::min(steady_chunk_size, remaining);
+        const bool is_last = (chunk_frames == remaining);
+        const int32_t chunk_start = consumed_frames;
+        consumed_frames += chunk_frames;
+        enqueue_job(chunk_start, chunk_frames, is_last);
     }
-    result.ort_provider_decoder = decoder_.provider_summary();
-    const int64_t t_ort_run_start = get_time_ms();
-    if (!decoder_.decode(speech_codes.data(), n_frames, result.audio)) {
-        result.error_msg = "Failed to decode speech codes: " + decoder_.get_error();
+    finalize_worker();
+    if (!worker_ok) {
+        result.error_msg = "Failed to decode speech codes: " + worker_err;
         return result;
     }
-    result.t_ort_decoder_run_ms = get_time_ms() - t_ort_run_start;
+
     result.t_decoder_tensor_prep_ms = decoder_.last_t_tensor_prep_ms();
     result.t_decoder_ort_run_ms = decoder_.last_t_ort_run_ms();
+    result.t_ort_decoder_run_ms = result.t_decoder_ort_run_ms;
     result.t_decoder_tensor_extract_ms = decoder_.last_t_tensor_extract_ms();
     result.t_decoder_state_trim_ms = decoder_.last_t_state_trim_ms();
+    result.t_decode_ms = result.t_decoder_tensor_prep_ms + result.t_decoder_ort_run_ms +
+                        result.t_decoder_tensor_extract_ms + result.t_decoder_state_trim_ms;
     const int64_t t_pcm_gather_start = get_time_ms();
     pcm_peak_rms(result.audio, result.pcm_peak, result.pcm_rms);
+    result.n_samples = (int32_t) result.audio.size();
     result.t_pcm_gather_ms = get_time_ms() - t_pcm_gather_start;
-    result.t_decode_ms = get_time_ms() - t_decode;
     sample_memory("synth/after-decode");
 
     if (low_mem_mode_) {

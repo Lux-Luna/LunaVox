@@ -212,7 +212,9 @@ bool LlamaContext::init(
     int32_t n_batch_cap,
     int32_t n_ubatch_cap,
     const char * tag,
-    std::string & err) {
+    std::string & err,
+    int32_t type_k,
+    int32_t type_v) {
     free();
     auto & lib = LlamaLibrary::instance();
     llama_context_params params = lib.llama_context_default_params();
@@ -230,6 +232,8 @@ bool LlamaContext::init(
     params.flash_attn_type = 1;
     params.offload_kqv = true;
     params.no_perf = true;
+    params.type_k = type_k;
+    params.type_v = type_v;
     params.n_threads = n_threads > 0 ? n_threads : 4;
     params.n_threads_batch = n_threads > 0 ? n_threads : 4;
     ctx_ = lib.llama_init_from_model(model.raw_model(), params);
@@ -240,12 +244,14 @@ bool LlamaContext::init(
     n_ctx_ = safe_ctx;
     n_embd_ = model.n_embd();
     LOG_INFO(
-        "Llama context [%s]: n_ctx=%d, n_batch=%d, n_ubatch=%d, embeddings=%s",
+        "Llama context [%s]: n_ctx=%d, n_batch=%d, n_ubatch=%d, embeddings=%s, type_k=%d, type_v=%d",
         tag ? tag : "default",
         safe_ctx,
         actual_batch,
         actual_ubatch,
-        embeddings ? "true" : "false");
+        embeddings ? "true" : "false",
+        type_k,
+        type_v);
     return true;
 }
 

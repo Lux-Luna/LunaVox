@@ -812,22 +812,89 @@ void StatefulDecoderOnnx::unload_model() {
     kv_elem_type_ = (int32_t) ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
 }
 
-bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::vector<float> & audio) {
-    audio.clear();
+void StatefulDecoderOnnx::reset_stream_timings() {
     t_tensor_prep_ms_ = 0;
     t_ort_run_ms_ = 0;
     t_tensor_extract_ms_ = 0;
     t_state_trim_ms_ = 0;
+}
+
+bool StatefulDecoderOnnx::begin_stream(DecoderStreamState & state) {
     if (!loaded_ || !session_impl_) {
         error_msg_ = "Decoder is not loaded";
         return false;
     }
-    if (!codes || n_frames <= 0) {
+    if (num_layers_ <= 0 || num_heads_ <= 0 || head_dim_ <= 0) {
+        error_msg_ = "Decoder state layout is invalid";
+        return false;
+    }
+    auto tensor_type_supported = [](int32_t elem_type) -> bool {
+        return elem_type == (int32_t) ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
+               elem_type == (int32_t) ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 ||
+               elem_type == (int32_t) ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;
+    };
+    if (!tensor_type_supported(state_elem_type_) || !tensor_type_supported(kv_elem_type_)) {
+        error_msg_ = "Decoder state tensor type is unsupported";
+        return false;
+    }
+
+    state.pre_conv_history = DecoderStreamState::tensor_state{};
+    state.latent_buffer    = DecoderStreamState::tensor_state{};
+    state.conv_history     = DecoderStreamState::tensor_state{};
+    state.pre_conv_history.elem_type = state_elem_type_;
+    state.latent_buffer.elem_type    = state_elem_type_;
+    state.conv_history.elem_type     = state_elem_type_;
+    state.past_keys.assign((size_t) num_layers_, DecoderStreamState::tensor_state{});
+    state.past_values.assign((size_t) num_layers_, DecoderStreamState::tensor_state{});
+    for (int i = 0; i < num_layers_; ++i) {
+        state.past_keys[(size_t) i].elem_type   = kv_elem_type_;
+        state.past_values[(size_t) i].elem_type = kv_elem_type_;
+    }
+
+    state.past_key_input_idx.assign((size_t) num_layers_, 0);
+    state.past_value_input_idx.assign((size_t) num_layers_, 0);
+    for (int i = 0; i < num_layers_; ++i) {
+        std::string key_name = "past_key_" + std::to_string(i);
+        int32_t key_idx = find_name_index(input_names_, key_name);
+        if (key_idx < 0) key_idx = 5 + i;
+        state.past_key_input_idx[(size_t) i] = key_idx;
+
+        std::string value_name = "past_value_" + std::to_string(i);
+        int32_t value_idx = find_name_index(input_names_, value_name);
+        if (value_idx < 0) value_idx = 5 + num_layers_ + i;
+        state.past_value_input_idx[(size_t) i] = value_idx;
+    }
+
+    state.out_names_cache.clear();
+    state.out_names_cache.reserve(output_names_.size());
+    for (const auto & n : output_names_) {
+        state.out_names_cache.push_back(n.c_str());
+    }
+
+    state.codes_i64.clear();
+    state.codes_i64.reserve((size_t) std::max(1, decode_chunk_frames_) * 16);
+
+    return true;
+}
+
+bool StatefulDecoderOnnx::decode_chunk(DecoderStreamState & state,
+                                       const int32_t * codes,
+                                       int32_t chunk_frames,
+                                       bool is_last,
+                                       std::vector<float> & out_pcm_append) {
+    if (!loaded_ || !session_impl_) {
+        error_msg_ = "Decoder is not loaded";
+        return false;
+    }
+    if (!codes || chunk_frames <= 0) {
         error_msg_ = "Invalid codes for decoder";
         return false;
     }
-    if (num_layers_ <= 0 || num_heads_ <= 0 || head_dim_ <= 0) {
-        error_msg_ = "Decoder state layout is invalid";
+    if ((int) state.past_keys.size() != num_layers_ ||
+        (int) state.past_values.size() != num_layers_ ||
+        (int) state.past_key_input_idx.size() != num_layers_ ||
+        (int) state.past_value_input_idx.size() != num_layers_) {
+        error_msg_ = "Decoder stream state not initialised (call begin_stream)";
         return false;
     }
 
@@ -838,64 +905,13 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
         static Ort::Float16_t dummy_f16 = Ort::Float16_t::FromBits(0);
         static Ort::BFloat16_t dummy_bf16 = Ort::BFloat16_t::FromBits(0);
 
-        auto tensor_type_supported = [](int32_t elem_type) -> bool {
-            return elem_type == (int32_t) ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
-                   elem_type == (int32_t) ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 ||
-                   elem_type == (int32_t) ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;
-        };
-        if (!tensor_type_supported(state_elem_type_) || !tensor_type_supported(kv_elem_type_)) {
-            error_msg_ = "Decoder state tensor type is unsupported";
-            return false;
-        }
-
-        state_buffer state;
-        state.pre_conv_history.elem_type = state_elem_type_;
-        state.latent_buffer.elem_type = state_elem_type_;
-        state.conv_history.elem_type = state_elem_type_;
-        state.past_keys.resize((size_t) num_layers_);
-        state.past_values.resize((size_t) num_layers_);
-        for (int i = 0; i < num_layers_; ++i) {
-            state.past_keys[(size_t) i].elem_type = kv_elem_type_;
-            state.past_values[(size_t) i].elem_type = kv_elem_type_;
-        }
-
-        std::vector<int32_t> past_key_input_idx((size_t) num_layers_);
-        std::vector<int32_t> past_value_input_idx((size_t) num_layers_);
-        for (int i = 0; i < num_layers_; ++i) {
-            std::string key_name = "past_key_" + std::to_string(i);
-            int32_t key_idx = find_name_index(input_names_, key_name);
-            if (key_idx < 0) {
-                key_idx = 5 + i;
-            }
-            past_key_input_idx[(size_t) i] = key_idx;
-
-            std::string value_name = "past_value_" + std::to_string(i);
-            int32_t value_idx = find_name_index(input_names_, value_name);
-            if (value_idx < 0) {
-                value_idx = 5 + num_layers_ + i;
-            }
-            past_value_input_idx[(size_t) i] = value_idx;
-        }
-
-        std::vector<const char *> out_names;
-        out_names.reserve(output_names_.size());
-        for (const auto & n : output_names_) {
-            out_names.push_back(n.c_str());
-        }
-
-        std::vector<int64_t> codes_i64;
-        codes_i64.reserve((size_t) std::max(1, decode_chunk_frames_) * 16);
-
         std::vector<const char *> in_names;
         std::vector<Ort::Value> in_values;
         in_names.reserve((size_t) (5 + 2 * num_layers_));
         in_values.reserve((size_t) (5 + 2 * num_layers_));
 
-        audio.clear();
-        audio.reserve((size_t) std::max(1, n_frames) * 1920 + 4096);
-
         auto add_state_tensor = [&](const char * name,
-                                    state_buffer::tensor_state & ts,
+                                    DecoderStreamState::tensor_state & ts,
                                     const int64_t * shape,
                                     size_t rank) -> bool {
             in_names.push_back(name);
@@ -924,7 +940,7 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
             return false;
         };
 
-        auto trim_tensor_state_tail = [&](state_buffer::tensor_state & ts, int64_t max_seq, const char * name) -> bool {
+        auto trim_tensor_state_tail = [&](DecoderStreamState::tensor_state & ts, int64_t max_seq, const char * name) -> bool {
             if (max_seq < 0 || ts.seq <= max_seq) {
                 return true;
             }
@@ -976,196 +992,215 @@ bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::v
                        std::chrono::steady_clock::now().time_since_epoch())
                 .count();
         };
-        for (int32_t frame_offset = 0; frame_offset < n_frames; frame_offset += decode_chunk_frames_) {
-            const int32_t chunk_frames = std::min(decode_chunk_frames_, n_frames - frame_offset);
-            const bool is_last_chunk = (frame_offset + chunk_frames) >= n_frames;
-            const int64_t t_prep_start = now_ms();
+        const bool is_last_chunk = is_last;
+        const int64_t t_prep_start = now_ms();
 
-            const size_t codes_count = (size_t) chunk_frames * 16;
-            if (codes_i64.size() != codes_count) {
-                codes_i64.resize(codes_count);
-            }
-            for (int32_t i = 0; i < chunk_frames; ++i) {
-                for (int32_t q = 0; q < 16; ++q) {
-                    const size_t src_idx = (size_t) (frame_offset + i) * 16 + (size_t) q;
-                    const size_t dst_idx = (size_t) i * 16 + (size_t) q;
-                    codes_i64[dst_idx] = (int64_t) codes[src_idx];
-                }
-            }
-
-            in_names.clear();
-            in_values.clear();
-
-            auto add_i64_tensor = [&](const char * name, int64_t * ptr, size_t count, const int64_t * shape, size_t rank) {
-                in_names.push_back(name);
-                in_values.emplace_back(Ort::Value::CreateTensor<int64_t>(
-                    mem, ptr, count, shape, rank));
-            };
-
-            std::array<int64_t, 3> codes_shape = {1, (int64_t) chunk_frames, 16};
-            add_i64_tensor("audio_codes", codes_i64.data(), codes_i64.size(), codes_shape.data(), codes_shape.size());
-
-            std::array<int64_t, 3> pre_shape = {1, (int64_t) pre_conv_channels_, state.pre_conv_history.seq};
-            if (!add_state_tensor("pre_conv_history", state.pre_conv_history, pre_shape.data(), pre_shape.size())) {
-                error_msg_ = "Decoder pre_conv_history input type is unsupported";
-                return false;
-            }
-
-            std::array<int64_t, 3> latent_shape = {1, (int64_t) latent_channels_, state.latent_buffer.seq};
-            if (!add_state_tensor("latent_buffer", state.latent_buffer, latent_shape.data(), latent_shape.size())) {
-                error_msg_ = "Decoder latent_buffer input type is unsupported";
-                return false;
-            }
-
-            std::array<int64_t, 3> conv_shape = {1, (int64_t) conv_channels_, state.conv_history.seq};
-            if (!add_state_tensor("conv_history", state.conv_history, conv_shape.data(), conv_shape.size())) {
-                error_msg_ = "Decoder conv_history input type is unsupported";
-                return false;
-            }
-
-            std::array<int64_t, 1> is_last_shape = {1};
-            float is_last_val = is_last_chunk ? 1.0f : 0.0f;
-            in_names.push_back("is_last");
-            in_values.emplace_back(Ort::Value::CreateTensor<float>(
-                mem, &is_last_val, 1, is_last_shape.data(), is_last_shape.size()));
-
-            for (int i = 0; i < num_layers_; ++i) {
-                const int32_t idx = past_key_input_idx[(size_t) i];
-                std::array<int64_t, 4> kv_shape = {
-                    1,
-                    (int64_t) num_heads_,
-                    state.past_keys[(size_t) i].seq,
-                    (int64_t) head_dim_};
-                if (!add_state_tensor(input_names_[(size_t) idx].c_str(), state.past_keys[(size_t) i], kv_shape.data(), kv_shape.size())) {
-                    error_msg_ = "Decoder past_key input type is unsupported";
-                    return false;
-                }
-            }
-            for (int i = 0; i < num_layers_; ++i) {
-                const int32_t idx = past_value_input_idx[(size_t) i];
-                std::array<int64_t, 4> kv_shape = {
-                    1,
-                    (int64_t) num_heads_,
-                    state.past_values[(size_t) i].seq,
-                    (int64_t) head_dim_};
-                if (!add_state_tensor(input_names_[(size_t) idx].c_str(), state.past_values[(size_t) i], kv_shape.data(), kv_shape.size())) {
-                    error_msg_ = "Decoder past_value input type is unsupported";
-                    return false;
-                }
-            }
-            t_tensor_prep_ms_ += now_ms() - t_prep_start;
-            const int64_t t_run_start = now_ms();
-            auto out = impl->session.Run(
-                Ort::RunOptions{nullptr},
-                in_names.data(),
-                in_values.data(),
-                in_values.size(),
-                out_names.data(),
-                out_names.size());
-            t_ort_run_ms_ += now_ms() - t_run_start;
-            const int64_t t_extract_start = now_ms();
-
-            if (out.size() < (size_t) (5 + 2 * num_layers_)) {
-                error_msg_ = "Decoder returned insufficient outputs";
-                return false;
-            }
-            auto wav_info = out[0].GetTensorTypeAndShapeInfo();
-            if (wav_info.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-                error_msg_ = "Decoder wav output must be float32";
-                return false;
-            }
-            const size_t wav_count = wav_info.GetElementCount();
-            const float * wav = out[0].GetTensorData<float>();
-            int64_t valid = parse_valid_samples(out[1]);
-            if (valid <= 0 || (size_t) valid > wav_count) {
-                valid = (int64_t) wav_count;
-            }
-            const size_t append_count = is_last_chunk ? wav_count : (size_t) valid;
-            if (append_count > 0) {
-                const size_t old_size = audio.size();
-                audio.resize(old_size + append_count);
-                std::memcpy(audio.data() + old_size, wav, append_count * sizeof(float));
-            }
-
-            int64_t trim_accum = 0;
-            auto run_trim = [&](state_buffer::tensor_state & ts, int64_t win, const char * name) -> bool {
-                const int64_t t0 = now_ms();
-                const bool ok = trim_tensor_state_tail(ts, win, name);
-                trim_accum += now_ms() - t0;
-                return ok;
-            };
-            if (!extract_state_tensor(
-                    out[2],
-                    state.pre_conv_history.elem_type,
-                    state.pre_conv_history.f32,
-                    state.pre_conv_history.f16,
-                    state.pre_conv_history.seq)) {
-                error_msg_ = "Decoder next_pre_conv_history type is unsupported";
-                return false;
-            }
-            if (!run_trim(state.pre_conv_history, pre_conv_window_, "pre_conv_history")) {
-                return false;
-            }
-            if (!extract_state_tensor(
-                    out[3],
-                    state.latent_buffer.elem_type,
-                    state.latent_buffer.f32,
-                    state.latent_buffer.f16,
-                    state.latent_buffer.seq)) {
-                error_msg_ = "Decoder next_latent_buffer type is unsupported";
-                return false;
-            }
-            if (!run_trim(state.latent_buffer, latent_window_, "latent_buffer")) {
-                return false;
-            }
-            if (!extract_state_tensor(
-                    out[4],
-                    state.conv_history.elem_type,
-                    state.conv_history.f32,
-                    state.conv_history.f16,
-                    state.conv_history.seq)) {
-                error_msg_ = "Decoder next_conv_history type is unsupported";
-                return false;
-            }
-            if (!run_trim(state.conv_history, conv_window_, "conv_history")) {
-                return false;
-            }
-            for (int i = 0; i < num_layers_; ++i) {
-                if (!extract_state_tensor(
-                        out[(size_t) 5 + (size_t) i],
-                        state.past_keys[(size_t) i].elem_type,
-                        state.past_keys[(size_t) i].f32,
-                        state.past_keys[(size_t) i].f16,
-                        state.past_keys[(size_t) i].seq)) {
-                    error_msg_ = "Decoder next_key type is unsupported";
-                    return false;
-                }
-                if (!run_trim(state.past_keys[(size_t) i], kv_cache_window_, "past_key")) {
-                    return false;
-                }
-            }
-            for (int i = 0; i < num_layers_; ++i) {
-                if (!extract_state_tensor(
-                        out[(size_t) 5 + (size_t) num_layers_ + (size_t) i],
-                        state.past_values[(size_t) i].elem_type,
-                        state.past_values[(size_t) i].f32,
-                        state.past_values[(size_t) i].f16,
-                        state.past_values[(size_t) i].seq)) {
-                    error_msg_ = "Decoder next_value type is unsupported";
-                    return false;
-                }
-                if (!run_trim(state.past_values[(size_t) i], kv_cache_window_, "past_value")) {
-                    return false;
-                }
-            }
-            t_state_trim_ms_ += trim_accum;
-            t_tensor_extract_ms_ += (now_ms() - t_extract_start) - trim_accum;
+        const size_t codes_count = (size_t) chunk_frames * 16;
+        if (state.codes_i64.size() != codes_count) {
+            state.codes_i64.resize(codes_count);
         }
-        return !audio.empty();
+        for (int32_t i = 0; i < chunk_frames; ++i) {
+            for (int32_t q = 0; q < 16; ++q) {
+                const size_t src_idx = (size_t) i * 16 + (size_t) q;
+                state.codes_i64[src_idx] = (int64_t) codes[src_idx];
+            }
+        }
+
+        in_names.clear();
+        in_values.clear();
+
+        auto add_i64_tensor = [&](const char * name, int64_t * ptr, size_t count, const int64_t * shape, size_t rank) {
+            in_names.push_back(name);
+            in_values.emplace_back(Ort::Value::CreateTensor<int64_t>(
+                mem, ptr, count, shape, rank));
+        };
+
+        std::array<int64_t, 3> codes_shape = {1, (int64_t) chunk_frames, 16};
+        add_i64_tensor("audio_codes", state.codes_i64.data(), state.codes_i64.size(), codes_shape.data(), codes_shape.size());
+
+        std::array<int64_t, 3> pre_shape = {1, (int64_t) pre_conv_channels_, state.pre_conv_history.seq};
+        if (!add_state_tensor("pre_conv_history", state.pre_conv_history, pre_shape.data(), pre_shape.size())) {
+            error_msg_ = "Decoder pre_conv_history input type is unsupported";
+            return false;
+        }
+
+        std::array<int64_t, 3> latent_shape = {1, (int64_t) latent_channels_, state.latent_buffer.seq};
+        if (!add_state_tensor("latent_buffer", state.latent_buffer, latent_shape.data(), latent_shape.size())) {
+            error_msg_ = "Decoder latent_buffer input type is unsupported";
+            return false;
+        }
+
+        std::array<int64_t, 3> conv_shape = {1, (int64_t) conv_channels_, state.conv_history.seq};
+        if (!add_state_tensor("conv_history", state.conv_history, conv_shape.data(), conv_shape.size())) {
+            error_msg_ = "Decoder conv_history input type is unsupported";
+            return false;
+        }
+
+        std::array<int64_t, 1> is_last_shape = {1};
+        float is_last_val = is_last_chunk ? 1.0f : 0.0f;
+        in_names.push_back("is_last");
+        in_values.emplace_back(Ort::Value::CreateTensor<float>(
+            mem, &is_last_val, 1, is_last_shape.data(), is_last_shape.size()));
+
+        for (int i = 0; i < num_layers_; ++i) {
+            const int32_t idx = state.past_key_input_idx[(size_t) i];
+            std::array<int64_t, 4> kv_shape = {
+                1,
+                (int64_t) num_heads_,
+                state.past_keys[(size_t) i].seq,
+                (int64_t) head_dim_};
+            if (!add_state_tensor(input_names_[(size_t) idx].c_str(), state.past_keys[(size_t) i], kv_shape.data(), kv_shape.size())) {
+                error_msg_ = "Decoder past_key input type is unsupported";
+                return false;
+            }
+        }
+        for (int i = 0; i < num_layers_; ++i) {
+            const int32_t idx = state.past_value_input_idx[(size_t) i];
+            std::array<int64_t, 4> kv_shape = {
+                1,
+                (int64_t) num_heads_,
+                state.past_values[(size_t) i].seq,
+                (int64_t) head_dim_};
+            if (!add_state_tensor(input_names_[(size_t) idx].c_str(), state.past_values[(size_t) i], kv_shape.data(), kv_shape.size())) {
+                error_msg_ = "Decoder past_value input type is unsupported";
+                return false;
+            }
+        }
+        t_tensor_prep_ms_ += now_ms() - t_prep_start;
+        const int64_t t_run_start = now_ms();
+        auto out = impl->session.Run(
+            Ort::RunOptions{nullptr},
+            in_names.data(),
+            in_values.data(),
+            in_values.size(),
+            state.out_names_cache.data(),
+            state.out_names_cache.size());
+        t_ort_run_ms_ += now_ms() - t_run_start;
+        const int64_t t_extract_start = now_ms();
+
+        if (out.size() < (size_t) (5 + 2 * num_layers_)) {
+            error_msg_ = "Decoder returned insufficient outputs";
+            return false;
+        }
+        auto wav_info = out[0].GetTensorTypeAndShapeInfo();
+        if (wav_info.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+            error_msg_ = "Decoder wav output must be float32";
+            return false;
+        }
+        const size_t wav_count = wav_info.GetElementCount();
+        const float * wav = out[0].GetTensorData<float>();
+        int64_t valid = parse_valid_samples(out[1]);
+        if (valid <= 0 || (size_t) valid > wav_count) {
+            valid = (int64_t) wav_count;
+        }
+        const size_t append_count = is_last_chunk ? wav_count : (size_t) valid;
+        if (append_count > 0) {
+            const size_t old_size = out_pcm_append.size();
+            out_pcm_append.resize(old_size + append_count);
+            std::memcpy(out_pcm_append.data() + old_size, wav, append_count * sizeof(float));
+        }
+
+        int64_t trim_accum = 0;
+        auto run_trim = [&](DecoderStreamState::tensor_state & ts, int64_t win, const char * name) -> bool {
+            const int64_t t0 = now_ms();
+            const bool ok = trim_tensor_state_tail(ts, win, name);
+            trim_accum += now_ms() - t0;
+            return ok;
+        };
+        if (!extract_state_tensor(
+                out[2],
+                state.pre_conv_history.elem_type,
+                state.pre_conv_history.f32,
+                state.pre_conv_history.f16,
+                state.pre_conv_history.seq)) {
+            error_msg_ = "Decoder next_pre_conv_history type is unsupported";
+            return false;
+        }
+        if (!run_trim(state.pre_conv_history, pre_conv_window_, "pre_conv_history")) {
+            return false;
+        }
+        if (!extract_state_tensor(
+                out[3],
+                state.latent_buffer.elem_type,
+                state.latent_buffer.f32,
+                state.latent_buffer.f16,
+                state.latent_buffer.seq)) {
+            error_msg_ = "Decoder next_latent_buffer type is unsupported";
+            return false;
+        }
+        if (!run_trim(state.latent_buffer, latent_window_, "latent_buffer")) {
+            return false;
+        }
+        if (!extract_state_tensor(
+                out[4],
+                state.conv_history.elem_type,
+                state.conv_history.f32,
+                state.conv_history.f16,
+                state.conv_history.seq)) {
+            error_msg_ = "Decoder next_conv_history type is unsupported";
+            return false;
+        }
+        if (!run_trim(state.conv_history, conv_window_, "conv_history")) {
+            return false;
+        }
+        for (int i = 0; i < num_layers_; ++i) {
+            if (!extract_state_tensor(
+                    out[(size_t) 5 + (size_t) i],
+                    state.past_keys[(size_t) i].elem_type,
+                    state.past_keys[(size_t) i].f32,
+                    state.past_keys[(size_t) i].f16,
+                    state.past_keys[(size_t) i].seq)) {
+                error_msg_ = "Decoder next_key type is unsupported";
+                return false;
+            }
+            if (!run_trim(state.past_keys[(size_t) i], kv_cache_window_, "past_key")) {
+                return false;
+            }
+        }
+        for (int i = 0; i < num_layers_; ++i) {
+            if (!extract_state_tensor(
+                    out[(size_t) 5 + (size_t) num_layers_ + (size_t) i],
+                    state.past_values[(size_t) i].elem_type,
+                    state.past_values[(size_t) i].f32,
+                    state.past_values[(size_t) i].f16,
+                    state.past_values[(size_t) i].seq)) {
+                error_msg_ = "Decoder next_value type is unsupported";
+                return false;
+            }
+            if (!run_trim(state.past_values[(size_t) i], kv_cache_window_, "past_value")) {
+                return false;
+            }
+        }
+        t_state_trim_ms_ += trim_accum;
+        t_tensor_extract_ms_ += (now_ms() - t_extract_start) - trim_accum;
+        return true;
     } catch (const std::exception & e) {
         error_msg_ = std::string("Decoder inference failed: ") + e.what();
         return false;
     }
+}
+
+bool StatefulDecoderOnnx::decode(const int32_t * codes, int32_t n_frames, std::vector<float> & audio) {
+    audio.clear();
+    reset_stream_timings();
+    if (!codes || n_frames <= 0) {
+        error_msg_ = "Invalid codes for decoder";
+        return false;
+    }
+    DecoderStreamState state;
+    if (!begin_stream(state)) {
+        return false;
+    }
+    audio.reserve((size_t) n_frames * 1920 + 4096);
+    const int32_t chunk_max = std::max(1, decode_chunk_frames_);
+    for (int32_t frame_offset = 0; frame_offset < n_frames; frame_offset += chunk_max) {
+        const int32_t chunk_frames = std::min(chunk_max, n_frames - frame_offset);
+        const bool is_last_chunk = (frame_offset + chunk_frames) >= n_frames;
+        if (!decode_chunk(state, codes + (size_t) frame_offset * 16, chunk_frames, is_last_chunk, audio)) {
+            return false;
+        }
+    }
+    return !audio.empty();
 }
 
 } // namespace lunavox

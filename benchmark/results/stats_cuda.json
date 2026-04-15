@@ -1,0 +1,6406 @@
+{
+  "t_load_ms": 2471,
+  "t_warmup_ms": 687,
+  "runs": [
+  {
+    "run_id": 1,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1992,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1978,
+      "talker_post": 404,
+      "talker_decode": 203,
+      "talker_post_prep": 0,
+      "talker_post_copy": 201,
+      "predictor_sample": 1571,
+      "decode": 611,
+      "ort_decoder_run": 610,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 610,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 179,
+      "total": 2103
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 179
+    },
+    "rtf": 0.211996,
+    "mem": {
+      "rss_start": 1513222144,
+      "rss_end": 1514205184,
+      "rss_peak": 1514205184,
+      "phys_start": 1513222144,
+      "phys_end": 1514205184,
+      "phys_peak": 1514205184
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 2,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1986,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1973,
+      "talker_post": 268,
+      "talker_decode": 62,
+      "talker_post_prep": 0,
+      "talker_post_copy": 206,
+      "predictor_sample": 1700,
+      "decode": 603,
+      "ort_decoder_run": 602,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 602,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 177,
+      "total": 2092
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 177
+    },
+    "rtf": 0.210887,
+    "mem": {
+      "rss_start": 1513226240,
+      "rss_end": 1514217472,
+      "rss_peak": 1514217472,
+      "phys_start": 1513226240,
+      "phys_end": 1514217472,
+      "phys_peak": 1514217472
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 3,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1972,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1958,
+      "talker_post": 267,
+      "talker_decode": 59,
+      "talker_post_prep": 0,
+      "talker_post_copy": 208,
+      "predictor_sample": 1688,
+      "decode": 603,
+      "ort_decoder_run": 600,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 600,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 175,
+      "total": 2079
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 175
+    },
+    "rtf": 0.209577,
+    "mem": {
+      "rss_start": 1513242624,
+      "rss_end": 1514213376,
+      "rss_peak": 1514213376,
+      "phys_start": 1513242624,
+      "phys_end": 1514213376,
+      "phys_peak": 1514213376
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 4,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2012,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1998,
+      "talker_post": 277,
+      "talker_decode": 69,
+      "talker_post_prep": 0,
+      "talker_post_copy": 208,
+      "predictor_sample": 1720,
+      "decode": 617,
+      "ort_decoder_run": 613,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 613,
+      "decoder_tensor_extract": 4,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 175,
+      "total": 2126
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 175
+    },
+    "rtf": 0.214315,
+    "mem": {
+      "rss_start": 1513242624,
+      "rss_end": 1514201088,
+      "rss_peak": 1514201088,
+      "phys_start": 1513242624,
+      "phys_end": 1514201088,
+      "phys_peak": 1514201088
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 5,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2016,
+      "llama_prefill": 15,
+      "llama_decode_loop": 2001,
+      "talker_post": 261,
+      "talker_decode": 55,
+      "talker_post_prep": 0,
+      "talker_post_copy": 206,
+      "predictor_sample": 1733,
+      "decode": 617,
+      "ort_decoder_run": 614,
+      "decoder_tensor_prep": 1,
+      "decoder_ort_run": 614,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 183,
+      "total": 2124
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 183
+    },
+    "rtf": 0.214113,
+    "mem": {
+      "rss_start": 1513242624,
+      "rss_end": 1514221568,
+      "rss_peak": 1514221568,
+      "phys_start": 1513242624,
+      "phys_end": 1514221568,
+      "phys_peak": 1514221568
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 6,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1994,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1980,
+      "talker_post": 273,
+      "talker_decode": 56,
+      "talker_post_prep": 0,
+      "talker_post_copy": 217,
+      "predictor_sample": 1705,
+      "decode": 600,
+      "ort_decoder_run": 598,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 598,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 183,
+      "total": 2103
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 183
+    },
+    "rtf": 0.211996,
+    "mem": {
+      "rss_start": 1513267200,
+      "rss_end": 1514274816,
+      "rss_peak": 1514274816,
+      "phys_start": 1513267200,
+      "phys_end": 1514274816,
+      "phys_peak": 1514274816
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 7,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1977,
+      "llama_prefill": 12,
+      "llama_decode_loop": 1965,
+      "talker_post": 268,
+      "talker_decode": 55,
+      "talker_post_prep": 0,
+      "talker_post_copy": 213,
+      "predictor_sample": 1692,
+      "decode": 604,
+      "ort_decoder_run": 601,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 601,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 177,
+      "total": 2086
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 177
+    },
+    "rtf": 0.210282,
+    "mem": {
+      "rss_start": 1513267200,
+      "rss_end": 1514262528,
+      "rss_peak": 1514262528,
+      "phys_start": 1513267200,
+      "phys_end": 1514262528,
+      "phys_peak": 1514262528
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 8,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1969,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1954,
+      "talker_post": 266,
+      "talker_decode": 50,
+      "talker_post_prep": 0,
+      "talker_post_copy": 215,
+      "predictor_sample": 1681,
+      "decode": 609,
+      "ort_decoder_run": 608,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 608,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 172,
+      "total": 2082
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 172
+    },
+    "rtf": 0.209879,
+    "mem": {
+      "rss_start": 1513275392,
+      "rss_end": 1514569728,
+      "rss_peak": 1514569728,
+      "phys_start": 1513275392,
+      "phys_end": 1514569728,
+      "phys_peak": 1514569728
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 9,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1963,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1949,
+      "talker_post": 266,
+      "talker_decode": 47,
+      "talker_post_prep": 0,
+      "talker_post_copy": 219,
+      "predictor_sample": 1681,
+      "decode": 602,
+      "ort_decoder_run": 600,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 600,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 171,
+      "total": 2072
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 171
+    },
+    "rtf": 0.208871,
+    "mem": {
+      "rss_start": 1513598976,
+      "rss_end": 1514659840,
+      "rss_peak": 1514659840,
+      "phys_start": 1513598976,
+      "phys_end": 1514659840,
+      "phys_peak": 1514659840
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 10,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1954,
+      "llama_prefill": 15,
+      "llama_decode_loop": 1939,
+      "talker_post": 416,
+      "talker_decode": 169,
+      "talker_post_prep": 0,
+      "talker_post_copy": 247,
+      "predictor_sample": 1519,
+      "decode": 598,
+      "ort_decoder_run": 597,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 597,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 176,
+      "total": 2063
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 176
+    },
+    "rtf": 0.207964,
+    "mem": {
+      "rss_start": 1513644032,
+      "rss_end": 1514663936,
+      "rss_peak": 1514663936,
+      "phys_start": 1513644032,
+      "phys_end": 1514663936,
+      "phys_peak": 1514663936
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 11,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1967,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1953,
+      "talker_post": 271,
+      "talker_decode": 58,
+      "talker_post_prep": 0,
+      "talker_post_copy": 213,
+      "predictor_sample": 1678,
+      "decode": 597,
+      "ort_decoder_run": 594,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 594,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 173,
+      "total": 2076
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 173
+    },
+    "rtf": 0.209274,
+    "mem": {
+      "rss_start": 1513656320,
+      "rss_end": 1514655744,
+      "rss_peak": 1514655744,
+      "phys_start": 1513656320,
+      "phys_end": 1514655744,
+      "phys_peak": 1514655744
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 12,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1989,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1975,
+      "talker_post": 270,
+      "talker_decode": 50,
+      "talker_post_prep": 0,
+      "talker_post_copy": 220,
+      "predictor_sample": 1702,
+      "decode": 603,
+      "ort_decoder_run": 602,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 602,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 174,
+      "total": 2100
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 174
+    },
+    "rtf": 0.211694,
+    "mem": {
+      "rss_start": 1513668608,
+      "rss_end": 1514639360,
+      "rss_peak": 1514639360,
+      "phys_start": 1513668608,
+      "phys_end": 1514639360,
+      "phys_peak": 1514639360
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 13,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2005,
+      "llama_prefill": 12,
+      "llama_decode_loop": 1993,
+      "talker_post": 283,
+      "talker_decode": 62,
+      "talker_post_prep": 0,
+      "talker_post_copy": 221,
+      "predictor_sample": 1709,
+      "decode": 608,
+      "ort_decoder_run": 607,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 607,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 173,
+      "total": 2112
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 173
+    },
+    "rtf": 0.212903,
+    "mem": {
+      "rss_start": 1513668608,
+      "rss_end": 1514680320,
+      "rss_peak": 1514680320,
+      "phys_start": 1513668608,
+      "phys_end": 1514680320,
+      "phys_peak": 1514680320
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 14,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1957,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1943,
+      "talker_post": 378,
+      "talker_decode": 168,
+      "talker_post_prep": 0,
+      "talker_post_copy": 210,
+      "predictor_sample": 1559,
+      "decode": 584,
+      "ort_decoder_run": 583,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 583,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 174,
+      "total": 2065
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 174
+    },
+    "rtf": 0.208165,
+    "mem": {
+      "rss_start": 1513672704,
+      "rss_end": 1515433984,
+      "rss_peak": 1515433984,
+      "phys_start": 1513672704,
+      "phys_end": 1515433984,
+      "phys_peak": 1515433984
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 15,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1925,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1912,
+      "talker_post": 261,
+      "talker_decode": 55,
+      "talker_post_prep": 0,
+      "talker_post_copy": 206,
+      "predictor_sample": 1647,
+      "decode": 578,
+      "ort_decoder_run": 576,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 576,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 164,
+      "total": 2029
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 164
+    },
+    "rtf": 0.204536,
+    "mem": {
+      "rss_start": 1514446848,
+      "rss_end": 1516232704,
+      "rss_peak": 1516232704,
+      "phys_start": 1514446848,
+      "phys_end": 1516232704,
+      "phys_peak": 1516232704
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 16,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1989,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1974,
+      "talker_post": 273,
+      "talker_decode": 59,
+      "talker_post_prep": 0,
+      "talker_post_copy": 214,
+      "predictor_sample": 1694,
+      "decode": 608,
+      "ort_decoder_run": 605,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 605,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 174,
+      "total": 2101
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 174
+    },
+    "rtf": 0.211794,
+    "mem": {
+      "rss_start": 1515237376,
+      "rss_end": 1516257280,
+      "rss_peak": 1516257280,
+      "phys_start": 1515237376,
+      "phys_end": 1516257280,
+      "phys_peak": 1516257280
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 17,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1980,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1967,
+      "talker_post": 266,
+      "talker_decode": 53,
+      "talker_post_prep": 0,
+      "talker_post_copy": 213,
+      "predictor_sample": 1699,
+      "decode": 601,
+      "ort_decoder_run": 600,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 600,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 178,
+      "total": 2087
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 178
+    },
+    "rtf": 0.210383,
+    "mem": {
+      "rss_start": 1515249664,
+      "rss_end": 1516204032,
+      "rss_peak": 1516204032,
+      "phys_start": 1515249664,
+      "phys_end": 1516204032,
+      "phys_peak": 1516204032
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 18,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1948,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1934,
+      "talker_post": 387,
+      "talker_decode": 174,
+      "talker_post_prep": 0,
+      "talker_post_copy": 213,
+      "predictor_sample": 1543,
+      "decode": 602,
+      "ort_decoder_run": 598,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 598,
+      "decoder_tensor_extract": 4,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 171,
+      "total": 2062
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 171
+    },
+    "rtf": 0.207863,
+    "mem": {
+      "rss_start": 1515249664,
+      "rss_end": 1516216320,
+      "rss_peak": 1516216320,
+      "phys_start": 1515249664,
+      "phys_end": 1516216320,
+      "phys_peak": 1516216320
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 19,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1993,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1979,
+      "talker_post": 274,
+      "talker_decode": 66,
+      "talker_post_prep": 0,
+      "talker_post_copy": 208,
+      "predictor_sample": 1702,
+      "decode": 604,
+      "ort_decoder_run": 600,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 600,
+      "decoder_tensor_extract": 4,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 179,
+      "total": 2104
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 179
+    },
+    "rtf": 0.212097,
+    "mem": {
+      "rss_start": 1515249664,
+      "rss_end": 1516232704,
+      "rss_peak": 1516232704,
+      "phys_start": 1515249664,
+      "phys_end": 1516232704,
+      "phys_peak": 1516232704
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 20,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2003,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1989,
+      "talker_post": 270,
+      "talker_decode": 58,
+      "talker_post_prep": 0,
+      "talker_post_copy": 212,
+      "predictor_sample": 1716,
+      "decode": 613,
+      "ort_decoder_run": 609,
+      "decoder_tensor_prep": 1,
+      "decoder_ort_run": 609,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 173,
+      "total": 2110
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 173
+    },
+    "rtf": 0.212702,
+    "mem": {
+      "rss_start": 1515249664,
+      "rss_end": 1516212224,
+      "rss_peak": 1516212224,
+      "phys_start": 1515249664,
+      "phys_end": 1516212224,
+      "phys_peak": 1516212224
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 21,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1969,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1956,
+      "talker_post": 267,
+      "talker_decode": 47,
+      "talker_post_prep": 0,
+      "talker_post_copy": 220,
+      "predictor_sample": 1686,
+      "decode": 605,
+      "ort_decoder_run": 601,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 601,
+      "decoder_tensor_extract": 4,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 168,
+      "total": 2077
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 168
+    },
+    "rtf": 0.209375,
+    "mem": {
+      "rss_start": 1515253760,
+      "rss_end": 1516273664,
+      "rss_peak": 1516273664,
+      "phys_start": 1515253760,
+      "phys_end": 1516273664,
+      "phys_peak": 1516273664
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 22,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1984,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1971,
+      "talker_post": 287,
+      "talker_decode": 53,
+      "talker_post_prep": 0,
+      "talker_post_copy": 234,
+      "predictor_sample": 1680,
+      "decode": 612,
+      "ort_decoder_run": 609,
+      "decoder_tensor_prep": 1,
+      "decoder_ort_run": 609,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 171,
+      "total": 2092
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 171
+    },
+    "rtf": 0.210887,
+    "mem": {
+      "rss_start": 1515266048,
+      "rss_end": 1516265472,
+      "rss_peak": 1516265472,
+      "phys_start": 1515266048,
+      "phys_end": 1516265472,
+      "phys_peak": 1516265472
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 23,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2005,
+      "llama_prefill": 12,
+      "llama_decode_loop": 1992,
+      "talker_post": 293,
+      "talker_decode": 59,
+      "talker_post_prep": 1,
+      "talker_post_copy": 233,
+      "predictor_sample": 1694,
+      "decode": 599,
+      "ort_decoder_run": 596,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 596,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 179,
+      "total": 2116
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 179
+    },
+    "rtf": 0.213306,
+    "mem": {
+      "rss_start": 1515261952,
+      "rss_end": 1516187648,
+      "rss_peak": 1516187648,
+      "phys_start": 1515261952,
+      "phys_end": 1516187648,
+      "phys_peak": 1516187648
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 24,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1989,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1974,
+      "talker_post": 270,
+      "talker_decode": 55,
+      "talker_post_prep": 0,
+      "talker_post_copy": 215,
+      "predictor_sample": 1702,
+      "decode": 623,
+      "ort_decoder_run": 619,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 619,
+      "decoder_tensor_extract": 4,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 174,
+      "total": 2100
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 174
+    },
+    "rtf": 0.211694,
+    "mem": {
+      "rss_start": 1515204608,
+      "rss_end": 1516171264,
+      "rss_peak": 1516171264,
+      "phys_start": 1515204608,
+      "phys_end": 1516171264,
+      "phys_peak": 1516171264
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 25,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1990,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1977,
+      "talker_post": 269,
+      "talker_decode": 58,
+      "talker_post_prep": 0,
+      "talker_post_copy": 211,
+      "predictor_sample": 1702,
+      "decode": 619,
+      "ort_decoder_run": 618,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 618,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 175,
+      "total": 2098
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 175
+    },
+    "rtf": 0.211492,
+    "mem": {
+      "rss_start": 1515204608,
+      "rss_end": 1516212224,
+      "rss_peak": 1516212224,
+      "phys_start": 1515204608,
+      "phys_end": 1516212224,
+      "phys_peak": 1516212224
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 26,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2008,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1994,
+      "talker_post": 279,
+      "talker_decode": 54,
+      "talker_post_prep": 1,
+      "talker_post_copy": 224,
+      "predictor_sample": 1713,
+      "decode": 619,
+      "ort_decoder_run": 615,
+      "decoder_tensor_prep": 1,
+      "decoder_ort_run": 615,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 173,
+      "total": 2119
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 173
+    },
+    "rtf": 0.213609,
+    "mem": {
+      "rss_start": 1515204608,
+      "rss_end": 1516204032,
+      "rss_peak": 1516204032,
+      "phys_start": 1515204608,
+      "phys_end": 1516204032,
+      "phys_peak": 1516204032
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 27,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2013,
+      "llama_prefill": 16,
+      "llama_decode_loop": 1997,
+      "talker_post": 274,
+      "talker_decode": 51,
+      "talker_post_prep": 1,
+      "talker_post_copy": 222,
+      "predictor_sample": 1722,
+      "decode": 609,
+      "ort_decoder_run": 605,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 605,
+      "decoder_tensor_extract": 4,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 182,
+      "total": 2124
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 182
+    },
+    "rtf": 0.214113,
+    "mem": {
+      "rss_start": 1515212800,
+      "rss_end": 1516191744,
+      "rss_peak": 1516191744,
+      "phys_start": 1515212800,
+      "phys_end": 1516191744,
+      "phys_peak": 1516191744
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 28,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2005,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1991,
+      "talker_post": 271,
+      "talker_decode": 60,
+      "talker_post_prep": 0,
+      "talker_post_copy": 211,
+      "predictor_sample": 1716,
+      "decode": 608,
+      "ort_decoder_run": 606,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 606,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 172,
+      "total": 2114
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 172
+    },
+    "rtf": 0.213105,
+    "mem": {
+      "rss_start": 1515212800,
+      "rss_end": 1516228608,
+      "rss_peak": 1516228608,
+      "phys_start": 1515212800,
+      "phys_end": 1516228608,
+      "phys_peak": 1516228608
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 29,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2025,
+      "llama_prefill": 14,
+      "llama_decode_loop": 2010,
+      "talker_post": 295,
+      "talker_decode": 55,
+      "talker_post_prep": 0,
+      "talker_post_copy": 240,
+      "predictor_sample": 1710,
+      "decode": 623,
+      "ort_decoder_run": 620,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 620,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 184,
+      "total": 2136
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 184
+    },
+    "rtf": 0.215323,
+    "mem": {
+      "rss_start": 1515212800,
+      "rss_end": 1516220416,
+      "rss_peak": 1516220416,
+      "phys_start": 1515212800,
+      "phys_end": 1516220416,
+      "phys_peak": 1516220416
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 30,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1995,
+      "llama_prefill": 15,
+      "llama_decode_loop": 1980,
+      "talker_post": 267,
+      "talker_decode": 53,
+      "talker_post_prep": 0,
+      "talker_post_copy": 214,
+      "predictor_sample": 1711,
+      "decode": 615,
+      "ort_decoder_run": 612,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 612,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 175,
+      "total": 2107
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 175
+    },
+    "rtf": 0.212399,
+    "mem": {
+      "rss_start": 1515216896,
+      "rss_end": 1516179456,
+      "rss_peak": 1516179456,
+      "phys_start": 1515216896,
+      "phys_end": 1516179456,
+      "phys_peak": 1516179456
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 31,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2001,
+      "llama_prefill": 12,
+      "llama_decode_loop": 1988,
+      "talker_post": 270,
+      "talker_decode": 54,
+      "talker_post_prep": 1,
+      "talker_post_copy": 215,
+      "predictor_sample": 1712,
+      "decode": 619,
+      "ort_decoder_run": 616,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 616,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 178,
+      "total": 2112
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 178
+    },
+    "rtf": 0.212903,
+    "mem": {
+      "rss_start": 1515216896,
+      "rss_end": 1516224512,
+      "rss_peak": 1516224512,
+      "phys_start": 1515216896,
+      "phys_end": 1516224512,
+      "phys_peak": 1516224512
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 32,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2009,
+      "llama_prefill": 15,
+      "llama_decode_loop": 1994,
+      "talker_post": 276,
+      "talker_decode": 58,
+      "talker_post_prep": 0,
+      "talker_post_copy": 217,
+      "predictor_sample": 1713,
+      "decode": 617,
+      "ort_decoder_run": 615,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 615,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 177,
+      "total": 2120
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 177
+    },
+    "rtf": 0.213710,
+    "mem": {
+      "rss_start": 1515220992,
+      "rss_end": 1516957696,
+      "rss_peak": 1516957696,
+      "phys_start": 1515220992,
+      "phys_end": 1516957696,
+      "phys_peak": 1516957696
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 33,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2018,
+      "llama_prefill": 15,
+      "llama_decode_loop": 2003,
+      "talker_post": 272,
+      "talker_decode": 59,
+      "talker_post_prep": 0,
+      "talker_post_copy": 213,
+      "predictor_sample": 1729,
+      "decode": 610,
+      "ort_decoder_run": 609,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 609,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 176,
+      "total": 2129
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 176
+    },
+    "rtf": 0.214617,
+    "mem": {
+      "rss_start": 1515986944,
+      "rss_end": 1516969984,
+      "rss_peak": 1516969984,
+      "phys_start": 1515986944,
+      "phys_end": 1516969984,
+      "phys_peak": 1516969984
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 34,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2008,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1993,
+      "talker_post": 277,
+      "talker_decode": 58,
+      "talker_post_prep": 0,
+      "talker_post_copy": 219,
+      "predictor_sample": 1713,
+      "decode": 608,
+      "ort_decoder_run": 608,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 608,
+      "decoder_tensor_extract": 0,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 172,
+      "total": 2113
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 172
+    },
+    "rtf": 0.213004,
+    "mem": {
+      "rss_start": 1516011520,
+      "rss_end": 1517010944,
+      "rss_peak": 1517010944,
+      "phys_start": 1516011520,
+      "phys_end": 1517010944,
+      "phys_peak": 1517010944
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 35,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2035,
+      "llama_prefill": 14,
+      "llama_decode_loop": 2021,
+      "talker_post": 278,
+      "talker_decode": 54,
+      "talker_post_prep": 1,
+      "talker_post_copy": 223,
+      "predictor_sample": 1739,
+      "decode": 625,
+      "ort_decoder_run": 624,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 624,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 178,
+      "total": 2145
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 178
+    },
+    "rtf": 0.216230,
+    "mem": {
+      "rss_start": 1516015616,
+      "rss_end": 1516994560,
+      "rss_peak": 1516994560,
+      "phys_start": 1516015616,
+      "phys_end": 1516994560,
+      "phys_peak": 1516994560
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 36,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2005,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1990,
+      "talker_post": 291,
+      "talker_decode": 62,
+      "talker_post_prep": 0,
+      "talker_post_copy": 229,
+      "predictor_sample": 1696,
+      "decode": 609,
+      "ort_decoder_run": 608,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 608,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 173,
+      "total": 2118
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 173
+    },
+    "rtf": 0.213508,
+    "mem": {
+      "rss_start": 1516015616,
+      "rss_end": 1516986368,
+      "rss_peak": 1516986368,
+      "phys_start": 1516015616,
+      "phys_end": 1516986368,
+      "phys_peak": 1516986368
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 37,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2012,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1999,
+      "talker_post": 271,
+      "talker_decode": 51,
+      "talker_post_prep": 0,
+      "talker_post_copy": 220,
+      "predictor_sample": 1723,
+      "decode": 613,
+      "ort_decoder_run": 612,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 612,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 175,
+      "total": 2122
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 175
+    },
+    "rtf": 0.213911,
+    "mem": {
+      "rss_start": 1516019712,
+      "rss_end": 1516994560,
+      "rss_peak": 1516994560,
+      "phys_start": 1516019712,
+      "phys_end": 1516994560,
+      "phys_peak": 1516994560
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 38,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2007,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1992,
+      "talker_post": 278,
+      "talker_decode": 57,
+      "talker_post_prep": 0,
+      "talker_post_copy": 221,
+      "predictor_sample": 1708,
+      "decode": 618,
+      "ort_decoder_run": 616,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 616,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 176,
+      "total": 2114
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 176
+    },
+    "rtf": 0.213105,
+    "mem": {
+      "rss_start": 1516019712,
+      "rss_end": 1516986368,
+      "rss_peak": 1516986368,
+      "phys_start": 1516019712,
+      "phys_end": 1516986368,
+      "phys_peak": 1516986368
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 39,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2011,
+      "llama_prefill": 16,
+      "llama_decode_loop": 1995,
+      "talker_post": 275,
+      "talker_decode": 61,
+      "talker_post_prep": 0,
+      "talker_post_copy": 214,
+      "predictor_sample": 1716,
+      "decode": 621,
+      "ort_decoder_run": 618,
+      "decoder_tensor_prep": 1,
+      "decoder_ort_run": 618,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 184,
+      "total": 2124
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 184
+    },
+    "rtf": 0.214113,
+    "mem": {
+      "rss_start": 1516027904,
+      "rss_end": 1517010944,
+      "rss_peak": 1517010944,
+      "phys_start": 1516027904,
+      "phys_end": 1517010944,
+      "phys_peak": 1517010944
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 40,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2019,
+      "llama_prefill": 15,
+      "llama_decode_loop": 2003,
+      "talker_post": 283,
+      "talker_decode": 62,
+      "talker_post_prep": 0,
+      "talker_post_copy": 221,
+      "predictor_sample": 1717,
+      "decode": 615,
+      "ort_decoder_run": 615,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 615,
+      "decoder_tensor_extract": 0,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 180,
+      "total": 2128
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 180
+    },
+    "rtf": 0.214516,
+    "mem": {
+      "rss_start": 1516027904,
+      "rss_end": 1517031424,
+      "rss_peak": 1517031424,
+      "phys_start": 1516027904,
+      "phys_end": 1517031424,
+      "phys_peak": 1517031424
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 41,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2008,
+      "llama_prefill": 15,
+      "llama_decode_loop": 1993,
+      "talker_post": 274,
+      "talker_decode": 63,
+      "talker_post_prep": 0,
+      "talker_post_copy": 211,
+      "predictor_sample": 1715,
+      "decode": 622,
+      "ort_decoder_run": 619,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 619,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 177,
+      "total": 2121
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 177
+    },
+    "rtf": 0.213810,
+    "mem": {
+      "rss_start": 1516027904,
+      "rss_end": 1517035520,
+      "rss_peak": 1517035520,
+      "phys_start": 1516027904,
+      "phys_end": 1517035520,
+      "phys_peak": 1517035520
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 42,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2007,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1994,
+      "talker_post": 276,
+      "talker_decode": 57,
+      "talker_post_prep": 1,
+      "talker_post_copy": 218,
+      "predictor_sample": 1714,
+      "decode": 621,
+      "ort_decoder_run": 618,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 618,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 175,
+      "total": 2122
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 175
+    },
+    "rtf": 0.213911,
+    "mem": {
+      "rss_start": 1516036096,
+      "rss_end": 1517023232,
+      "rss_peak": 1517023232,
+      "phys_start": 1516036096,
+      "phys_end": 1517023232,
+      "phys_peak": 1517023232
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 43,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2026,
+      "llama_prefill": 13,
+      "llama_decode_loop": 2013,
+      "talker_post": 272,
+      "talker_decode": 63,
+      "talker_post_prep": 0,
+      "talker_post_copy": 209,
+      "predictor_sample": 1737,
+      "decode": 630,
+      "ort_decoder_run": 628,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 628,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 180,
+      "total": 2136
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 180
+    },
+    "rtf": 0.215323,
+    "mem": {
+      "rss_start": 1516036096,
+      "rss_end": 1517015040,
+      "rss_peak": 1517015040,
+      "phys_start": 1516036096,
+      "phys_end": 1517015040,
+      "phys_peak": 1517015040
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 44,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2022,
+      "llama_prefill": 14,
+      "llama_decode_loop": 2008,
+      "talker_post": 277,
+      "talker_decode": 56,
+      "talker_post_prep": 0,
+      "talker_post_copy": 221,
+      "predictor_sample": 1729,
+      "decode": 620,
+      "ort_decoder_run": 616,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 616,
+      "decoder_tensor_extract": 4,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 175,
+      "total": 2134
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 175
+    },
+    "rtf": 0.215121,
+    "mem": {
+      "rss_start": 1516040192,
+      "rss_end": 1517027328,
+      "rss_peak": 1517027328,
+      "phys_start": 1516040192,
+      "phys_end": 1517027328,
+      "phys_peak": 1517027328
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 45,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2006,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1992,
+      "talker_post": 286,
+      "talker_decode": 63,
+      "talker_post_prep": 0,
+      "talker_post_copy": 223,
+      "predictor_sample": 1705,
+      "decode": 615,
+      "ort_decoder_run": 614,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 614,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 179,
+      "total": 2116
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 179
+    },
+    "rtf": 0.213306,
+    "mem": {
+      "rss_start": 1516040192,
+      "rss_end": 1517060096,
+      "rss_peak": 1517060096,
+      "phys_start": 1516040192,
+      "phys_end": 1517060096,
+      "phys_peak": 1517060096
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 46,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2006,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1992,
+      "talker_post": 266,
+      "talker_decode": 54,
+      "talker_post_prep": 1,
+      "talker_post_copy": 211,
+      "predictor_sample": 1722,
+      "decode": 621,
+      "ort_decoder_run": 619,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 619,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 174,
+      "total": 2120
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 174
+    },
+    "rtf": 0.213710,
+    "mem": {
+      "rss_start": 1516044288,
+      "rss_end": 1517035520,
+      "rss_peak": 1517035520,
+      "phys_start": 1516044288,
+      "phys_end": 1517035520,
+      "phys_peak": 1517035520
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 47,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1993,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1980,
+      "talker_post": 279,
+      "talker_decode": 59,
+      "talker_post_prep": 0,
+      "talker_post_copy": 220,
+      "predictor_sample": 1698,
+      "decode": 615,
+      "ort_decoder_run": 614,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 614,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 177,
+      "total": 2104
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 177
+    },
+    "rtf": 0.212097,
+    "mem": {
+      "rss_start": 1516044288,
+      "rss_end": 1516998656,
+      "rss_peak": 1516998656,
+      "phys_start": 1516044288,
+      "phys_end": 1516998656,
+      "phys_peak": 1516998656
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 48,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1995,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1982,
+      "talker_post": 270,
+      "talker_decode": 48,
+      "talker_post_prep": 2,
+      "talker_post_copy": 220,
+      "predictor_sample": 1708,
+      "decode": 613,
+      "ort_decoder_run": 609,
+      "decoder_tensor_prep": 1,
+      "decoder_ort_run": 609,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 1,
+      "pcm_gather": 0,
+      "first_audio": 174,
+      "total": 2106
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 174
+    },
+    "rtf": 0.212298,
+    "mem": {
+      "rss_start": 1516044288,
+      "rss_end": 1517035520,
+      "rss_peak": 1517035520,
+      "phys_start": 1516044288,
+      "phys_end": 1517035520,
+      "phys_peak": 1517035520
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 49,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2018,
+      "llama_prefill": 14,
+      "llama_decode_loop": 2004,
+      "talker_post": 269,
+      "talker_decode": 56,
+      "talker_post_prep": 0,
+      "talker_post_copy": 213,
+      "predictor_sample": 1729,
+      "decode": 616,
+      "ort_decoder_run": 615,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 615,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 178,
+      "total": 2127
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 178
+    },
+    "rtf": 0.214415,
+    "mem": {
+      "rss_start": 1516048384,
+      "rss_end": 1517039616,
+      "rss_peak": 1517039616,
+      "phys_start": 1516048384,
+      "phys_end": 1517039616,
+      "phys_peak": 1517039616
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 50,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2008,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1994,
+      "talker_post": 277,
+      "talker_decode": 67,
+      "talker_post_prep": 0,
+      "talker_post_copy": 210,
+      "predictor_sample": 1715,
+      "decode": 624,
+      "ort_decoder_run": 621,
+      "decoder_tensor_prep": 1,
+      "decoder_ort_run": 621,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 177,
+      "total": 2119
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 177
+    },
+    "rtf": 0.213609,
+    "mem": {
+      "rss_start": 1516048384,
+      "rss_end": 1517006848,
+      "rss_peak": 1517006848,
+      "phys_start": 1516048384,
+      "phys_end": 1517006848,
+      "phys_peak": 1517006848
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 51,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1980,
+      "llama_prefill": 15,
+      "llama_decode_loop": 1964,
+      "talker_post": 268,
+      "talker_decode": 46,
+      "talker_post_prep": 0,
+      "talker_post_copy": 222,
+      "predictor_sample": 1690,
+      "decode": 614,
+      "ort_decoder_run": 612,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 612,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 175,
+      "total": 2092
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 175
+    },
+    "rtf": 0.210887,
+    "mem": {
+      "rss_start": 1516048384,
+      "rss_end": 1517051904,
+      "rss_peak": 1517051904,
+      "phys_start": 1516048384,
+      "phys_end": 1517051904,
+      "phys_peak": 1517051904
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 52,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2000,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1987,
+      "talker_post": 270,
+      "talker_decode": 63,
+      "talker_post_prep": 0,
+      "talker_post_copy": 207,
+      "predictor_sample": 1711,
+      "decode": 625,
+      "ort_decoder_run": 624,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 624,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 182,
+      "total": 2112
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 182
+    },
+    "rtf": 0.212903,
+    "mem": {
+      "rss_start": 1516052480,
+      "rss_end": 1517047808,
+      "rss_peak": 1517047808,
+      "phys_start": 1516052480,
+      "phys_end": 1517047808,
+      "phys_peak": 1517047808
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 53,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2005,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1991,
+      "talker_post": 269,
+      "talker_decode": 53,
+      "talker_post_prep": 0,
+      "talker_post_copy": 216,
+      "predictor_sample": 1719,
+      "decode": 615,
+      "ort_decoder_run": 613,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 613,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 173,
+      "total": 2118
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 173
+    },
+    "rtf": 0.213508,
+    "mem": {
+      "rss_start": 1516056576,
+      "rss_end": 1517023232,
+      "rss_peak": 1517023232,
+      "phys_start": 1516056576,
+      "phys_end": 1517023232,
+      "phys_peak": 1517023232
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 54,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1999,
+      "llama_prefill": 15,
+      "llama_decode_loop": 1984,
+      "talker_post": 269,
+      "talker_decode": 50,
+      "talker_post_prep": 0,
+      "talker_post_copy": 219,
+      "predictor_sample": 1713,
+      "decode": 616,
+      "ort_decoder_run": 614,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 614,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 173,
+      "total": 2111
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 173
+    },
+    "rtf": 0.212802,
+    "mem": {
+      "rss_start": 1516056576,
+      "rss_end": 1517010944,
+      "rss_peak": 1517010944,
+      "phys_start": 1516056576,
+      "phys_end": 1517010944,
+      "phys_peak": 1517010944
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 55,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1997,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1983,
+      "talker_post": 269,
+      "talker_decode": 56,
+      "talker_post_prep": 1,
+      "talker_post_copy": 212,
+      "predictor_sample": 1710,
+      "decode": 626,
+      "ort_decoder_run": 624,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 624,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 176,
+      "total": 2110
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 176
+    },
+    "rtf": 0.212702,
+    "mem": {
+      "rss_start": 1516056576,
+      "rss_end": 1517060096,
+      "rss_peak": 1517060096,
+      "phys_start": 1516056576,
+      "phys_end": 1517060096,
+      "phys_peak": 1517060096
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 56,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2013,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1999,
+      "talker_post": 279,
+      "talker_decode": 54,
+      "talker_post_prep": 0,
+      "talker_post_copy": 223,
+      "predictor_sample": 1719,
+      "decode": 622,
+      "ort_decoder_run": 620,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 620,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 173,
+      "total": 2126
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 173
+    },
+    "rtf": 0.214315,
+    "mem": {
+      "rss_start": 1516056576,
+      "rss_end": 1517023232,
+      "rss_peak": 1517023232,
+      "phys_start": 1516056576,
+      "phys_end": 1517023232,
+      "phys_peak": 1517023232
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 57,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2014,
+      "llama_prefill": 14,
+      "llama_decode_loop": 2000,
+      "talker_post": 271,
+      "talker_decode": 40,
+      "talker_post_prep": 0,
+      "talker_post_copy": 231,
+      "predictor_sample": 1724,
+      "decode": 612,
+      "ort_decoder_run": 609,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 609,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 172,
+      "total": 2127
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 172
+    },
+    "rtf": 0.214415,
+    "mem": {
+      "rss_start": 1516060672,
+      "rss_end": 1517039616,
+      "rss_peak": 1517039616,
+      "phys_start": 1516060672,
+      "phys_end": 1517039616,
+      "phys_peak": 1517039616
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 58,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2011,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1998,
+      "talker_post": 273,
+      "talker_decode": 55,
+      "talker_post_prep": 0,
+      "talker_post_copy": 218,
+      "predictor_sample": 1721,
+      "decode": 621,
+      "ort_decoder_run": 617,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 617,
+      "decoder_tensor_extract": 4,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 176,
+      "total": 2126
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 176
+    },
+    "rtf": 0.214315,
+    "mem": {
+      "rss_start": 1516060672,
+      "rss_end": 1517035520,
+      "rss_peak": 1517035520,
+      "phys_start": 1516060672,
+      "phys_end": 1517035520,
+      "phys_peak": 1517035520
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 59,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2012,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1998,
+      "talker_post": 273,
+      "talker_decode": 58,
+      "talker_post_prep": 0,
+      "talker_post_copy": 215,
+      "predictor_sample": 1719,
+      "decode": 619,
+      "ort_decoder_run": 616,
+      "decoder_tensor_prep": 1,
+      "decoder_ort_run": 616,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 171,
+      "total": 2123
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 171
+    },
+    "rtf": 0.214012,
+    "mem": {
+      "rss_start": 1516023808,
+      "rss_end": 1516990464,
+      "rss_peak": 1516990464,
+      "phys_start": 1516023808,
+      "phys_end": 1516990464,
+      "phys_peak": 1516990464
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 60,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2040,
+      "llama_prefill": 13,
+      "llama_decode_loop": 2026,
+      "talker_post": 268,
+      "talker_decode": 57,
+      "talker_post_prep": 0,
+      "talker_post_copy": 211,
+      "predictor_sample": 1754,
+      "decode": 616,
+      "ort_decoder_run": 613,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 613,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 177,
+      "total": 2151
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 177
+    },
+    "rtf": 0.216835,
+    "mem": {
+      "rss_start": 1516027904,
+      "rss_end": 1516986368,
+      "rss_peak": 1516986368,
+      "phys_start": 1516027904,
+      "phys_end": 1516986368,
+      "phys_peak": 1516986368
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 61,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2029,
+      "llama_prefill": 14,
+      "llama_decode_loop": 2014,
+      "talker_post": 272,
+      "talker_decode": 57,
+      "talker_post_prep": 0,
+      "talker_post_copy": 215,
+      "predictor_sample": 1732,
+      "decode": 621,
+      "ort_decoder_run": 618,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 618,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 179,
+      "total": 2139
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 179
+    },
+    "rtf": 0.215625,
+    "mem": {
+      "rss_start": 1516032000,
+      "rss_end": 1516994560,
+      "rss_peak": 1516994560,
+      "phys_start": 1516032000,
+      "phys_end": 1516994560,
+      "phys_peak": 1516994560
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 62,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2029,
+      "llama_prefill": 16,
+      "llama_decode_loop": 2013,
+      "talker_post": 272,
+      "talker_decode": 55,
+      "talker_post_prep": 1,
+      "talker_post_copy": 216,
+      "predictor_sample": 1737,
+      "decode": 625,
+      "ort_decoder_run": 622,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 622,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 187,
+      "total": 2135
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 187
+    },
+    "rtf": 0.215222,
+    "mem": {
+      "rss_start": 1516032000,
+      "rss_end": 1517027328,
+      "rss_peak": 1517027328,
+      "phys_start": 1516032000,
+      "phys_end": 1517027328,
+      "phys_peak": 1517027328
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 63,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1981,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1967,
+      "talker_post": 264,
+      "talker_decode": 54,
+      "talker_post_prep": 0,
+      "talker_post_copy": 210,
+      "predictor_sample": 1691,
+      "decode": 617,
+      "ort_decoder_run": 616,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 616,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 172,
+      "total": 2093
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 172
+    },
+    "rtf": 0.210988,
+    "mem": {
+      "rss_start": 1516036096,
+      "rss_end": 1517056000,
+      "rss_peak": 1517056000,
+      "phys_start": 1516036096,
+      "phys_end": 1517056000,
+      "phys_peak": 1517056000
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 64,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1990,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1976,
+      "talker_post": 263,
+      "talker_decode": 54,
+      "talker_post_prep": 0,
+      "talker_post_copy": 209,
+      "predictor_sample": 1711,
+      "decode": 612,
+      "ort_decoder_run": 609,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 609,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 177,
+      "total": 2099
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 177
+    },
+    "rtf": 0.211593,
+    "mem": {
+      "rss_start": 1516040192,
+      "rss_end": 1517039616,
+      "rss_peak": 1517039616,
+      "phys_start": 1516040192,
+      "phys_end": 1517039616,
+      "phys_peak": 1517039616
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 65,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1999,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1985,
+      "talker_post": 286,
+      "talker_decode": 58,
+      "talker_post_prep": 0,
+      "talker_post_copy": 228,
+      "predictor_sample": 1696,
+      "decode": 614,
+      "ort_decoder_run": 613,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 613,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 174,
+      "total": 2109
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 174
+    },
+    "rtf": 0.212601,
+    "mem": {
+      "rss_start": 1516040192,
+      "rss_end": 1517027328,
+      "rss_peak": 1517027328,
+      "phys_start": 1516040192,
+      "phys_end": 1517027328,
+      "phys_peak": 1517027328
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 66,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1991,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1978,
+      "talker_post": 267,
+      "talker_decode": 58,
+      "talker_post_prep": 0,
+      "talker_post_copy": 209,
+      "predictor_sample": 1705,
+      "decode": 603,
+      "ort_decoder_run": 602,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 602,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 173,
+      "total": 2103
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 173
+    },
+    "rtf": 0.211996,
+    "mem": {
+      "rss_start": 1516040192,
+      "rss_end": 1517056000,
+      "rss_peak": 1517056000,
+      "phys_start": 1516040192,
+      "phys_end": 1517056000,
+      "phys_peak": 1517056000
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 67,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1997,
+      "llama_prefill": 12,
+      "llama_decode_loop": 1985,
+      "talker_post": 397,
+      "talker_decode": 178,
+      "talker_post_prep": 0,
+      "talker_post_copy": 219,
+      "predictor_sample": 1582,
+      "decode": 619,
+      "ort_decoder_run": 618,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 618,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 173,
+      "total": 2107
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 173
+    },
+    "rtf": 0.212399,
+    "mem": {
+      "rss_start": 1516040192,
+      "rss_end": 1517031424,
+      "rss_peak": 1517031424,
+      "phys_start": 1516040192,
+      "phys_end": 1517031424,
+      "phys_peak": 1517031424
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 68,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1984,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1971,
+      "talker_post": 275,
+      "talker_decode": 69,
+      "talker_post_prep": 0,
+      "talker_post_copy": 206,
+      "predictor_sample": 1695,
+      "decode": 610,
+      "ort_decoder_run": 607,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 607,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 174,
+      "total": 2093
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 174
+    },
+    "rtf": 0.210988,
+    "mem": {
+      "rss_start": 1516040192,
+      "rss_end": 1517010944,
+      "rss_peak": 1517010944,
+      "phys_start": 1516040192,
+      "phys_end": 1517010944,
+      "phys_peak": 1517010944
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 69,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1996,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1982,
+      "talker_post": 274,
+      "talker_decode": 50,
+      "talker_post_prep": 0,
+      "talker_post_copy": 224,
+      "predictor_sample": 1702,
+      "decode": 611,
+      "ort_decoder_run": 609,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 609,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 174,
+      "total": 2107
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 174
+    },
+    "rtf": 0.212399,
+    "mem": {
+      "rss_start": 1516040192,
+      "rss_end": 1517031424,
+      "rss_peak": 1517031424,
+      "phys_start": 1516040192,
+      "phys_end": 1517031424,
+      "phys_peak": 1517031424
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 70,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1998,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1985,
+      "talker_post": 274,
+      "talker_decode": 56,
+      "talker_post_prep": 0,
+      "talker_post_copy": 218,
+      "predictor_sample": 1708,
+      "decode": 605,
+      "ort_decoder_run": 603,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 603,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 171,
+      "total": 2107
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 171
+    },
+    "rtf": 0.212399,
+    "mem": {
+      "rss_start": 1516040192,
+      "rss_end": 1517047808,
+      "rss_peak": 1517047808,
+      "phys_start": 1516040192,
+      "phys_end": 1517047808,
+      "phys_peak": 1517047808
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 71,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1996,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1983,
+      "talker_post": 271,
+      "talker_decode": 59,
+      "talker_post_prep": 1,
+      "talker_post_copy": 210,
+      "predictor_sample": 1709,
+      "decode": 608,
+      "ort_decoder_run": 606,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 606,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 173,
+      "total": 2106
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 173
+    },
+    "rtf": 0.212298,
+    "mem": {
+      "rss_start": 1516044288,
+      "rss_end": 1517027328,
+      "rss_peak": 1517027328,
+      "phys_start": 1516044288,
+      "phys_end": 1517027328,
+      "phys_peak": 1517027328
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 72,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2009,
+      "llama_prefill": 12,
+      "llama_decode_loop": 1996,
+      "talker_post": 271,
+      "talker_decode": 55,
+      "talker_post_prep": 0,
+      "talker_post_copy": 216,
+      "predictor_sample": 1721,
+      "decode": 623,
+      "ort_decoder_run": 620,
+      "decoder_tensor_prep": 1,
+      "decoder_ort_run": 620,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 182,
+      "total": 2121
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 182
+    },
+    "rtf": 0.213810,
+    "mem": {
+      "rss_start": 1516044288,
+      "rss_end": 1517006848,
+      "rss_peak": 1517006848,
+      "phys_start": 1516044288,
+      "phys_end": 1517006848,
+      "phys_peak": 1517006848
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 73,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2009,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1996,
+      "talker_post": 281,
+      "talker_decode": 60,
+      "talker_post_prep": 0,
+      "talker_post_copy": 221,
+      "predictor_sample": 1712,
+      "decode": 612,
+      "ort_decoder_run": 611,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 611,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 179,
+      "total": 2121
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 179
+    },
+    "rtf": 0.213810,
+    "mem": {
+      "rss_start": 1516044288,
+      "rss_end": 1517002752,
+      "rss_peak": 1517002752,
+      "phys_start": 1516044288,
+      "phys_end": 1517002752,
+      "phys_peak": 1517002752
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 74,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2002,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1989,
+      "talker_post": 274,
+      "talker_decode": 58,
+      "talker_post_prep": 0,
+      "talker_post_copy": 216,
+      "predictor_sample": 1712,
+      "decode": 624,
+      "ort_decoder_run": 622,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 622,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 175,
+      "total": 2117
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 175
+    },
+    "rtf": 0.213407,
+    "mem": {
+      "rss_start": 1516048384,
+      "rss_end": 1517060096,
+      "rss_peak": 1517060096,
+      "phys_start": 1516048384,
+      "phys_end": 1517060096,
+      "phys_peak": 1517060096
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 75,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1974,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1961,
+      "talker_post": 272,
+      "talker_decode": 56,
+      "talker_post_prep": 0,
+      "talker_post_copy": 216,
+      "predictor_sample": 1685,
+      "decode": 620,
+      "ort_decoder_run": 616,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 616,
+      "decoder_tensor_extract": 4,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 174,
+      "total": 2083
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 174
+    },
+    "rtf": 0.209980,
+    "mem": {
+      "rss_start": 1516048384,
+      "rss_end": 1517039616,
+      "rss_peak": 1517039616,
+      "phys_start": 1516048384,
+      "phys_end": 1517039616,
+      "phys_peak": 1517039616
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 76,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1981,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1968,
+      "talker_post": 266,
+      "talker_decode": 50,
+      "talker_post_prep": 0,
+      "talker_post_copy": 216,
+      "predictor_sample": 1700,
+      "decode": 615,
+      "ort_decoder_run": 612,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 612,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 174,
+      "total": 2093
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 174
+    },
+    "rtf": 0.210988,
+    "mem": {
+      "rss_start": 1516048384,
+      "rss_end": 1517019136,
+      "rss_peak": 1517019136,
+      "phys_start": 1516048384,
+      "phys_end": 1517019136,
+      "phys_peak": 1517019136
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 77,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2002,
+      "llama_prefill": 12,
+      "llama_decode_loop": 1989,
+      "talker_post": 276,
+      "talker_decode": 58,
+      "talker_post_prep": 0,
+      "talker_post_copy": 218,
+      "predictor_sample": 1705,
+      "decode": 610,
+      "ort_decoder_run": 608,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 608,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 173,
+      "total": 2113
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 173
+    },
+    "rtf": 0.213004,
+    "mem": {
+      "rss_start": 1516052480,
+      "rss_end": 1517010944,
+      "rss_peak": 1517010944,
+      "phys_start": 1516052480,
+      "phys_end": 1517010944,
+      "phys_peak": 1517010944
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 78,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1989,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1975,
+      "talker_post": 269,
+      "talker_decode": 53,
+      "talker_post_prep": 0,
+      "talker_post_copy": 216,
+      "predictor_sample": 1702,
+      "decode": 602,
+      "ort_decoder_run": 601,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 601,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 170,
+      "total": 2099
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 170
+    },
+    "rtf": 0.211593,
+    "mem": {
+      "rss_start": 1516052480,
+      "rss_end": 1517051904,
+      "rss_peak": 1517051904,
+      "phys_start": 1516052480,
+      "phys_end": 1517051904,
+      "phys_peak": 1517051904
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 79,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2002,
+      "llama_prefill": 12,
+      "llama_decode_loop": 1990,
+      "talker_post": 273,
+      "talker_decode": 57,
+      "talker_post_prep": 0,
+      "talker_post_copy": 216,
+      "predictor_sample": 1713,
+      "decode": 624,
+      "ort_decoder_run": 621,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 621,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 173,
+      "total": 2115
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 173
+    },
+    "rtf": 0.213206,
+    "mem": {
+      "rss_start": 1516052480,
+      "rss_end": 1517043712,
+      "rss_peak": 1517043712,
+      "phys_start": 1516052480,
+      "phys_end": 1517043712,
+      "phys_peak": 1517043712
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 80,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1995,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1982,
+      "talker_post": 273,
+      "talker_decode": 56,
+      "talker_post_prep": 0,
+      "talker_post_copy": 217,
+      "predictor_sample": 1708,
+      "decode": 604,
+      "ort_decoder_run": 602,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 602,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 174,
+      "total": 2101
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 174
+    },
+    "rtf": 0.211794,
+    "mem": {
+      "rss_start": 1516056576,
+      "rss_end": 1517051904,
+      "rss_peak": 1517051904,
+      "phys_start": 1516056576,
+      "phys_end": 1517051904,
+      "phys_peak": 1517051904
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 81,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1997,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1983,
+      "talker_post": 267,
+      "talker_decode": 58,
+      "talker_post_prep": 0,
+      "talker_post_copy": 209,
+      "predictor_sample": 1709,
+      "decode": 602,
+      "ort_decoder_run": 601,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 601,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 171,
+      "total": 2108
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 171
+    },
+    "rtf": 0.212500,
+    "mem": {
+      "rss_start": 1516060672,
+      "rss_end": 1517080576,
+      "rss_peak": 1517080576,
+      "phys_start": 1516060672,
+      "phys_end": 1517080576,
+      "phys_peak": 1517080576
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 82,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1994,
+      "llama_prefill": 12,
+      "llama_decode_loop": 1982,
+      "talker_post": 276,
+      "talker_decode": 52,
+      "talker_post_prep": 1,
+      "talker_post_copy": 223,
+      "predictor_sample": 1702,
+      "decode": 619,
+      "ort_decoder_run": 618,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 618,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 177,
+      "total": 2106
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 177
+    },
+    "rtf": 0.212298,
+    "mem": {
+      "rss_start": 1516064768,
+      "rss_end": 1517072384,
+      "rss_peak": 1517072384,
+      "phys_start": 1516064768,
+      "phys_end": 1517072384,
+      "phys_peak": 1517072384
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 83,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1988,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1975,
+      "talker_post": 275,
+      "talker_decode": 51,
+      "talker_post_prep": 0,
+      "talker_post_copy": 224,
+      "predictor_sample": 1694,
+      "decode": 618,
+      "ort_decoder_run": 616,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 616,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 176,
+      "total": 2100
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 176
+    },
+    "rtf": 0.211694,
+    "mem": {
+      "rss_start": 1516068864,
+      "rss_end": 1517068288,
+      "rss_peak": 1517068288,
+      "phys_start": 1516068864,
+      "phys_end": 1517068288,
+      "phys_peak": 1517068288
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 84,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1987,
+      "llama_prefill": 15,
+      "llama_decode_loop": 1972,
+      "talker_post": 271,
+      "talker_decode": 53,
+      "talker_post_prep": 0,
+      "talker_post_copy": 218,
+      "predictor_sample": 1696,
+      "decode": 611,
+      "ort_decoder_run": 609,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 609,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 172,
+      "total": 2101
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 172
+    },
+    "rtf": 0.211794,
+    "mem": {
+      "rss_start": 1516072960,
+      "rss_end": 1517080576,
+      "rss_peak": 1517080576,
+      "phys_start": 1516072960,
+      "phys_end": 1517080576,
+      "phys_peak": 1517080576
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 85,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1979,
+      "llama_prefill": 12,
+      "llama_decode_loop": 1966,
+      "talker_post": 406,
+      "talker_decode": 64,
+      "talker_post_prep": 0,
+      "talker_post_copy": 342,
+      "predictor_sample": 1558,
+      "decode": 626,
+      "ort_decoder_run": 623,
+      "decoder_tensor_prep": 1,
+      "decoder_ort_run": 623,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 175,
+      "total": 2095
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 175
+    },
+    "rtf": 0.211190,
+    "mem": {
+      "rss_start": 1516072960,
+      "rss_end": 1517039616,
+      "rss_peak": 1517039616,
+      "phys_start": 1516072960,
+      "phys_end": 1517039616,
+      "phys_peak": 1517039616
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 86,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2017,
+      "llama_prefill": 15,
+      "llama_decode_loop": 2002,
+      "talker_post": 272,
+      "talker_decode": 59,
+      "talker_post_prep": 0,
+      "talker_post_copy": 213,
+      "predictor_sample": 1726,
+      "decode": 608,
+      "ort_decoder_run": 603,
+      "decoder_tensor_prep": 1,
+      "decoder_ort_run": 603,
+      "decoder_tensor_extract": 4,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 176,
+      "total": 2128
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 176
+    },
+    "rtf": 0.214516,
+    "mem": {
+      "rss_start": 1516081152,
+      "rss_end": 1517047808,
+      "rss_peak": 1517047808,
+      "phys_start": 1516081152,
+      "phys_end": 1517047808,
+      "phys_peak": 1517047808
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 87,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2010,
+      "llama_prefill": 12,
+      "llama_decode_loop": 1997,
+      "talker_post": 302,
+      "talker_decode": 59,
+      "talker_post_prep": 0,
+      "talker_post_copy": 243,
+      "predictor_sample": 1690,
+      "decode": 613,
+      "ort_decoder_run": 610,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 610,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 171,
+      "total": 2115
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 171
+    },
+    "rtf": 0.213206,
+    "mem": {
+      "rss_start": 1516081152,
+      "rss_end": 1517092864,
+      "rss_peak": 1517092864,
+      "phys_start": 1516081152,
+      "phys_end": 1517092864,
+      "phys_peak": 1517092864
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 88,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2003,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1989,
+      "talker_post": 271,
+      "talker_decode": 55,
+      "talker_post_prep": 0,
+      "talker_post_copy": 216,
+      "predictor_sample": 1715,
+      "decode": 613,
+      "ort_decoder_run": 611,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 611,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 173,
+      "total": 2111
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 173
+    },
+    "rtf": 0.212802,
+    "mem": {
+      "rss_start": 1516081152,
+      "rss_end": 1517056000,
+      "rss_peak": 1517056000,
+      "phys_start": 1516081152,
+      "phys_end": 1517056000,
+      "phys_peak": 1517056000
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 89,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2007,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1992,
+      "talker_post": 277,
+      "talker_decode": 46,
+      "talker_post_prep": 0,
+      "talker_post_copy": 231,
+      "predictor_sample": 1709,
+      "decode": 616,
+      "ort_decoder_run": 613,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 613,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 181,
+      "total": 2120
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 181
+    },
+    "rtf": 0.213710,
+    "mem": {
+      "rss_start": 1516081152,
+      "rss_end": 1517076480,
+      "rss_peak": 1517076480,
+      "phys_start": 1516081152,
+      "phys_end": 1517076480,
+      "phys_peak": 1517076480
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 90,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1983,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1970,
+      "talker_post": 275,
+      "talker_decode": 68,
+      "talker_post_prep": 0,
+      "talker_post_copy": 207,
+      "predictor_sample": 1693,
+      "decode": 607,
+      "ort_decoder_run": 606,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 606,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 170,
+      "total": 2095
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 170
+    },
+    "rtf": 0.211190,
+    "mem": {
+      "rss_start": 1516060672,
+      "rss_end": 1517076480,
+      "rss_peak": 1517076480,
+      "phys_start": 1516060672,
+      "phys_end": 1517076480,
+      "phys_peak": 1517076480
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 91,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1994,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1980,
+      "talker_post": 270,
+      "talker_decode": 53,
+      "talker_post_prep": 0,
+      "talker_post_copy": 217,
+      "predictor_sample": 1706,
+      "decode": 620,
+      "ort_decoder_run": 619,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 619,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 176,
+      "total": 2102
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 176
+    },
+    "rtf": 0.211895,
+    "mem": {
+      "rss_start": 1516060672,
+      "rss_end": 1517080576,
+      "rss_peak": 1517080576,
+      "phys_start": 1516060672,
+      "phys_end": 1517080576,
+      "phys_peak": 1517080576
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 92,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1991,
+      "llama_prefill": 15,
+      "llama_decode_loop": 1976,
+      "talker_post": 271,
+      "talker_decode": 51,
+      "talker_post_prep": 1,
+      "talker_post_copy": 219,
+      "predictor_sample": 1699,
+      "decode": 625,
+      "ort_decoder_run": 624,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 624,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 177,
+      "total": 2104
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 177
+    },
+    "rtf": 0.212097,
+    "mem": {
+      "rss_start": 1516081152,
+      "rss_end": 1517072384,
+      "rss_peak": 1517072384,
+      "phys_start": 1516081152,
+      "phys_end": 1517072384,
+      "phys_peak": 1517072384
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 93,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1999,
+      "llama_prefill": 15,
+      "llama_decode_loop": 1984,
+      "talker_post": 278,
+      "talker_decode": 49,
+      "talker_post_prep": 2,
+      "talker_post_copy": 227,
+      "predictor_sample": 1704,
+      "decode": 617,
+      "ort_decoder_run": 614,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 614,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 178,
+      "total": 2112
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 178
+    },
+    "rtf": 0.212903,
+    "mem": {
+      "rss_start": 1516081152,
+      "rss_end": 1517060096,
+      "rss_peak": 1517060096,
+      "phys_start": 1516081152,
+      "phys_end": 1517060096,
+      "phys_peak": 1517060096
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 94,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2002,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1987,
+      "talker_post": 275,
+      "talker_decode": 58,
+      "talker_post_prep": 1,
+      "talker_post_copy": 216,
+      "predictor_sample": 1709,
+      "decode": 613,
+      "ort_decoder_run": 612,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 612,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 172,
+      "total": 2109
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 172
+    },
+    "rtf": 0.212601,
+    "mem": {
+      "rss_start": 1516081152,
+      "rss_end": 1517056000,
+      "rss_peak": 1517056000,
+      "phys_start": 1516081152,
+      "phys_end": 1517056000,
+      "phys_peak": 1517056000
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 95,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 1984,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1971,
+      "talker_post": 273,
+      "talker_decode": 55,
+      "talker_post_prep": 0,
+      "talker_post_copy": 218,
+      "predictor_sample": 1691,
+      "decode": 614,
+      "ort_decoder_run": 612,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 612,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 169,
+      "total": 2099
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 169
+    },
+    "rtf": 0.211593,
+    "mem": {
+      "rss_start": 1516085248,
+      "rss_end": 1517076480,
+      "rss_peak": 1517076480,
+      "phys_start": 1516085248,
+      "phys_end": 1517076480,
+      "phys_peak": 1517076480
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 96,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2006,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1993,
+      "talker_post": 281,
+      "talker_decode": 47,
+      "talker_post_prep": 0,
+      "talker_post_copy": 234,
+      "predictor_sample": 1703,
+      "decode": 623,
+      "ort_decoder_run": 622,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 622,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 176,
+      "total": 2119
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 176
+    },
+    "rtf": 0.213609,
+    "mem": {
+      "rss_start": 1516085248,
+      "rss_end": 1517068288,
+      "rss_peak": 1517068288,
+      "phys_start": 1516085248,
+      "phys_end": 1517068288,
+      "phys_peak": 1517068288
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 97,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2001,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1988,
+      "talker_post": 274,
+      "talker_decode": 56,
+      "talker_post_prep": 0,
+      "talker_post_copy": 218,
+      "predictor_sample": 1712,
+      "decode": 612,
+      "ort_decoder_run": 610,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 610,
+      "decoder_tensor_extract": 2,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 171,
+      "total": 2108
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 171
+    },
+    "rtf": 0.212500,
+    "mem": {
+      "rss_start": 1516089344,
+      "rss_end": 1517060096,
+      "rss_peak": 1517060096,
+      "phys_start": 1516089344,
+      "phys_end": 1517060096,
+      "phys_peak": 1517060096
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 98,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 2022,
+      "llama_prefill": 14,
+      "llama_decode_loop": 2007,
+      "talker_post": 264,
+      "talker_decode": 59,
+      "talker_post_prep": 0,
+      "talker_post_copy": 205,
+      "predictor_sample": 1741,
+      "decode": 618,
+      "ort_decoder_run": 615,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 615,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 177,
+      "total": 2134
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 177
+    },
+    "rtf": 0.215121,
+    "mem": {
+      "rss_start": 1516089344,
+      "rss_end": 1517051904,
+      "rss_peak": 1517051904,
+      "phys_start": 1516089344,
+      "phys_end": 1517051904,
+      "phys_peak": 1517051904
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 99,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 0,
+      "encode": 0,
+      "generate": 1982,
+      "llama_prefill": 13,
+      "llama_decode_loop": 1968,
+      "talker_post": 300,
+      "talker_decode": 49,
+      "talker_post_prep": 1,
+      "talker_post_copy": 250,
+      "predictor_sample": 1665,
+      "decode": 598,
+      "ort_decoder_run": 597,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 597,
+      "decoder_tensor_extract": 1,
+      "decoder_state_trim": 0,
+      "pcm_gather": 0,
+      "first_audio": 169,
+      "total": 2087
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 169
+    },
+    "rtf": 0.210383,
+    "mem": {
+      "rss_start": 1516089344,
+      "rss_end": 1517072384,
+      "rss_peak": 1517072384,
+      "phys_start": 1516089344,
+      "phys_end": 1517072384,
+      "phys_peak": 1517072384
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  },
+  {
+    "run_id": 100,
+    "success": true,
+    "sample_rate": 24000,
+    "audio_samples": 238080,
+    "audio_sec": 9.920000,
+    "timing_ms": {
+      "tokenize": 1,
+      "encode": 0,
+      "generate": 2002,
+      "llama_prefill": 14,
+      "llama_decode_loop": 1988,
+      "talker_post": 296,
+      "talker_decode": 63,
+      "talker_post_prep": 0,
+      "talker_post_copy": 233,
+      "predictor_sample": 1684,
+      "decode": 618,
+      "ort_decoder_run": 615,
+      "decoder_tensor_prep": 0,
+      "decoder_ort_run": 615,
+      "decoder_tensor_extract": 3,
+      "decoder_state_trim": 0,
+      "pcm_gather": 1,
+      "first_audio": 179,
+      "total": 2115
+    },
+    "stream": {
+      "first_chunk_frames": 8,
+      "t_first_audio_ms": 179
+    },
+    "rtf": 0.213206,
+    "mem": {
+      "rss_start": 1516089344,
+      "rss_end": 1517096960,
+      "rss_peak": 1517096960,
+      "phys_start": 1516089344,
+      "phys_end": 1517096960,
+      "phys_peak": 1517096960
+    },
+    "diag": {
+      "pcm_peak": 0.885742,
+      "pcm_rms": 0.133510
+    },
+    "ctx": {
+      "ctx_required": 565,
+      "ctx_allocated": 768,
+      "ctx_cap": 2048,
+      "ctx_overflow": false
+    },
+    "gen": {
+      "code_frames": 124,
+      "codebooks": 16,
+      "code_min": 0,
+      "code_max": 2047,
+      "eos_step": 124,
+      "codes_hash": 13963068655189479829
+    },
+    "ort_providers": {
+      "speaker_encoder": "not_loaded",
+      "codec_encoder": "not_loaded",
+      "decoder": "CUDAExecutionProvider"
+    }
+  }
+  ]
+}
