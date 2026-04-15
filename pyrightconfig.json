@@ -21,6 +21,9 @@
   "reportPrivateImportUsage": "none",
   "strict": [
     "src/lunavox/core",
-    "src/lunavox/model/config.py"
+    "src/lunavox/model/config.py",
+    "src/lunavox/runtime/errors.py",
+    "src/lunavox/runtime/params.py",
+    "src/lunavox/runtime/voice.py"
   ]
 }
