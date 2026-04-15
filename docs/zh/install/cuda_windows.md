@@ -1,6 +1,6 @@
 # LunaVox Windows CUDA 依赖指南
 
-本文涵盖 Windows x64 下 **CUDA 12** 与 **CUDA 13** 两套运行时。请按你使用 `lunavox download-libs --platform win_cuda12`（或 `win_cuda13`）下载到的二进制对照查表。
+本文涵盖 Windows x64 下 **CUDA 12** 与 **CUDA 13** 两套运行时。请按你使用 `lunavox build libs --platform win_cuda12`（或 `win_cuda13`）下载到的二进制对照查表。
 
 ## 1. 实测组合
 
@@ -56,7 +56,7 @@ cudnn_ops64_9.dll
 
 - **Conda（推荐）**：在独立 env 中安装匹配主版本的 `cuda-toolkit` + `cudnn`，确保 `Library\bin` 在 `PATH` 中。
 - **绿色部署**：把上面所有 DLL 与 `lunavox-cli.exe` 放在同一目录。
-- 切换 CUDA 主版本后，执行 `lunavox download-libs --platform win_cuda13`（或 `win_cuda12`）并重新构建。残留的旧版本二进制会因引用错位的 `cublasLt64_*.dll` 报 **错误 126**。
+- 切换 CUDA 主版本后，执行 `lunavox build libs --platform win_cuda13`（或 `win_cuda12`）并重新构建。残留的旧版本二进制会因引用错位的 `cublasLt64_*.dll` 报 **错误 126**。
 
 ## 5. 排障
 

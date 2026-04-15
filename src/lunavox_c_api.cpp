@@ -138,6 +138,31 @@ LunavoxAudio * lunavox_synthesize(
     return to_c_audio(result);
 }
 
+LunavoxAudio * lunavox_synthesize_streaming(
+        LunavoxEngine * tts, const char * text,
+        const LunavoxSynthesisParams * params,
+        LunavoxAudioChunkCallback chunk_cb,
+        void * user_data) {
+    if (!tts || !text) return nullptr;
+    lunavox::platform::AutoreleasePoolScope _pool_scope;
+    auto cpp_params = to_cpp_params(params);
+    if (chunk_cb) {
+        // Trampoline the C callback through the C++ std::function. The
+        // trampoline captures `chunk_cb` and `user_data` by value; it
+        // stays alive for the duration of this call because tts_params
+        // is a local.
+        cpp_params.chunk_callback = [chunk_cb, user_data](
+                const float * samples, int32_t n_samples, bool is_last) {
+            chunk_cb(samples, n_samples, is_last ? 1 : 0, user_data);
+        };
+    }
+    auto result = tts->engine.synthesize(text, cpp_params);
+    if (!result.success) {
+        tts->last_error = result.error_msg;
+    }
+    return to_c_audio(result);
+}
+
 int32_t lunavox_sample_rate(const LunavoxEngine * tts) {
     (void)tts;
     return 24000;
@@ -263,6 +288,75 @@ LunavoxAudio * lunavox_synthesize_design(
     if (!tts || !text || !instruct) return nullptr;
     lunavox::platform::AutoreleasePoolScope _pool_scope;
     auto cpp_params = to_cpp_params(params);
+    auto result = tts->engine.synthesize_design(text, std::string(instruct), cpp_params);
+    if (!result.success) {
+        tts->last_error = result.error_msg;
+    }
+    return to_c_audio(result);
+}
+
+// Attach a C chunk-callback trampoline to tts_params.chunk_callback.
+// Keeps the three new streaming variants below as thin wrappers that
+// only differ in which engine method they call.
+static void attach_stream_callback(
+        lunavox::tts_params & cpp_params,
+        LunavoxAudioChunkCallback chunk_cb,
+        void * user_data) {
+    if (!chunk_cb) return;
+    cpp_params.chunk_callback = [chunk_cb, user_data](
+            const float * samples, int32_t n_samples, bool is_last) {
+        chunk_cb(samples, n_samples, is_last ? 1 : 0, user_data);
+    };
+}
+
+LunavoxAudio * lunavox_synthesize_with_voice_file_streaming(
+        LunavoxEngine * tts, const char * text,
+        const char * reference_audio_path,
+        const LunavoxSynthesisParams * params,
+        LunavoxAudioChunkCallback chunk_cb,
+        void * user_data) {
+    if (!tts || !text || !reference_audio_path) return nullptr;
+    lunavox::platform::AutoreleasePoolScope _pool_scope;
+    auto cpp_params = to_cpp_params(params);
+    attach_stream_callback(cpp_params, chunk_cb, user_data);
+    auto result = tts->engine.synthesize_with_voice(text, reference_audio_path, cpp_params);
+    if (!result.success) {
+        tts->last_error = result.error_msg;
+    }
+    return to_c_audio(result);
+}
+
+LunavoxAudio * lunavox_synthesize_custom_streaming(
+        LunavoxEngine * tts, const char * text,
+        const char * speaker, const char * instruct,
+        const LunavoxSynthesisParams * params,
+        LunavoxAudioChunkCallback chunk_cb,
+        void * user_data) {
+    if (!tts || !text || !speaker) return nullptr;
+    lunavox::platform::AutoreleasePoolScope _pool_scope;
+    auto cpp_params = to_cpp_params(params);
+    attach_stream_callback(cpp_params, chunk_cb, user_data);
+    auto result = tts->engine.synthesize_custom(
+        text,
+        std::string(speaker),
+        std::string(instruct ? instruct : ""),
+        cpp_params);
+    if (!result.success) {
+        tts->last_error = result.error_msg;
+    }
+    return to_c_audio(result);
+}
+
+LunavoxAudio * lunavox_synthesize_design_streaming(
+        LunavoxEngine * tts, const char * text,
+        const char * instruct,
+        const LunavoxSynthesisParams * params,
+        LunavoxAudioChunkCallback chunk_cb,
+        void * user_data) {
+    if (!tts || !text || !instruct) return nullptr;
+    lunavox::platform::AutoreleasePoolScope _pool_scope;
+    auto cpp_params = to_cpp_params(params);
+    attach_stream_callback(cpp_params, chunk_cb, user_data);
     auto result = tts->engine.synthesize_design(text, std::string(instruct), cpp_params);
     if (!result.success) {
         tts->last_error = result.error_msg;

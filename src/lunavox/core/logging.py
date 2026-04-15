@@ -54,11 +54,10 @@ def append(text: str) -> None:
     """Append ``text`` to the active session log. No-op if unbound."""
     if _log_path is None:
         return
-    with _lock:
-        with open(_log_path, "a", encoding="utf-8") as f:
-            f.write(text)
-            if not text.endswith("\n"):
-                f.write("\n")
+    with _lock, open(_log_path, "a", encoding="utf-8") as f:
+        f.write(text)
+        if not text.endswith("\n"):
+            f.write("\n")
 
 
 def current_path() -> Optional[Path]:

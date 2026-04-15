@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import os
 import shutil
@@ -7,7 +8,6 @@ import sys
 import time
 from pathlib import Path
 from typing import Optional
-import numpy as np
 
 from lunavox.core import logging as lvlog
 
@@ -29,11 +29,11 @@ class ModelConvertPipeline:
         self.eprint(f"[run] {' '.join(cmd)}")
         start = time.time()
         header = (
-            f"\n{'='*80}\n"
+            f"\n{'=' * 80}\n"
             f"TIME: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"CMD: {' '.join(cmd)}\n"
             f"CWD: {cwd}\n"
-            f"{'='*80}\n"
+            f"{'=' * 80}\n"
         )
 
         run_env = dict(os.environ if env is None else env)
@@ -53,12 +53,7 @@ class ModelConvertPipeline:
             )
             output_text = proc.stdout or ""
             elapsed = time.time() - start
-            lvlog.append(
-                f"{header}"
-                f"STATUS: ok\n"
-                f"ELAPSED: {elapsed:.3f}s\n\n"
-                f"{output_text}\n"
-            )
+            lvlog.append(f"{header}STATUS: ok\nELAPSED: {elapsed:.3f}s\n\n{output_text}\n")
 
         except subprocess.CalledProcessError as err:
             output_text = err.stdout or ""
@@ -85,9 +80,9 @@ class ModelConvertPipeline:
     def convert(self, cfg, models_dir: Path, force: bool = False):
         self.eprint(f"[pipeline] Converting model: {cfg.name}")
         self.ensure_source_exists(cfg)
-        
+
         base_dir = cfg.source.resolve()
-        
+
         out_talker = models_dir / "qwen3_tts_talker.q5_k.gguf"
         out_predictor = models_dir / "qwen3_tts_predictor.q8_0.gguf"
         out_codec_encoder = models_dir / "qwen3_tts_codec_encoder.fp16.onnx"
@@ -100,9 +95,18 @@ class ModelConvertPipeline:
         models_dir.mkdir(parents=True, exist_ok=True)
 
         if force:
-            for p in [out_talker, out_predictor, out_codec_encoder, out_speaker_encoder, out_decoder, out_tokenizer_json]:
-                if p.exists(): p.unlink()
-            if out_embeddings_dir.exists(): shutil.rmtree(out_embeddings_dir)
+            for p in [
+                out_talker,
+                out_predictor,
+                out_codec_encoder,
+                out_speaker_encoder,
+                out_decoder,
+                out_tokenizer_json,
+            ]:
+                if p.exists():
+                    p.unlink()
+            if out_embeddings_dir.exists():
+                shutil.rmtree(out_embeddings_dir)
 
         self._ensure_talker_predictor(base_dir, out_talker, out_predictor, out_embeddings_dir)
         self._ensure_embeddings(base_dir, out_embeddings_dir)
@@ -113,15 +117,24 @@ class ModelConvertPipeline:
         # Codec encoder and speaker encoder are not converted or reused.
         if cfg.name in ("custom", "design", "custom_small"):
             # Only ensure decoder
-            self._ensure_onnx_artifacts(base_dir, models_dir, out_codec_encoder, out_speaker_encoder, out_decoder, skip_encoders=True)
+            self._ensure_onnx_artifacts(
+                base_dir,
+                models_dir,
+                out_codec_encoder,
+                out_speaker_encoder,
+                out_decoder,
+                skip_encoders=True,
+            )
         else:
-            self._ensure_onnx_artifacts(base_dir, models_dir, out_codec_encoder, out_speaker_encoder, out_decoder)
+            self._ensure_onnx_artifacts(
+                base_dir, models_dir, out_codec_encoder, out_speaker_encoder, out_decoder
+            )
 
         self.eprint(f"\n[done] Conversion complete for: {cfg.name}")
         return 0
 
     def _load_json(self, path: Path) -> dict:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
 
     def _normalize_model_type(self, cfg_name: str, raw_type: str) -> str:
@@ -138,7 +151,9 @@ class ModelConvertPipeline:
             return "custom"
         if cfg_name.startswith("design"):
             return "design"
-        raise RuntimeError(f"Unable to derive model_type from cfg_name='{cfg_name}' raw_type='{raw_type}'")
+        raise RuntimeError(
+            f"Unable to derive model_type from cfg_name='{cfg_name}' raw_type='{raw_type}'"
+        )
 
     def _normalize_model_size(self, cfg_name: str, raw_size: str) -> str:
         s = (raw_size or "").strip().lower()
@@ -182,7 +197,10 @@ class ModelConvertPipeline:
         talker_cfg = dict(cfg.get("talker_config", {}))
         code_pred_cfg = dict(talker_cfg.get("code_predictor_config", {}))
         gen_cfg = {}
-        for gen_cfg_path in (base_dir / "generation_config.json", base_dir / "generate_config.json"):
+        for gen_cfg_path in (
+            base_dir / "generation_config.json",
+            base_dir / "generate_config.json",
+        ):
             if gen_cfg_path.exists():
                 gen_cfg = self._load_json(gen_cfg_path)
                 break
@@ -277,7 +295,9 @@ class ModelConvertPipeline:
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(profile, f, ensure_ascii=False, indent=2)
 
-    def _ensure_talker_predictor(self, base_dir: Path, out_talker: Path, out_predictor: Path, out_embeddings_dir: Path) -> None:
+    def _ensure_talker_predictor(
+        self, base_dir: Path, out_talker: Path, out_predictor: Path, out_embeddings_dir: Path
+    ) -> None:
         if out_talker.exists() and out_predictor.exists():
             return
         cmd = [
@@ -300,7 +320,9 @@ class ModelConvertPipeline:
         talker_cfg = cfg.get("talker_config", {}) if isinstance(cfg, dict) else {}
         codec_num_codebooks = int(talker_cfg.get("num_code_groups", 16))
         required = [out_embeddings_dir / "text_embedding_projected.npy"]
-        required.extend(out_embeddings_dir / f"codec_embedding_{i}.npy" for i in range(codec_num_codebooks))
+        required.extend(
+            out_embeddings_dir / f"codec_embedding_{i}.npy" for i in range(codec_num_codebooks)
+        )
 
         if self._model_requires_projection(base_dir):
             required.extend(
@@ -363,6 +385,8 @@ class ModelConvertPipeline:
         codec_num_codebooks: int,
         require_projection: bool,
     ) -> bool:
+        import numpy as np  # deferred so `[dev]` installs without numpy
+
         def _dtype(path: Path) -> str:
             arr = np.load(path, mmap_mode="r")
             return str(arr.dtype)
@@ -385,20 +409,29 @@ class ModelConvertPipeline:
         return True
 
     def _ensure_tokenizer_json(self, base_dir: Path, out_tokenizer_json: Path) -> None:
-        if out_tokenizer_json.exists(): return
+        if out_tokenizer_json.exists():
+            return
         src = base_dir / "tokenizer.json"
         out_tokenizer_json.parent.mkdir(parents=True, exist_ok=True)
         if src.exists():
             shutil.copy2(src, out_tokenizer_json)
         else:
             from transformers import AutoTokenizer
-            tok = AutoTokenizer.from_pretrained(str(base_dir), trust_remote_code=True, fix_mistral_regex=True)
+
+            tok = AutoTokenizer.from_pretrained(
+                str(base_dir), trust_remote_code=True, fix_mistral_regex=True
+            )
             tok.backend_tokenizer.save(str(out_tokenizer_json))
 
+    def _ensure_onnx_artifacts(
+        self, base_dir, models_dir, out_codec, out_speaker, out_decoder, skip_encoders: bool = False
+    ) -> None:
+        stage_to_output = {
+            "codec_encoder": out_codec,
+            "speaker_encoder": out_speaker,
+            "decoder": out_decoder,
+        }
 
-    def _ensure_onnx_artifacts(self, base_dir, models_dir, out_codec, out_speaker, out_decoder, skip_encoders: bool = False) -> None:
-        stage_to_output = {"codec_encoder": out_codec, "speaker_encoder": out_speaker, "decoder": out_decoder}
-        
         stages_to_run = list(stage_to_output.keys())
         if skip_encoders:
             stages_to_run = ["decoder"]
@@ -421,14 +454,18 @@ class ModelConvertPipeline:
         )
 
         # Cleanup fp32
-        for name in ["qwen3_tts_codec_encoder.fp32.onnx", "qwen3_tts_speaker_encoder.fp32.onnx", "qwen3_tts_decoder.fp32.onnx"]:
+        for name in [
+            "qwen3_tts_codec_encoder.fp32.onnx",
+            "qwen3_tts_speaker_encoder.fp32.onnx",
+            "qwen3_tts_decoder.fp32.onnx",
+        ]:
             p = models_dir / name
             if p.exists():
                 p.unlink()
             pd = models_dir / (name + ".data")
             if pd.exists():
                 pd.unlink()
-            
+
             # Cleanup unwanted int8 residues
             pi8 = models_dir / name.replace(".fp32.onnx", ".fp32.int8.onnx")
             if pi8.exists():
@@ -436,7 +473,6 @@ class ModelConvertPipeline:
             pi8_alt = models_dir / name.replace(".fp32.onnx", ".int8.onnx")
             if pi8_alt.exists():
                 pi8_alt.unlink()
-
 
     def _run_onnx_stage(self, stage, base_dir, models_dir):
         cmd = [

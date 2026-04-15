@@ -20,8 +20,9 @@ import logging
 import os
 import re
 import sys
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 import numpy as np
 import torch
@@ -39,7 +40,7 @@ try:
 except (PermissionError, OSError):
     pass
 
-import gguf
+import gguf  # noqa: E402  (vendored gguf path injected above)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -108,14 +109,29 @@ class Qwen3TTSConverter:
     # Regex patterns for layer-specific tensors
     TALKER_LAYER_PATTERNS = [
         # Talker transformer layers (28 layers)
-        (r"talker\.model\.layers\.(\d+)\.input_layernorm\.weight", "talker.blk.{}.attn_norm.weight"),
+        (
+            r"talker\.model\.layers\.(\d+)\.input_layernorm\.weight",
+            "talker.blk.{}.attn_norm.weight",
+        ),
         (r"talker\.model\.layers\.(\d+)\.self_attn\.q_proj\.weight", "talker.blk.{}.attn_q.weight"),
         (r"talker\.model\.layers\.(\d+)\.self_attn\.k_proj\.weight", "talker.blk.{}.attn_k.weight"),
         (r"talker\.model\.layers\.(\d+)\.self_attn\.v_proj\.weight", "talker.blk.{}.attn_v.weight"),
-        (r"talker\.model\.layers\.(\d+)\.self_attn\.o_proj\.weight", "talker.blk.{}.attn_output.weight"),
-        (r"talker\.model\.layers\.(\d+)\.self_attn\.q_norm\.weight", "talker.blk.{}.attn_q_norm.weight"),
-        (r"talker\.model\.layers\.(\d+)\.self_attn\.k_norm\.weight", "talker.blk.{}.attn_k_norm.weight"),
-        (r"talker\.model\.layers\.(\d+)\.post_attention_layernorm\.weight", "talker.blk.{}.ffn_norm.weight"),
+        (
+            r"talker\.model\.layers\.(\d+)\.self_attn\.o_proj\.weight",
+            "talker.blk.{}.attn_output.weight",
+        ),
+        (
+            r"talker\.model\.layers\.(\d+)\.self_attn\.q_norm\.weight",
+            "talker.blk.{}.attn_q_norm.weight",
+        ),
+        (
+            r"talker\.model\.layers\.(\d+)\.self_attn\.k_norm\.weight",
+            "talker.blk.{}.attn_k_norm.weight",
+        ),
+        (
+            r"talker\.model\.layers\.(\d+)\.post_attention_layernorm\.weight",
+            "talker.blk.{}.ffn_norm.weight",
+        ),
         (r"talker\.model\.layers\.(\d+)\.mlp\.gate_proj\.weight", "talker.blk.{}.ffn_gate.weight"),
         (r"talker\.model\.layers\.(\d+)\.mlp\.up_proj\.weight", "talker.blk.{}.ffn_up.weight"),
         (r"talker\.model\.layers\.(\d+)\.mlp\.down_proj\.weight", "talker.blk.{}.ffn_down.weight"),
@@ -123,34 +139,82 @@ class Qwen3TTSConverter:
 
     CODE_PREDICTOR_LAYER_PATTERNS = [
         # Code Predictor transformer layers (5 layers)
-        (r"talker\.code_predictor\.model\.layers\.(\d+)\.input_layernorm\.weight", "code_pred.blk.{}.attn_norm.weight"),
-        (r"talker\.code_predictor\.model\.layers\.(\d+)\.self_attn\.q_proj\.weight", "code_pred.blk.{}.attn_q.weight"),
-        (r"talker\.code_predictor\.model\.layers\.(\d+)\.self_attn\.k_proj\.weight", "code_pred.blk.{}.attn_k.weight"),
-        (r"talker\.code_predictor\.model\.layers\.(\d+)\.self_attn\.v_proj\.weight", "code_pred.blk.{}.attn_v.weight"),
-        (r"talker\.code_predictor\.model\.layers\.(\d+)\.self_attn\.o_proj\.weight", "code_pred.blk.{}.attn_output.weight"),
-        (r"talker\.code_predictor\.model\.layers\.(\d+)\.self_attn\.q_norm\.weight", "code_pred.blk.{}.attn_q_norm.weight"),
-        (r"talker\.code_predictor\.model\.layers\.(\d+)\.self_attn\.k_norm\.weight", "code_pred.blk.{}.attn_k_norm.weight"),
-        (r"talker\.code_predictor\.model\.layers\.(\d+)\.post_attention_layernorm\.weight", "code_pred.blk.{}.ffn_norm.weight"),
-        (r"talker\.code_predictor\.model\.layers\.(\d+)\.mlp\.gate_proj\.weight", "code_pred.blk.{}.ffn_gate.weight"),
-        (r"talker\.code_predictor\.model\.layers\.(\d+)\.mlp\.up_proj\.weight", "code_pred.blk.{}.ffn_up.weight"),
-        (r"talker\.code_predictor\.model\.layers\.(\d+)\.mlp\.down_proj\.weight", "code_pred.blk.{}.ffn_down.weight"),
+        (
+            r"talker\.code_predictor\.model\.layers\.(\d+)\.input_layernorm\.weight",
+            "code_pred.blk.{}.attn_norm.weight",
+        ),
+        (
+            r"talker\.code_predictor\.model\.layers\.(\d+)\.self_attn\.q_proj\.weight",
+            "code_pred.blk.{}.attn_q.weight",
+        ),
+        (
+            r"talker\.code_predictor\.model\.layers\.(\d+)\.self_attn\.k_proj\.weight",
+            "code_pred.blk.{}.attn_k.weight",
+        ),
+        (
+            r"talker\.code_predictor\.model\.layers\.(\d+)\.self_attn\.v_proj\.weight",
+            "code_pred.blk.{}.attn_v.weight",
+        ),
+        (
+            r"talker\.code_predictor\.model\.layers\.(\d+)\.self_attn\.o_proj\.weight",
+            "code_pred.blk.{}.attn_output.weight",
+        ),
+        (
+            r"talker\.code_predictor\.model\.layers\.(\d+)\.self_attn\.q_norm\.weight",
+            "code_pred.blk.{}.attn_q_norm.weight",
+        ),
+        (
+            r"talker\.code_predictor\.model\.layers\.(\d+)\.self_attn\.k_norm\.weight",
+            "code_pred.blk.{}.attn_k_norm.weight",
+        ),
+        (
+            r"talker\.code_predictor\.model\.layers\.(\d+)\.post_attention_layernorm\.weight",
+            "code_pred.blk.{}.ffn_norm.weight",
+        ),
+        (
+            r"talker\.code_predictor\.model\.layers\.(\d+)\.mlp\.gate_proj\.weight",
+            "code_pred.blk.{}.ffn_gate.weight",
+        ),
+        (
+            r"talker\.code_predictor\.model\.layers\.(\d+)\.mlp\.up_proj\.weight",
+            "code_pred.blk.{}.ffn_up.weight",
+        ),
+        (
+            r"talker\.code_predictor\.model\.layers\.(\d+)\.mlp\.down_proj\.weight",
+            "code_pred.blk.{}.ffn_down.weight",
+        ),
     ]
 
     CODE_PREDICTOR_CODEBOOK_PATTERNS = [
         # Code Predictor codebook embeddings (15 codebooks, indices 0-14)
-        (r"talker\.code_predictor\.model\.codec_embedding\.(\d+)\.weight", "code_pred.codec_embd.{}.weight"),
+        (
+            r"talker\.code_predictor\.model\.codec_embedding\.(\d+)\.weight",
+            "code_pred.codec_embd.{}.weight",
+        ),
         # Code Predictor LM heads (15 heads)
         (r"talker\.code_predictor\.lm_head\.(\d+)\.weight", "code_pred.lm_head.{}.weight"),
     ]
 
     SPEAKER_ENCODER_PATTERNS = [
         # Speaker Encoder Res2Net blocks (blocks 1-3)
-        (r"speaker_encoder\.blocks\.(\d+)\.res2net_block\.blocks\.(\d+)\.conv\.weight", "spk_enc.blk.{}.res2net.{}.weight"),
-        (r"speaker_encoder\.blocks\.(\d+)\.res2net_block\.blocks\.(\d+)\.conv\.bias", "spk_enc.blk.{}.res2net.{}.bias"),
+        (
+            r"speaker_encoder\.blocks\.(\d+)\.res2net_block\.blocks\.(\d+)\.conv\.weight",
+            "spk_enc.blk.{}.res2net.{}.weight",
+        ),
+        (
+            r"speaker_encoder\.blocks\.(\d+)\.res2net_block\.blocks\.(\d+)\.conv\.bias",
+            "spk_enc.blk.{}.res2net.{}.bias",
+        ),
         # Speaker Encoder SE blocks
-        (r"speaker_encoder\.blocks\.(\d+)\.se_block\.conv1\.weight", "spk_enc.blk.{}.se.conv1.weight"),
+        (
+            r"speaker_encoder\.blocks\.(\d+)\.se_block\.conv1\.weight",
+            "spk_enc.blk.{}.se.conv1.weight",
+        ),
         (r"speaker_encoder\.blocks\.(\d+)\.se_block\.conv1\.bias", "spk_enc.blk.{}.se.conv1.bias"),
-        (r"speaker_encoder\.blocks\.(\d+)\.se_block\.conv2\.weight", "spk_enc.blk.{}.se.conv2.weight"),
+        (
+            r"speaker_encoder\.blocks\.(\d+)\.se_block\.conv2\.weight",
+            "spk_enc.blk.{}.se.conv2.weight",
+        ),
         (r"speaker_encoder\.blocks\.(\d+)\.se_block\.conv2\.bias", "spk_enc.blk.{}.se.conv2.bias"),
         # Speaker Encoder TDNN layers
         (r"speaker_encoder\.blocks\.(\d+)\.tdnn1\.conv\.weight", "spk_enc.blk.{}.tdnn1.weight"),
@@ -196,7 +260,7 @@ class Qwen3TTSConverter:
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
 
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, encoding="utf-8") as f:
             return json.load(f)
 
     def _extract_params(self) -> None:
@@ -251,7 +315,9 @@ class Qwen3TTSConverter:
 
             # Ensure requested quantization type exists in current gguf package.
             if quant_type not in self.QUANT_TYPE_MAP:
-                raise ValueError(f"Quantization type '{quant_type}' is not available in current gguf package")
+                raise ValueError(
+                    f"Quantization type '{quant_type}' is not available in current gguf package"
+                )
 
     def _init_ggml_quant_lib(self) -> None:
         """Load ggml-base library for quantization types missing in gguf-py (e.g., Q5_K)."""
@@ -264,6 +330,7 @@ class Qwen3TTSConverter:
             lib_dir = os.environ.get("LUNAVOX_LIB_DIR", "").strip()
             if lib_dir:
                 from lunavox.core.platform import shared_lib_name
+
                 env_path = str(Path(lib_dir) / shared_lib_name("ggml-base"))
         candidates: list[Path] = []
 
@@ -271,6 +338,7 @@ class Qwen3TTSConverter:
             candidates.append(Path(env_path))
 
         from lunavox.core.platform import shared_lib_name
+
         ggml_lib = shared_lib_name("ggml-base")
         candidates.append(repo_root / "lib" / ggml_lib)
         candidates.append(repo_root / "ggml" / "build" / "src" / ggml_lib)
@@ -324,7 +392,9 @@ class Qwen3TTSConverter:
         assert self._ggml_quant_lib is not None
 
         if data.ndim != 2:
-            raise RuntimeError(f"ggml quantization expects 2D tensors, got {data.ndim}D for '{tensor_name}'")
+            raise RuntimeError(
+                f"ggml quantization expects 2D tensors, got {data.ndim}D for '{tensor_name}'"
+            )
 
         ggml_type = self.GGML_TYPE_MAP[target_type]
         if self._ggml_quant_lib.ggml_quantize_requires_imatrix(ggml_type):
@@ -411,7 +481,7 @@ class Qwen3TTSConverter:
         for sf_path in sorted(safetensor_files):
             logger.info(f"Loading tensors from {sf_path.name}")
             with safe_open(sf_path, framework="pt", device="cpu") as f:
-                for name in f.keys():
+                for name in f.keys():  # noqa: SIM118  (safe_open exposes .keys(), not __iter__)
                     yield name, f.get_tensor(name)
 
     def _module_from_tensor_name(self, tensor_name: str) -> str:
@@ -452,13 +522,15 @@ class Qwen3TTSConverter:
             return False
 
         # Keep LM heads in F16
-        if "lm_head" in tensor_name or "codec_head" in tensor_name:
+        if "lm_head" in tensor_name or "codec_head" in tensor_name:  # noqa: SIM103
             return False
 
         # Quantize weight matrices
         return True
 
-    def _convert_dtype(self, tensor: torch.Tensor, tensor_name: str = "") -> tuple[np.ndarray, gguf.GGMLQuantizationType]:
+    def _convert_dtype(
+        self, tensor: torch.Tensor, tensor_name: str = ""
+    ) -> tuple[np.ndarray, gguf.GGMLQuantizationType]:
         """Convert tensor to appropriate dtype for GGUF."""
         # Convert to numpy
         if tensor.dtype == torch.bfloat16:
@@ -469,7 +541,9 @@ class Qwen3TTSConverter:
         n_dims = len(data.shape)
 
         if n_dims == 3 and "weight" in tensor_name:
-            logger.info(f"Conv1d weight {tensor_name}: shape {data.shape} [OC,IC,K] - GGUF will reverse to [K,IC,OC]")
+            logger.info(
+                f"Conv1d weight {tensor_name}: shape {data.shape} [OC,IC,K] - GGUF will reverse to [K,IC,OC]"
+            )
 
         # 1D tensors (norms, biases) should be F32
         if n_dims <= 1:
@@ -510,7 +584,7 @@ class Qwen3TTSConverter:
             raise FileNotFoundError(f"Vocab file not found: {vocab_path}")
 
         # Load vocabulary
-        with open(vocab_path, "r", encoding="utf-8") as f:
+        with open(vocab_path, encoding="utf-8") as f:
             vocab_dict = json.load(f)
 
         # Sort by token ID
@@ -519,7 +593,7 @@ class Qwen3TTSConverter:
         tokens = []
         toktypes = []
 
-        for token, token_id in sorted_vocab:
+        for token, _token_id in sorted_vocab:
             tokens.append(token)
             # Determine token type
             if token.startswith("<|") and token.endswith("|>"):
@@ -535,7 +609,7 @@ class Qwen3TTSConverter:
         # Load merges
         merges = []
         if merges_path.exists():
-            with open(merges_path, "r", encoding="utf-8") as f:
+            with open(merges_path, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith("#"):
@@ -607,7 +681,7 @@ class Qwen3TTSConverter:
     def _add_metadata(self, writer: gguf.GGUFWriter) -> None:
         """Add model metadata to GGUF writer."""
         arch = "qwen3-tts"
-        
+
         # General metadata
         writer.add_name(self.model_name)
         writer.add_type(gguf.GGUFType.MODEL)
@@ -677,7 +751,7 @@ class Qwen3TTSConverter:
         # Special tokens from tokenizer_config.json
         tokenizer_config_path = self.input_dir / "tokenizer_config.json"
         if tokenizer_config_path.exists():
-            with open(tokenizer_config_path, "r", encoding="utf-8") as f:
+            with open(tokenizer_config_path, encoding="utf-8") as f:
                 tokenizer_config = json.load(f)
 
             # EOS token
@@ -686,7 +760,7 @@ class Qwen3TTSConverter:
                 eos_token = eos_token.get("content")
             if eos_token:
                 vocab_path = self.input_dir / "vocab.json"
-                with open(vocab_path, "r", encoding="utf-8") as f:
+                with open(vocab_path, encoding="utf-8") as f:
                     vocab = json.load(f)
                 if eos_token in vocab:
                     writer.add_eos_token_id(vocab[eos_token])
@@ -697,7 +771,7 @@ class Qwen3TTSConverter:
                 pad_token = pad_token.get("content")
             if pad_token:
                 vocab_path = self.input_dir / "vocab.json"
-                with open(vocab_path, "r", encoding="utf-8") as f:
+                with open(vocab_path, encoding="utf-8") as f:
                     vocab = json.load(f)
                 if pad_token in vocab:
                     writer.add_pad_token_id(vocab[pad_token])
@@ -715,50 +789,39 @@ def main():
         description="Convert Qwen3-TTS-12Hz-0.6B-Base model to GGUF format"
     )
     parser.add_argument(
-        "--input", "-i",
-        type=Path,
-        required=True,
-        help="Path to HuggingFace model directory"
+        "--input", "-i", type=Path, required=True, help="Path to HuggingFace model directory"
     )
+    parser.add_argument("--output", "-o", type=Path, required=True, help="Output GGUF file path")
     parser.add_argument(
-        "--output", "-o",
-        type=Path,
-        required=True,
-        help="Output GGUF file path"
-    )
-    parser.add_argument(
-        "--type", "-t",
+        "--type",
+        "-t",
         choices=["f16", "f32", "q8_0", "q4_k", "q5_k"],
         default="f16",
-        help="Global output data type. Can be overridden per module with --talker-type/--predictor-type/--speaker-type."
+        help="Global output data type. Can be overridden per module with --talker-type/--predictor-type/--speaker-type.",
     )
     parser.add_argument(
         "--talker-type",
         choices=["f16", "f32", "q8_0", "q4_k", "q5_k"],
         default=None,
-        help="Talker quantization type (module override)"
+        help="Talker quantization type (module override)",
     )
     parser.add_argument(
         "--predictor-type",
         choices=["f16", "f32", "q8_0", "q4_k", "q5_k"],
         default=None,
-        help="Code predictor quantization type (module override)"
+        help="Code predictor quantization type (module override)",
     )
     parser.add_argument(
         "--speaker-type",
         choices=["f16", "f32", "q8_0", "q4_k", "q5_k"],
         default=None,
-        help="Speaker encoder quantization type (module override)"
+        help="Speaker encoder quantization type (module override)",
     )
-    parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Enable verbose logging"
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
     parser.add_argument(
         "--modules",
         default="talker,code_pred,spk_enc",
-        help="Comma-separated module list to export: talker,code_pred,spk_enc"
+        help="Comma-separated module list to export: talker,code_pred,spk_enc",
     )
 
     args = parser.parse_args()

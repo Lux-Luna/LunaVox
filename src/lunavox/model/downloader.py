@@ -5,7 +5,8 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 
 from lunavox.core.ui import console
-from .config import MODELS, get_model, model_keys
+
+from .config import get_model, model_keys
 
 
 class ModelDownloader:
@@ -21,7 +22,6 @@ class ModelDownloader:
         path = snapshot_download(
             repo_id=spec.repo_id,
             local_files_only=False,
-            resume_download=True,
         )
         console.print(f"[info][model_manager:downloader] Download complete: {path}[/info]")
         return Path(path)
@@ -40,7 +40,6 @@ class ModelDownloader:
             repo_id=repo_id,
             allow_patterns=[f"{model_name}/*"],
             local_dir=str(project_root / "models"),
-            local_dir_use_symlinks=False,
         )
         console.print(f"[success]Pull complete: {dest_dir}[/success]")
         return dest_dir

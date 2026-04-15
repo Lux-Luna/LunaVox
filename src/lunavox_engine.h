@@ -76,6 +76,18 @@ struct tts_params {
     // chunk size (see StatefulDecoderOnnx::decode_chunk_frames()).
     // Set to <=0 to use the default (8).
     int32_t first_chunk_frames = 8;
+
+    // Optional audio chunk callback fired from the decoder worker thread
+    // as each PCM chunk becomes available. When set, the caller receives
+    // progressive chunks AND still gets the cumulative audio in
+    // tts_result at the end — use one or the other. The slice points
+    // into tts_result.audio and is valid only for the duration of the
+    // callback; copy it if you need to keep it. Caller must not block
+    // for long: this runs on the decoder worker and any stall here
+    // stalls synthesis.
+    //
+    // Signature: (samples_ptr, n_samples, is_last_chunk)
+    std::function<void(const float *, int32_t, bool)> chunk_callback;
 };
 
 // TTS generation result

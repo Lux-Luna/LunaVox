@@ -1,0 +1,86 @@
+"""``lunavox serve`` — HTTP / WebSocket serving layer.
+
+Thin CLI wrapper around :func:`lunavox.serve.server.create_app`.
+Gated behind the ``[serve]`` optional extra; missing extras print
+a clear install hint instead of a ``ModuleNotFoundError`` stack.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional
+
+import typer
+
+from lunavox.core.ui import console
+
+from ._common import state
+
+
+def register(parent: typer.Typer) -> None:
+    @parent.command("serve")
+    def serve_cmd(
+        ctx: typer.Context,
+        host: str = typer.Option("127.0.0.1", "--host", help="Bind host"),
+        port: int = typer.Option(8000, "--port", help="Bind port"),
+        model: Optional[str] = typer.Option(
+            None, "--model", help="Model directory name under models/ (override config)"
+        ),
+        batch_size: str = typer.Option(
+            "4",
+            "--batch-size",
+            help="Concurrent-request pool size. Pass an integer (1-16) or 'auto' "
+            "to probe free VRAM via pynvml and pick a safe value. Each slot "
+            "loads its own engine, so N × per-engine VRAM. Default 4.",
+        ),
+        log_level: str = typer.Option(
+            "info", "--log-level", help="uvicorn log level: critical|error|warning|info|debug"
+        ),
+    ) -> None:
+        """Start the HTTP / WebSocket serving layer."""
+        st = state(ctx)
+
+        try:
+            import uvicorn  # pyright: ignore[reportMissingImports]
+
+            from lunavox.serve.auto_batch import (  # pyright: ignore[reportMissingImports]
+                resolve_batch_size,
+            )
+            from lunavox.serve.server import create_app  # pyright: ignore[reportMissingImports]
+        except ImportError as err:
+            console.print(
+                "[error]The serve extra is not installed. Run:[/]\n"
+                '  [bold]pip install "lunavox[serve]"[/]\n'
+                f"([dim]import failed: {err}[/])",
+                markup=True,
+            )
+            raise typer.Exit(code=1) from err
+
+        resolved_model = model or st.config.model
+        model_dir: Path = st.project_root / "models" / resolved_model
+        if not model_dir.exists():
+            console.print(
+                f"[error]Model directory not found: {model_dir}. "
+                f"Run `lunavox model pull --model {resolved_model}` first.[/]"
+            )
+            raise typer.Exit(code=1)
+
+        try:
+            resolved_batch = resolve_batch_size(batch_size, model_dir=model_dir)
+        except ValueError as err:
+            console.print(f"[error]{err}[/]")
+            raise typer.Exit(code=1) from err
+
+        batch_label = f"{resolved_batch} (auto)" if batch_size == "auto" else str(resolved_batch)
+        console.print(
+            f"[stage]Starting LunaVox server at [bold]http://{host}:{port}[/] "
+            f"(model=[bold]{resolved_model}[/], batch_size=[bold]{batch_label}[/], "
+            f"threads={st.config.n_threads})[/]"
+        )
+
+        app = create_app(
+            model_dir,
+            n_threads=st.config.n_threads,
+            batch_size=resolved_batch,
+        )
+        uvicorn.run(app, host=host, port=port, log_level=log_level)

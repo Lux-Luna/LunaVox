@@ -1,8 +1,8 @@
-[**English**](../../README.md) | [**中文**](README_ZH.md)
+[**English**](https://github.com/Lux-Luna/LunaVox/blob/main/README.md) | [**中文**](README_ZH.md)
 
 # 🌌 LunaVox: Qwen3-TTS C++ 高性能推理引擎
 
-![Version](https://img.shields.io/badge/version-2.1.6-blueviolet?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-2.2.0-blueviolet?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-0078d7?style=for-the-badge&logo=windows&logoColor=white)
 ![CoreML](https://img.shields.io/badge/iOS-CoreML-000000?style=for-the-badge&logo=apple&logoColor=white)
 ![C++](https://img.shields.io/badge/C++-17-00599C?style=for-the-badge&logo=c%2B%2B)
@@ -16,7 +16,10 @@
 
 - **轻量级运行**: 仅需 ONNX Runtime 与自定义 Llama 推理库，无需繁重的 Python 环境即可运行。
 - **多语言原生支持**: 引擎链路内置自动语言检测，完美支持 **中、英、日、韩、俄、德、法、意、西、葡** 十种语言。
-- **全模式支持**: 支持 基础合成 (Base)、声音克隆 (Clone)、定制定制声音 (Custom) 及 创意声音设计 (Design)。
+- **统一的 `Voice` API**: 一个 `engine.synthesize(text, voice, params)` 调用即可覆盖 Base、声音克隆、内置发音人、声音设计；不再需要 6 种 `synthesize_*` 方法。
+- **HTTP + WebSocket 服务层** (`lunavox serve`): FastAPI 应用，提供 `POST /v1/synth` 和流式 `WS /v1/stream`，底层与 CLI / GUI 共用同一进程内引擎 —— 详见 [服务层指南](guide/serve.md)。
+- **桌面 GUI** (`lunavox gui`): 左侧栏三视图布局（合成 / 素材库 / 设置），与 CLI 共用同一进程内引擎。
+- **Profile 驱动的 CLI**: `~/.lunavox/config.toml` profile 与环境变量、命令行开关分层合并，让 `lunavox --profile quality synth …` 一行搞定。
 - **现代构建系统**: 全自动工具链识别。支持 Windows (MSVC)、Linux (GCC) 及 macOS (Clang/Apple Silicon)。
 - **跨平台硬件加速**: 深度集成 CUDA (NVIDIA), CoreML/Metal (Apple), DML (DirectX 12) 与 Vulkan 接口。
 
@@ -55,15 +58,17 @@
 > - **测试环境**: Intel i9-12900K + NVIDIA RTX 3090，Windows 11。
 > - **测试标准**: 每种后端 5 次预热（丢弃）+ **100 次正式测量**，固定 25 词英文句子。三种后端基于同一 commit 构建。
 > - **TTFB**（time-to-first-byte）是流式管道从合成开始到首批 PCM 样本可用的墙钟时间 —— 流式调用方实际感受到的延迟。
-> - 逐次分布（p50 / p95 / p99 / stddev）与原始数据见 [`benchmark/report.md`](../../benchmark/report.md)。
+> - 逐次分布（p50 / p95 / p99 / stddev）与原始数据见 [`benchmark/report.md`](https://github.com/Lux-Luna/LunaVox/blob/main/benchmark/report.md)。
 
 ---
 
 ### 3. CLI 工具与依赖安装
 
 ```powershell
-# 安装核心推理工具
-pip install lunavox
+pip install lunavox               # 核心 CLI
+pip install "lunavox[serve]"      # + HTTP / WebSocket 服务层
+pip install "lunavox[gui]"        # + 桌面 GUI
+pip install "lunavox[convert]"    # + 原始权重 → GGUF 转换工具链
 ```
 
 > [!NOTE]
@@ -71,7 +76,7 @@ pip install lunavox
 
 ## 📦 快速上手流程 (One-Key Setup)
 
-LunaVox 推荐使用 `bootstrap` 指令一键完成 **模型拉取、运行库下载、项目构建及交互测试**。
+LunaVox 推荐使用 `bootstrap` 指令一键完成 **模型拉取、运行库下载、项目构建及冒烟合成**。
 
 ### 1. 自动引导安装 (推荐)
 ```powershell
@@ -82,11 +87,11 @@ lunavox bootstrap
 ### 2. 本地构建 (从源码)
 如果您需要精细化控制每个步骤，可以运行：
 ```powershell
-# 1. 下载预转换模型 (或使用 convert 本地转换原始模型)
-lunavox pull-model
+# 1. 下载预转换模型 (或使用 model convert 本地转换原始模型)
+lunavox model pull
 
 # 2. 下载 C++ 运行库
-lunavox download-libs
+lunavox build libs
 
 # 3. 自动编译项目
 lunavox build --clean
@@ -107,42 +112,56 @@ LunaVox 自动下载 `lib/` 下相应的 ONNX Runtime 与 Llama.cpp。如果您�
 
 ## 🎙️ 推理测试与模式说明
 
-编译完成后，可执行程序位于 `./build/lunavox-cli.exe`。
-> [!NOTE]
-> - Linux/macOS 系统请使用 `./build/lunavox-cli` 运行。
-> - `--instruct` 仅对 **Custom** 和 **Design** 模式有效（Base 模式下禁用）。
+`lunavox synth` 会直接驱动 Python `Engine` 并写出 WAV —— GUI 和 benchmark
+走的是同一条代码路径。若要进行深度性能分析或在无 Python 环境中运行，
+仍可使用独立的 `./build/lunavox-cli` 可执行文件。
 
 详细教程请参阅：**[CLI 指令使用指南](guide/usage_tutorial.md)**。
 
 ### 1. 声音克隆 (Voice Cloning)
-通过参考音频（.wav）或预计算特征（.json）模仿特定音色：
+通过参考音频（`.wav`）或预计算特征（`.json`）模仿特定音色：
 ```bash
-./build/lunavox-cli.exe `
-  -m models/base_small `
-  -r ref/ref_0.6B.json `
-  -t "Okay, fine, I'm just gonna leave this sock monkey here. Goodbye." `
+lunavox synth "Okay, fine, I'm just gonna leave this sock monkey here. Goodbye." \
+  --voice clone --ref ref/ref_0.6B.json \
   -o output/cloned.wav
 ```
 
 ### 2. 定制化声音 (Custom Voice)
 使用系统内置的发音人 ID：
 ```bash
-./build/lunavox-cli.exe `
-  -m models/custom `
-  --speaker Vivian `
-  --instruct "Use angry tone." `
-  -t "She said she would be here by noon." `
+lunavox synth "She said she would be here by noon." \
+  --voice custom --speaker Vivian --instruct "Use angry tone." \
   -o output/custom.wav
 ```
 
 ### 3. 声音设计 (Voice Design)
-使用描述设计声音
 ```bash
-.\build\lunavox-cli.exe `
-  -m models/design `
-  -t "It's in the top drawer... wait, it's empty? No way, that's impossible! I'm sure I put it there!" `
-  --instruct "Speak in an incredulous tone, but with a hint of panic beginning to creep into your voice."
-  -o output/out.wav `
+lunavox synth "It's in the top drawer... wait, it's empty? No way, that's impossible!" \
+  --voice design --instruct "Speak in an incredulous tone, with a hint of panic." \
+  -o output/designed.wav
+```
+
+### 4. 桌面 GUI
+```bash
+pip install "lunavox[gui]"
+lunavox gui
+```
+GUI 是三视图左侧栏布局（合成 / 素材库 / 设置），底层直接复用 `Engine`
+API，不再拼接 CLI 字符串让用户复制粘贴。
+
+### 5. Python 嵌入式用法
+```python
+from lunavox.runtime import Engine, SynthesisParams, Voice
+
+with Engine("models/base_small") as engine:
+    result = engine.synthesize(
+        "你好，来自 LunaVox。",
+        voice=Voice.clone_file("ref/ref_0.6B.json"),
+        params=SynthesisParams(temperature=0.7),
+    )
+    # result.audio 是 numpy.float32 单通道数组，范围 [-1, 1]
+    print(f"RTF {result.stats.rtf:.3f}")
+```
 
 ---
 

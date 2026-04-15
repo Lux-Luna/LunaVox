@@ -1,36 +1,53 @@
 """In-process runtime bindings for the LunaVox C++ engine.
 
-``lunavox.runtime.binding`` owns the ctypes wrapper that loads
-``liblunavox.{dll,so,dylib}`` and exposes the :class:`Engine` class. Call
-sites (GUI, Python scripts, future notebooks) import from here rather
-than shelling out to ``lunavox-cli`` so synthesis, stats, and logs all
-flow through a structured API instead of stdout scraping.
+The public surface is intentionally small:
+
+* :class:`Engine` — RAII wrapper around the C++ engine handle. One
+  ``synthesize(text, voice, params)`` entry point covers every mode.
+* :class:`Voice` — first-class voice selector. Use the factory
+  classmethods (``Voice.base()``, ``Voice.clone_file(path)``,
+  ``Voice.custom(speaker, instruct=...)``, ``Voice.design(instruct=...)``).
+* :class:`SynthesisParams` / :class:`SynthesisResult` / :class:`SynthesisStats`
+  — structured request/response/telemetry dataclasses.
+* :class:`SynthesisMode` — enum echoed back on each result for logging.
+* :class:`LunavoxLibraryError` / :class:`LunavoxSynthesisError` — the
+  two exception classes the engine raises.
+* :func:`library_path` — introspection for the dlopen'd library path.
+
+Logging is an :class:`Engine` instance method (``engine.on_log(cb)``);
+there is no module-global log callback. Every voice mode goes through
+:meth:`Engine.synthesize` — there is no family of ``synthesize_*``
+variants to remember.
 """
 
 from __future__ import annotations
 
-from .binding import (
-    Engine,
-    LunavoxLibraryError,
-    LunavoxSynthesisError,
+from ._capi import library_path
+from .batch_engine import BatchEngine
+from .engine import Engine, LogCallback
+from .errors import LunavoxLibraryError, LunavoxSynthesisError
+from .params import (
+    SynthesisChunk,
     SynthesisMode,
     SynthesisParams,
     SynthesisResult,
     SynthesisStats,
     default_params,
-    library_path,
-    set_log_callback,
 )
+from .voice import Voice
 
 __all__ = [
+    "BatchEngine",
     "Engine",
+    "LogCallback",
     "LunavoxLibraryError",
     "LunavoxSynthesisError",
+    "SynthesisChunk",
     "SynthesisMode",
     "SynthesisParams",
     "SynthesisResult",
     "SynthesisStats",
+    "Voice",
     "default_params",
     "library_path",
-    "set_log_callback",
 ]

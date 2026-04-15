@@ -1381,6 +1381,9 @@ tts_result Engine::synthesize_internal(
                 job = std::move(q.front());
                 q.pop_front();
             }
+            // Snapshot cumulative audio size so we can hand the new slice
+            // to the streaming callback after decode_chunk appends to it.
+            const size_t audio_size_before = result.audio.size();
             if (!decoder_.decode_chunk(decoder_state, job.codes.data(), job.n_frames, job.is_last, result.audio)) {
                 {
                     std::lock_guard<std::mutex> lk(q_mtx);
@@ -1392,6 +1395,19 @@ tts_result Engine::synthesize_internal(
             if (result.first_chunk_frames_used == 0) {
                 result.first_chunk_frames_used = job.n_frames;
                 result.t_first_audio_ms = get_time_ms() - t_synth_stream_start;
+            }
+            if (params.chunk_callback) {
+                const size_t appended = result.audio.size() - audio_size_before;
+                if (appended > 0) {
+                    params.chunk_callback(
+                        result.audio.data() + audio_size_before,
+                        static_cast<int32_t>(appended),
+                        job.is_last);
+                } else if (job.is_last) {
+                    // Still signal the terminal chunk so callers that
+                    // keyed off is_last don't hang waiting for one.
+                    params.chunk_callback(nullptr, 0, true);
+                }
             }
             if (job.is_last) {
                 return;

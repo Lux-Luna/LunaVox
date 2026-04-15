@@ -1,0 +1,31 @@
+{
+  "include": [
+    "src/lunavox",
+    "tests"
+  ],
+  "exclude": [
+    "src/lunavox/model/conversion",
+    "src/lunavox/gui",
+    "src/lunavox/serve",
+    "**/__pycache__",
+    "build",
+    "lib",
+    "models",
+    "logs"
+  ],
+  "pythonVersion": "3.10",
+  "pythonPlatform": "All",
+  "typeCheckingMode": "basic",
+  "useLibraryCodeForTypes": true,
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none",
+  "reportGeneralTypeIssues": "warning",
+  "reportPrivateImportUsage": "none",
+  "strict": [
+    "src/lunavox/core",
+    "src/lunavox/model/config.py",
+    "src/lunavox/runtime/errors.py",
+    "src/lunavox/runtime/params.py",
+    "src/lunavox/runtime/voice.py"
+  ]
+}

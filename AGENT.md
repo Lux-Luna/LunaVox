@@ -15,7 +15,7 @@ LunaVox 是一个面向 **Qwen3-TTS** 的高性能 C++ 推理引擎，外加一�
 - C++ 运行时轻量、低延迟、跨平台（Windows / Linux / macOS，含 Apple Silicon）
 - 硬件后端可插拔：CPU / CUDA / DML / Vulkan / CoreML / Metal
 - 覆盖 Qwen3-TTS 的四种模式：Base 合成、Voice Cloning、Custom Voice、Voice Design
-- 工具链闭环：`lunavox` CLI 一键完成 pull → convert → download-libs → build → 测试
+- 工具链闭环：`lunavox` CLI 一键完成 `model pull` → `model convert` → `build libs` → `build` → `synth` 测试
 
 **不在当前范围**：
 - 训练 / 微调（仅做推理与格式转换）
@@ -43,7 +43,7 @@ LunaVox 是一个面向 **Qwen3-TTS** 的高性能 C++ 推理引擎，外加一�
 | 音频 I/O (WAV + resample) | `src/audio_io.{h,cpp}` |
 | Python 包（CLI / 构建 / 模型工具链） | `src/lunavox/` |
 | CLI 入口 | `src/lunavox/cli/main.py`（`lunavox = lunavox.cli.main:run`） |
-| ctypes 运行时绑定（GUI / 脚本直调 C API） | `src/lunavox/runtime/binding.py` |
+| 运行时 Python 包（Engine / Voice / 参数 / ctypes） | `src/lunavox/runtime/{engine,voice,params,errors,_capi}.py` |
 | 构建驱动（跨平台） | `src/lunavox/build/{base,windows,linux,macos}.py` + `main.py` + factory in `__init__.py` |
 | 预编译库清单 | `src/lunavox/build/libs.json` |
 | 模型目录（单一真源） | `src/lunavox/model/config.py`（`MODELS` + `ModelSpec`） |
@@ -52,12 +52,12 @@ LunaVox 是一个面向 **Qwen3-TTS** 的高性能 C++ 推理引擎，外加一�
 | Rich Console 单例 | `src/lunavox/core/ui.py` |
 | Session 日志 | `src/lunavox/core/logging.py`（`session_start` + `append`） |
 | Python 平台抽象 | `src/lunavox/core/platform.py` |
-| GUI | `GUI/main.py`、`GUI/components/`、`GUI/engine.py` — 通过 `lunavox.runtime` + `lunavox.*` 直接调用，不 subprocess |
+| GUI | `src/lunavox/gui/{app,theme,i18n}.py`、`views/`、`widgets/` — `pip install "lunavox[gui]"`，通过 `lunavox.runtime.Engine` + `lunavox.runtime.Voice` 直接调用 |
 | 用户文档（英文） | `docs/en/{guide,install,technical,benchmark}/` |
 | 用户文档（中文） | `docs/zh/` |
 | 运行时规范 / 合成通路 | `docs/en/technical/{model_profile,synthesis_pathway}.md` |
 | CLI 参考 | `docs/en/guide/cli_reference.md` |
-| Python 包元数据 / 版本 | `pyproject.toml`（当前 2.1.6） |
+| Python 包元数据 / 版本 | `pyproject.toml`（当前 2.2.0） |
 | 发布 CLI-only 源码分支 | GitHub `cli-only` 分支（不在本仓库内） |
 | 模型权重（本地缓存） | `models/{base,base_small,custom,custom_small,design}/` |
 | 参考音频 / 特征 | `ref/ref.wav`、`ref/ref_0.6B.json`、`ref/ref_1.7B.json` |
@@ -91,18 +91,33 @@ lunavox/
 │   ├── string_utils.h / timing_utils.h / format_utils.h
 │   ├── json_utils.h / logger.*
 │   └── lunavox/                  # Python 包
-│       ├── cli/main.py           # typer app
-│       ├── runtime/binding.py    # ctypes 绑定 → liblunavox
+│       ├── cli/                  # typer app + 分组子命令 (model/build/synth/gui/...)
+│       │   ├── main.py           #   入口 + 组装
+│       │   ├── _common.py        #   共享 state / model picker
+│       │   ├── _config.py        #   ~/.lunavox/config.toml profile loader
+│       │   ├── {model,build,synth,gui,bootstrap,doctor}_cmd.py
+│       ├── runtime/              # 运行时 Python 包
+│       │   ├── engine.py         #   Engine 类 + 单一 synthesize 入口
+│       │   ├── voice.py          #   Voice 一等对象（base/clone_file/custom/design）
+│       │   ├── params.py         #   SynthesisParams/Stats/Result/Mode
+│       │   ├── errors.py         #   LunavoxLibraryError / LunavoxSynthesisError
+│       │   └── _capi.py          #   ctypes 结构 + loader + _bind_symbols
+│       ├── gui/                  # customtkinter 桌面 GUI（[gui] 可选 extra）
+│       │   ├── app.py            #   LunaVoxApp 主窗 + 侧栏导航
+│       │   ├── theme.py i18n.py  #   视觉 token + 翻译
+│       │   ├── views/            #   synth_view / library_view / settings_view
+│       │   └── widgets/          #   voice_picker / param_slider / stats_card
+│       ├── serve/                # FastAPI HTTP/WS 服务层（[serve] 可选 extra）
+│       │   ├── server.py         #   create_app() + /v1/synth + WS /v1/stream
+│       │   ├── engine_holder.py  #   单 Engine + asyncio.Lock
+│       │   └── schemas.py        #   pydantic 请求 / 响应
 │       ├── build/                # base/windows/linux/macos + factory
 │       ├── core/                 # ui, logging, project, platform, deps
 │       └── model/                # config(MODELS), downloader, pipeline + conversion/
-├── GUI/                    # customtkinter 桌面 GUI（薄壳，通过 lunavox.runtime 直调 C API）
-│   ├── main.py  main_setup.py  engine.py  i18n.py
-│   └── components/{header,report,setup_page}.py
-├── lib/                    # 运行时库（ONNX Runtime / llama.cpp），由 download-libs 填充
+├── lib/                    # 运行时库（ONNX Runtime / llama.cpp），由 `lunavox build libs` 填充
 │   ├── onnx/               # include/ + lib/
 │   └── llama/              # 预编译二进制
-├── models/                 # 本地模型目录（pull-model 填充）
+├── models/                 # 本地模型目录（`lunavox model pull` 填充）
 ├── ref/                    # 克隆参考素材
 ├── docs/{en,zh}/           # 面向用户的文档（非 agent 运行手册）
 ├── build/                  # CMake 构建产物
@@ -123,9 +138,11 @@ lunavox/
 - **改模型下载 / 转换 / 量化**：`src/lunavox/model/`，特别是 `conversion/`
 - **改 Python 平台差异（`sys.platform`）**：`src/lunavox/core/platform.py`（唯一入口；build factory 是允许的例外）
 - **改 Console / 日志**：`src/lunavox/core/ui.py`（Rich 单例）+ `src/lunavox/core/logging.py`（`session_start` / `append`）
-- **改 GUI**：`GUI/`（薄壳，通过 `lunavox.runtime.Engine` + `lunavox.*` 直调；禁止 subprocess）
-- **改 ctypes 绑定**：`src/lunavox/runtime/binding.py`（随 C API 变更同步）
-- **改 C ABI**：`src/lunavox_c_api.*`——稳定对外面，改动必须同步 `src/lunavox/runtime/binding.py`、`GUI/engine.py` 和任何外部绑定
+- **改 GUI**：`src/lunavox/gui/`（薄壳，通过 `lunavox.runtime.Engine` + `lunavox.runtime.Voice` 直调；禁止 subprocess；视觉 token 改 `theme.py`）
+- **改 serve 层**：`src/lunavox/serve/`（FastAPI，单 Engine + asyncio.Lock，`[serve]` extra；handler 只做 voice/params 组装和 WS 推送，合成路径走 `Engine.synthesize` / `Engine.synthesize_stream`）
+- **改 ctypes 绑定**：`src/lunavox/runtime/_capi.py`（随 C API 变更同步），高层接口在 `engine.py`
+- **改 C ABI**：`src/lunavox_c_api.*`——稳定对外面，改动必须同步 `src/lunavox/runtime/_capi.py` 的 `_bind_symbols` 与任何外部绑定
+- **新增合成模式**：在 `src/lunavox/runtime/voice.py` 加 `Voice.<mode>()` 工厂 + 在 `engine.py::Engine._dispatch` 加一条分支。其他地方（CLI / GUI）零改动。
 - **改依赖自动安装策略**：`src/lunavox/core/deps.py`
 
 ## 5. Commands
@@ -140,15 +157,19 @@ pip install -e ".[convert,dev]"
 # 或：只装核心 CLI
 pip install -e .
 
-# CLI 一键闭环（拉模型 + 下运行库 + 构建 + 交互测试）
+# CLI 一键闭环（拉模型 + 下运行库 + 构建 + 冒烟合成）
 lunavox bootstrap
 
 # 单步
-lunavox pull-model           # 从 HF 拉预转换模型
-lunavox download-libs        # 下 ONNX Runtime + llama.cpp 到 lib/
-lunavox build --clean        # 调用 CMake 构建 C++ 引擎
-lunavox convert <model>      # 本地权重 → onnx/gguf/embedding
-lunavox doctor               # 环境自检
+lunavox model pull            # 从 HF 拉预转换模型
+lunavox model convert <name>  # 本地权重 → onnx/gguf/embedding
+lunavox model list            # 查看目录和本地安装状态
+lunavox build libs            # 下 ONNX Runtime + llama.cpp 到 lib/
+lunavox build --clean         # 调用 CMake 构建 C++ 引擎
+lunavox synth "文本" -o out.wav  # 进程内直接合成（走 Engine）
+lunavox gui                   # 启动桌面 GUI（需 [gui] extra）
+lunavox doctor                # 环境自检
+lunavox --profile quality synth "…"  # 使用 ~/.lunavox/config.toml 的 profile
 ```
 
 ### C++ 构建（直接 CMake，不经 CLI）
@@ -179,7 +200,8 @@ cmake --build build -j
 
 ### GUI
 ```bash
-python GUI/main.py
+pip install "lunavox[gui]"
+lunavox gui
 ```
 
 ## 6. Code style rules（LunaVox 特有）
@@ -206,11 +228,12 @@ python GUI/main.py
 - 平台差异走 `lunavox.core.platform` (`shared_lib_name`, `executable_suffix`, `is_*`)。`build/__init__.py` 的 `get_builder_class`/`get_resolver_class` 工厂是允许的例外。
 - 模型目录的唯一真源是 `lunavox.model.config.MODELS` + `ModelSpec`。新增模型只改 `config.py`。
 
-**GUI（`GUI/`）**
-- customtkinter + pygame，i18n 走 `GUI/i18n.py`。
-- UI 组件按页面拆入 `components/`，不要把逻辑塞进 `main.py`。
-- **薄壳**：GUI 不自己做业务。合成走 `lunavox.runtime.Engine`（ctypes 直调 C API），build/pull-model/download-libs 走 `lunavox.build.main.run_build` / `lunavox.model.ModelDownloader` / `lunavox.build.lib_downloader.download_platform_libs`。
-- **禁止 `subprocess`**：没有任何 `subprocess.Popen(['lunavox', ...])` 或调 `lunavox-cli`。后台长任务用 `threading.Thread(daemon=True)` + `tk.after(0, ...)` 回调主线程。
+**GUI（`src/lunavox/gui/`）**
+- customtkinter + pygame，翻译走 `src/lunavox/gui/i18n.py::Translator`，视觉 token 走 `theme.py`。
+- 视图按功能拆入 `views/`（synth / library / settings），可复用控件拆入 `widgets/`（voice_picker / param_slider / stats_card）。`app.py` 只负责窗口 + 侧栏导航 + 视图切换。
+- **薄壳**：GUI 不自己做业务。合成走 `lunavox.runtime.Engine` + `lunavox.runtime.Voice`；模型 / 构建操作走 `lunavox.cli` 里对应命令的内部函数（例如 `cli.synth_cmd._run_synth`），不要复制一份。
+- **禁止 `subprocess`**：没有任何 `subprocess.Popen(['lunavox', ...])` 或调 `lunavox-cli`，也不允许拼 CLI 命令字符串让用户复制粘贴。后台长任务用 `threading.Thread(daemon=True)` + `tk.after(0, ...)` 回调主线程。
+- customtkinter / pygame 都在 `[gui]` 可选 extra 里——`src/lunavox/gui/` 之外的代码禁止 import 它们。
 
 **通用**
 - 默认 **不写注释**。只有 WHY 不明显（硬件约束、平台差异、兼容性假设、非直觉算法）才加一行。
@@ -236,9 +259,9 @@ python GUI/main.py
 ## 8. Safety boundaries
 
 **禁止**：
-- 修改 `lib/onnx/` 或 `lib/llama/` 下的内容——那是 `download-libs` 的输出，应通过 `libs.json` + `lib_downloader.py` 控制。
+- 修改 `lib/onnx/` 或 `lib/llama/` 下的内容——那是 `lunavox build libs` 的输出，应通过 `libs.json` + `lib_downloader.py` 控制。
 - 修改 `build/` 或 `logs/` 下的产物（`logs/latest.log` 由 CLI 自己重写）。
-- 修改 `models/`、`ref/` 下的二进制 / 权重文件——只能通过 `pull-model` / `convert` 生成。
+- 修改 `models/`、`ref/` 下的二进制 / 权重文件——只能通过 `lunavox model pull` / `lunavox model convert` 生成。
 - 修改 `LICENSE`、`models/LICENSE`、`pyproject.toml` 里的 `license` 字段、`authors` 字段，除非用户显式要求。
 - 升版 `pyproject.toml` 里的 `version`——除非发布任务里明确说要升。
 - 改动 HuggingFace 上传 / 模型分发相关脚本时，不要触发实际上传（`hf_export/`）。
@@ -246,8 +269,8 @@ python GUI/main.py
 
 **需要先确认**：
 - C ABI (`lunavox_c_api.*`) 的签名变更（虽然不保留兼容，但 GUI / CLI / 外部绑定都依赖它，改动面大）
-- `libs.json` 中运行时库的版本切换（会影响所有平台用户的下一次 `download-libs`）
-- `pull-model` 指向的 HF 仓库名 / 路径
+- `libs.json` 中运行时库的版本切换（会影响所有平台用户的下一次 `lunavox build libs`）
+- `lunavox model pull` 指向的 HF 仓库名 / 路径
 - 删除 `src/*.cpp` 或 `src/lunavox/` 下整块文件
 
 **可以自由做**：
@@ -279,7 +302,7 @@ python GUI/main.py
 ## 11. When to escalate to a human
 
 遇到以下情况停手并问用户：
-- 需要真的访问网络执行 `pull-model` / `download-libs`（可能下载数 GB）
+- 需要真的访问网络执行 `lunavox model pull` / `lunavox build libs`（可能下载数 GB）
 - 需要实际触发 HuggingFace 上传
 - 需要 bump `pyproject.toml` 版本或打 release tag
 - C++ 改动导致 RTF 明显劣化且根因不明

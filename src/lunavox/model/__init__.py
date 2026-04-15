@@ -3,8 +3,8 @@ from __future__ import annotations
 from .config import (
     MODELS,
     ModelConfig,
-    ModelSpec,
     Models,
+    ModelSpec,
     all_models,
     get_model,
     get_snapshot,

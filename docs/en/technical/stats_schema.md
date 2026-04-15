@@ -92,5 +92,5 @@ The Python binding mirrors this subset as `SynthesisStats`. The finer `llama_*` 
 ## Consumers
 
 - `benchmark/run_benchmark.py` — reads `--stats-json` to compute the 100-run latency / TTFB / RTF / memory distribution that powers `benchmark/report.md`.
-- `GUI/engine.py::format_metrics` — projects `SynthesisStats` into the report panel strings.
+- `lunavox.gui.widgets.stats_card::StatsCard.update_stats` — renders `SynthesisStats` directly into the GUI's stats card (no legacy dict projection).
 - New tooling should import from `lunavox.core.stats_schema` instead of poking at free-form dicts.

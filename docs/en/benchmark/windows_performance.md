@@ -65,7 +65,7 @@ This report summarizes the performance of the LunaVox inference engine on Window
 
 ```powershell
 # 1. For each backend: set the target provider, clean-build, and run 100 reps.
-lunavox download-libs --platform win_vulkan  # or win_cuda13 / win_cpu
+lunavox build libs --platform win_vulkan  # or win_cuda13 / win_cpu
 lunavox build --clean
 python benchmark/run_benchmark.py --backend vulkan   # or cuda / cpu
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lunavox"
-version = "2.1.6"
+version = "2.2.0"
 description = "LunaVox tooling CLI for model setup, conversion, quantization, and build workflows."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,8 +14,7 @@ dependencies = [
   "typer>=0.12.0",
   "rich>=13.7.0",
   "huggingface_hub>=0.24.0",
-  "customtkinter>=5.2.0",
-  "pygame>=2.5.0",
+  "tomli>=2.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -40,8 +39,27 @@ convert = [
 ]
 dev = [
   "pytest>=8.2",
+  "ruff>=0.6",
+  "pyright>=1.1.380",
   "build>=1.2",
   "twine>=5.1",
+]
+docs = [
+  "mkdocs>=1.6",
+  "mkdocs-material>=9.5",
+  "mkdocstrings[python]>=0.26",
+]
+gui = [
+  "customtkinter>=5.2.0",
+  "pygame>=2.5.0",
+  "numpy",
+]
+serve = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.0",
+  "prometheus-client>=0.20",
+  "numpy",
 ]
 
 [project.scripts]
@@ -56,3 +74,44 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "lunavox.build" = ["*.json"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = [
+  "src/lunavox/model/conversion/hf_export",
+  "build",
+  "lib",
+  "models",
+  "logs",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+  "E501",  # line-length handled by formatter; long lines in tables/URLs are fine
+  "B008",  # function-call-in-default-argument: typer uses this idiomatically
+  "UP007", # keep Optional[X] for ctypes/binding clarity
+  "UP045", # X | None — let callers choose
+  "SIM108",# ternary vs if/else readability is case-by-case
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = [
+  "error",
+  "ignore::DeprecationWarning:huggingface_hub.*",
+  # torch <= 2.6 imports the deprecated `pynvml` shim, which itself emits
+  # a FutureWarning via a custom finder. Not actionable in LunaVox.
+  "ignore::FutureWarning:_pynvml_redirector",
+  "ignore::FutureWarning:torch.cuda",
+]

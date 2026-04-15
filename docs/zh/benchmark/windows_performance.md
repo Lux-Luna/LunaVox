@@ -65,7 +65,7 @@
 
 ```powershell
 # 1. 对每种后端：设置目标 provider、clean-build、跑 100 次。
-lunavox download-libs --platform win_vulkan  # 或 win_cuda13 / win_cpu
+lunavox build libs --platform win_vulkan  # 或 win_cuda13 / win_cpu
 lunavox build --clean
 python benchmark/run_benchmark.py --backend vulkan   # 或 cuda / cpu
 

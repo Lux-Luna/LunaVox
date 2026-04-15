@@ -74,6 +74,27 @@ typedef void (*LunavoxLogCallback)(LunavoxLogLevel level, const char* message, v
  * logger without parsing stdout. */
 void lunavox_set_log_callback(LunavoxLogCallback cb, void* user_data);
 
+/* Streaming audio chunk callback. Fires from the decoder worker thread
+ * as each PCM chunk becomes available during synthesis.
+ *
+ *   samples     — pointer to the newly produced float32 PCM slice.
+ *                 Valid only for the duration of the callback; copy it
+ *                 if you need to keep it past the callback return.
+ *   n_samples   — number of samples in this slice. May be zero on the
+ *                 terminal chunk (is_last=1) if no new audio was produced.
+ *   is_last     — 1 on the final chunk of a synthesis call, 0 otherwise.
+ *   user_data   — opaque pointer passed to lunavox_synthesize_streaming.
+ *
+ * The callback must not block for long: any stall here stalls synthesis
+ * because it runs inline on the decoder worker thread. The Python
+ * binding handles this by pushing slices into a bounded queue and
+ * having the main thread drain them. */
+typedef void (*LunavoxAudioChunkCallback)(
+    const float* samples,
+    int32_t n_samples,
+    int32_t is_last,
+    void* user_data);
+
 /* Create TTS engine and load models from directory.
  * New default layout expects:
  *   lunavox_talker*.gguf
@@ -165,6 +186,59 @@ LunavoxAudio* lunavox_synthesize_design(
     const char* text,
     const char* instruct,
     const LunavoxSynthesisParams* params);
+
+/* Streaming base-mode synthesis. Functionally equivalent to
+ * lunavox_synthesize but fires `chunk_cb` from the decoder worker
+ * thread as each PCM slice becomes available, giving callers a
+ * progressive audio stream while still returning the cumulative
+ * LunavoxAudio* on completion. The callback receives both the
+ * intermediate chunks and (exactly once) a terminal chunk with
+ * is_last=1 — callers can use that as the end-of-stream signal.
+ *
+ * Returns NULL on failure. Caller must free with lunavox_free_audio().
+ * This is the streaming entry used by `lunavox serve` and the
+ * FastAPI WebSocket endpoint. */
+LunavoxAudio* lunavox_synthesize_streaming(
+    LunavoxEngine* tts,
+    const char* text,
+    const LunavoxSynthesisParams* params,
+    LunavoxAudioChunkCallback chunk_cb,
+    void* user_data);
+
+/* Streaming voice-clone synthesis (reference WAV or pre-computed
+ * .json feature file). Same semantics as lunavox_synthesize_streaming;
+ * clone pipeline runs first, then the decoder-chunk callback fires as
+ * each PCM slice becomes available. */
+LunavoxAudio* lunavox_synthesize_with_voice_file_streaming(
+    LunavoxEngine* tts,
+    const char* text,
+    const char* reference_audio_path,
+    const LunavoxSynthesisParams* params,
+    LunavoxAudioChunkCallback chunk_cb,
+    void* user_data);
+
+/* Streaming custom-voice synthesis. speaker must resolve to a
+ * catalog entry in the active model profile; instruct may be NULL
+ * or empty for tone-neutral generation. */
+LunavoxAudio* lunavox_synthesize_custom_streaming(
+    LunavoxEngine* tts,
+    const char* text,
+    const char* speaker,
+    const char* instruct,
+    const LunavoxSynthesisParams* params,
+    LunavoxAudioChunkCallback chunk_cb,
+    void* user_data);
+
+/* Streaming voice-design synthesis. instruct is the required
+ * non-empty voice description; no speaker or reference audio is
+ * accepted. */
+LunavoxAudio* lunavox_synthesize_design_streaming(
+    LunavoxEngine* tts,
+    const char* text,
+    const char* instruct,
+    const LunavoxSynthesisParams* params,
+    LunavoxAudioChunkCallback chunk_cb,
+    void* user_data);
 
 /* Get last error message (or empty string) */
 const char* lunavox_get_error(const LunavoxEngine* tts);
