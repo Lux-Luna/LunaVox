@@ -34,7 +34,7 @@ Flags:
 | `--host` | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces. |
 | `--port` | `8000` | Bind port. |
 | `--model` | (profile default) | Model directory name under `models/`. |
-| `--batch-size` | `4` | Concurrent request pool size. Each slot loads its own engine — plan on `N ×` per-engine VRAM. Set `1` for low-VRAM deployments. |
+| `--batch-size` | `4` | Concurrent request pool size. Pass an integer (1–16) or `auto` to probe free VRAM via pynvml and pick a safe value. Each slot loads its own engine — plan on `N ×` per-engine VRAM. Set `1` for low-VRAM deployments. |
 | `--log-level` | `info` | uvicorn log level (`critical`/`error`/`warning`/`info`/`debug`). |
 
 The active profile, threads, and sampler defaults come from your
@@ -158,6 +158,89 @@ Catalog listing — every model in `lunavox.model.config.MODELS` with
 an `installed` flag indicating whether it exists under `models/` on
 disk.
 
+### `GET /metrics`
+
+Prometheus scrape endpoint (Phase 5C). Returns the standard
+`text/plain; version=0.0.4` exposition with these metrics:
+
+| Metric | Type | Labels | Meaning |
+| :--- | :--- | :--- | :--- |
+| `lunavox_pool_size` | gauge | — | Total engines in the BatchEngine pool |
+| `lunavox_pool_idle` | gauge | — | Idle engines (free for new requests) |
+| `lunavox_requests_total` | counter | `voice`, `status` | Synthesis requests served |
+| `lunavox_request_duration_seconds` | histogram | `voice` | Server-side wall time per request |
+| `lunavox_rtf` | histogram | `voice` | Engine-reported real-time factor |
+
+Pool gauges refresh on every scrape so a quiet deployment still
+reports current state. Histograms use buckets tuned to a typical
+RTX 3090 Vulkan run (RTF ~0.15, latency ~1.3 s for 25 words).
+
+### `WS /v1/stream/text` — Sentence-Streaming Input
+
+Phase 5C input-streaming endpoint for voice agents. The pattern is
+LLM-driven: an upstream LLM streams tokens / words / phrases into
+LunaVox over a text channel, and LunaVox starts emitting audio
+after each complete sentence — instead of waiting for the full
+reply to be generated first. Approximate end-to-end latency drops
+from "full LLM reply time + first sentence TTFB" to "first
+sentence LLM time + first sentence TTFB".
+
+Protocol:
+
+1. **Init** — Client sends one JSON text frame:
+   ```json
+   {
+     "voice": "base",
+     "temperature": 0.7
+   }
+   ```
+   Voice / sampler fields match `SynthRequest` minus `text`.
+
+2. **Text chunks** — Client sends N JSON text frames as the LLM
+   produces output:
+   ```json
+   {"text": "Hello there. "}
+   {"text": "How are "}
+   {"text": "you today? "}
+   ```
+   The server feeds each chunk into a `SentenceBuffer` and emits
+   complete sentences as soon as a terminator + whitespace lands.
+
+3. **Audio** — For each complete sentence, the server pushes
+   binary frames containing raw int16 LE PCM at the engine's
+   sample rate. Multiple sentences interleave naturally — chunks
+   for sentence N arrive in order, then chunks for sentence N+1.
+
+4. **End** — Client signals end-of-stream:
+   ```json
+   {"end": true}
+   ```
+   The server flushes any leftover partial sentence (no trailing
+   terminator) as the final synthesis unit.
+
+5. **Terminal** — Server sends one JSON text frame and closes:
+   ```json
+   {
+     "done": true,
+     "sample_rate": 24000,
+     "sentences": 3,
+     "stats": {
+       "t_total_ms": 1240,
+       "audio_duration_ms": 4500,
+       "rtf": 0.275,
+       "rss_peak_bytes": 1500000000
+     }
+   }
+   ```
+   `sentences` is the count of synthesized units; `stats` carries
+   the timing / memory snapshot of the **last** sentence (the
+   per-sentence window that's most useful for trailing latency).
+
+Sentence boundary detection: simple regex on `[.!?]` followed by
+whitespace for English / `[。！？…．]` self-terminating for CJK.
+Fragments shorter than 4 characters are held back so abbreviation
+patterns like "Mr." don't get flushed as standalone sentences.
+
 ## Stats envelope
 
 All endpoints that return a successful synthesis include a
@@ -168,15 +251,18 @@ All endpoints that return a successful synthesis include a
 - `rtf` — real-time factor (`t_total_ms / audio_duration_ms`)
 - `rss_peak_bytes` — peak resident-set memory during synthesis
 
-## What's next (Phase 5C)
+## What's next (Phase 5C completion + future)
 
-- True llama.cpp continuous batching via `n_seq_max > 1`, collapsing
-  the N× KV cache cost while keeping the same BatchEngine API
-- Prometheus `/metrics` endpoint (queue depth, per-engine RTF, VRAM)
-- Sentence-level **input** streaming (client feeds text over WS as
-  the LLM generates it, server starts synthesising before the full
-  sentence arrives)
-- VRAM-aware `--batch-size auto` that inspects free VRAM at startup
+Phase 5C ships these (in this release):
 
-The HTTP / WebSocket surface documented here is stable across those
-upgrades — 5C tunes the internals, not the API.
+- ✅ `GET /metrics` Prometheus endpoint with pool / requests / RTF
+- ✅ `WS /v1/stream/text` sentence-level input streaming for voice agents
+- ✅ `--batch-size auto` VRAM probe via pynvml
+
+Still pending — slated for a dedicated future session:
+
+- True llama.cpp continuous batching (`n_seq_max > 1` in
+  `llama_wrapper.cpp` + per-sequence state in `TalkerPredictor`).
+  Collapses the `N ×` KV cache cost while keeping the same
+  BatchEngine + serving API. Estimated 2–3 days of focused C++
+  work, deferred so the rest of 5C could ship cleanly.

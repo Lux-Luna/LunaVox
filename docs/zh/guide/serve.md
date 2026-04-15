@@ -33,7 +33,7 @@ lunavox --profile quality serve --batch-size 2
 | `--host` | `127.0.0.1` | 监听地址，使用 `0.0.0.0` 监听所有网卡。 |
 | `--port` | `8000` | 监听端口。 |
 | `--model` | 当前 profile 默认值 | `models/` 下的模型目录名。 |
-| `--batch-size` | `4` | 并发请求池大小。每个槽位加载一份独立的 Engine —— 按 `N ×` 单 Engine VRAM 预算；低显存部署设为 `1`。 |
+| `--batch-size` | `4` | 并发请求池大小。可传整数（1–16）或 `auto`：`auto` 会通过 pynvml 探测空闲 VRAM 并自动算一个安全值。每个槽位加载一份独立的 Engine —— 按 `N ×` 单 Engine VRAM 预算；低显存部署设为 `1`。 |
 | `--log-level` | `info` | uvicorn 日志级别（`critical`/`error`/`warning`/`info`/`debug`）。 |
 
 当前生效的 profile、线程数、采样默认值全部来自 `~/.lunavox/config.toml`，
@@ -150,6 +150,82 @@ RTX 3090 + Vulkan+DML 配置下首包通常在 ~200 ms 到达，后续 chunk
 目录列表 —— `lunavox.model.config.MODELS` 中所有条目，并带
 `installed` 字段标识本地 `models/` 下是否存在。
 
+### `GET /metrics`
+
+Phase 5C Prometheus 抓取端点，返回标准
+`text/plain; version=0.0.4` 格式：
+
+| 指标 | 类型 | 标签 | 含义 |
+| :--- | :--- | :--- | :--- |
+| `lunavox_pool_size` | gauge | — | BatchEngine pool 总槽位数 |
+| `lunavox_pool_idle` | gauge | — | 当前空闲槽位数 |
+| `lunavox_requests_total` | counter | `voice`, `status` | 累计合成请求数 |
+| `lunavox_request_duration_seconds` | histogram | `voice` | 服务端单请求墙钟时长 |
+| `lunavox_rtf` | histogram | `voice` | 引擎报告的实时率 |
+
+每次抓取都会刷新 pool gauge 数据，所以低流量部署也能反映当前
+状态。Histogram 的 bucket 是按 RTX 3090 Vulkan 典型负载（25
+词英文 RTF ~0.15、延迟 ~1.3 s）调过的。
+
+### `WS /v1/stream/text` —— 句级文本流式输入
+
+Phase 5C 给 voice agent 加的输入流式端点。典型模式：上游 LLM
+通过文本通道把 token / 词 / 短语流式推进 LunaVox，LunaVox 不等
+完整回复就开始按句输出音频 —— 端到端延迟从"完整 LLM 回复时长
++ 首句 TTFB"降到"首句 LLM 时长 + 首句 TTFB"。
+
+协议：
+
+1. **Init** —— 客户端发送 1 个 JSON 文本帧：
+   ```json
+   {
+     "voice": "base",
+     "temperature": 0.7
+   }
+   ```
+   voice / 采样字段与 `SynthRequest` 一致，但没有 `text`。
+
+2. **文本分片** —— 客户端边接 LLM 输出边发送 N 个 JSON 帧：
+   ```json
+   {"text": "你好。"}
+   {"text": "今天天气"}
+   {"text": "怎么样？"}
+   ```
+   服务端把每个分片喂进 `SentenceBuffer`，一旦遇到终止符就立刻
+   把完整句子吐给合成器。
+
+3. **音频** —— 每个完整句子的 PCM 通过二进制帧推送（int16 LE，
+   引擎采样率）。多句之间天然交错 —— 第 N 句的 chunk 全部到达
+   后，第 N+1 句的 chunk 接着到达。
+
+4. **End** —— 客户端发送终止帧：
+   ```json
+   {"end": true}
+   ```
+   服务端把缓冲区里没有终止符的残留作为最后一个合成单位 flush
+   出去。
+
+5. **Terminal** —— 服务端发送 1 个 JSON 帧后关闭连接：
+   ```json
+   {
+     "done": true,
+     "sample_rate": 24000,
+     "sentences": 3,
+     "stats": {
+       "t_total_ms": 1240,
+       "audio_duration_ms": 4500,
+       "rtf": 0.275,
+       "rss_peak_bytes": 1500000000
+     }
+   }
+   ```
+   `sentences` 是合成的句子总数；`stats` 是**最后一个句子**的
+   时延 / 内存快照（最反映尾包延迟的指标）。
+
+句子边界检测：英文用 `[.!?]` + 空白；中日韩用 `[。！？…．]`
+自终止。短于 4 字符的片段（如 "Mr."）会留在缓冲区不立刻 flush，
+避免缩写被当成独立句子。
+
 ## Stats 信封
 
 所有成功合成响应都会附带一份 `SynthStatsResponse`：
@@ -159,13 +235,18 @@ RTX 3090 + Vulkan+DML 配置下首包通常在 ~200 ms 到达，后续 chunk
 - `rtf` —— 实时率（`t_total_ms / audio_duration_ms`）
 - `rss_peak_bytes` —— 合成期间常驻内存峰值
 
-## 后续计划（Phase 5C）
+## 后续计划（Phase 5C 完成情况 + 未来）
 
-- 通过 `n_seq_max > 1` 做真正的 llama.cpp continuous batching，把 N×
-  KV cache 代价合并成 1×，BatchEngine API 保持不变
-- Prometheus `/metrics` 端点（队列深度、逐 engine RTF、VRAM）
-- 句级**输入**流式（客户端通过 WS 持续送文本，服务端边收边合成）
-- VRAM 感知的 `--batch-size auto`，启动时检测空闲显存自动定大小
+本次发布交付的 5C 内容：
 
-本页记录的 HTTP / WebSocket 接口会在这些升级中保持稳定 —— 5C 只调
-内部实现，不改 API。
+- ✅ `GET /metrics` Prometheus 指标（pool / 请求 / RTF）
+- ✅ `WS /v1/stream/text` 句级文本流式输入（voice agent 模式）
+- ✅ `--batch-size auto` 通过 pynvml 探测显存自动定大小
+
+延后到独立 session 的部分：
+
+- 真正的 llama.cpp continuous batching（`llama_wrapper.cpp` 把
+  `n_seq_max > 1` 打开 + `TalkerPredictor` 内部按 sequence 切状
+  态）。把 `N ×` KV cache 代价合并成 1×，BatchEngine + 服务端
+  API 完全不动。预计 2-3 天专注 C++ 工作量，本次为了让 5C 其余
+  部分干净落地而推迟。

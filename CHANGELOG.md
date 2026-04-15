@@ -7,6 +7,56 @@ and this project loosely follows [Semantic Versioning](https://semver.org/spec/v
 
 ## [Unreleased]
 
+### Added — Phase 5C
+
+- **`GET /metrics` Prometheus endpoint** — five core metrics
+  (pool size, idle slots, requests counter labelled by voice +
+  status, request latency histogram, RTF histogram). New
+  `LunavoxMetrics` class in `src/lunavox/serve/metrics.py` owns its
+  own `CollectorRegistry` so multiple apps in the same process
+  don't collide.
+- **`WS /v1/stream/text` sentence-streaming input endpoint** —
+  voice-agent pattern where an upstream LLM streams text chunks
+  into LunaVox and audio comes back per complete sentence. New
+  `SentenceBuffer` + sentence splitter in
+  `src/lunavox/serve/sentence_buffer.py`. Three new pydantic
+  schemas (`TextStreamInit`, `TextStreamChunk`, `TextStreamEnd`)
+  for the protocol frames. End-to-end TTFB drops from "full LLM
+  reply + first sentence TTFB" to "first sentence LLM time +
+  first sentence TTFB".
+- **`--batch-size auto`** — VRAM-aware pool sizing via
+  `pynvml.nvmlDeviceGetMemoryInfo`. Probes free VRAM, divides by a
+  per-slot estimate (1.1 GB for `*_small` models, 3.1 GB for
+  larger ones), reserves 20% headroom, clamps to `[1, 16]`.
+  `LUNAVOX_VRAM_PER_SLOT_MB` env var lets ops force the per-slot
+  estimate when the heuristic is wrong. Falls back to the literal
+  number `4` when pynvml is unavailable (CPU-only / AMD / Intel
+  hosts) so the server still starts.
+- **`prometheus-client>=0.20`** added to the `[serve]` optional
+  extra so `pip install "lunavox[serve]"` brings the metrics
+  dependency along.
+- **18 new tests**: `test_serve_metrics.py` (4),
+  `test_serve_sentence_buffer.py` (7), `test_serve_auto_batch.py`
+  (7) — all gated behind `[serve]` via `pytest.importorskip`.
+
+### Changed — Phase 5C
+- `lunavox serve --batch-size` now accepts a string instead of an
+  int so `auto` is a valid value. Integer values still work
+  (`--batch-size 4`, `--batch-size 1`); the CLI passes the literal
+  to `auto_batch.resolve_batch_size` which clamps to `[1, 16]`.
+- `BatchEngine` exposes `idle_count` / `busy_count` properties so
+  the metrics layer can read pool state without poking at the
+  private `_idle` queue. `idle + busy == batch_size` holds by
+  construction.
+- `POST /v1/synth` and `WS /v1/stream` are instrumented end-to-end:
+  every request bumps `requests_total{voice=...,status=...}`,
+  observes `request_duration_seconds`, and observes `rtf` when the
+  engine reported one.
+- Bilingual `serve.md` rewritten to document `/metrics`,
+  `/v1/stream/text`, and `--batch-size auto`. Phase 5C "what's
+  next" section now lists the three shipped items as ✅ and
+  identifies true continuous batching as the only deferred piece.
+
 ### Added — Phase 5B
 
 - **`BatchEngine` concurrent-request pool** (`lunavox.runtime.BatchEngine`):
