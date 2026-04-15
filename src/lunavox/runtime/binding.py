@@ -19,14 +19,16 @@ Design:
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import os
 import sys
 import threading
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 from lunavox.core.platform import shared_lib_name
 from lunavox.core.project import resolve_project_root
@@ -47,31 +49,31 @@ class LunavoxSynthesisError(RuntimeError):
 
 class _CParams(ctypes.Structure):
     _fields_ = [
-        ("max_audio_tokens",   ctypes.c_int32),
-        ("temperature",        ctypes.c_float),
-        ("top_p",              ctypes.c_float),
-        ("top_k",              ctypes.c_int32),
-        ("n_threads",          ctypes.c_int32),
+        ("max_audio_tokens", ctypes.c_int32),
+        ("temperature", ctypes.c_float),
+        ("top_p", ctypes.c_float),
+        ("top_k", ctypes.c_int32),
+        ("n_threads", ctypes.c_int32),
         ("repetition_penalty", ctypes.c_float),
-        ("language_id",        ctypes.c_int32),
-        ("ref_text",           ctypes.c_char_p),
+        ("language_id", ctypes.c_int32),
+        ("ref_text", ctypes.c_char_p),
     ]
 
 
 class _CAudio(ctypes.Structure):
     _fields_ = [
-        ("samples",          ctypes.POINTER(ctypes.c_float)),
-        ("n_samples",        ctypes.c_int32),
-        ("sample_rate",      ctypes.c_int32),
-        ("t_tokenize_ms",    ctypes.c_int64),
-        ("t_encode_ms",      ctypes.c_int64),
-        ("t_generate_ms",    ctypes.c_int64),
-        ("t_decode_ms",      ctypes.c_int64),
-        ("t_total_ms",       ctypes.c_int64),
+        ("samples", ctypes.POINTER(ctypes.c_float)),
+        ("n_samples", ctypes.c_int32),
+        ("sample_rate", ctypes.c_int32),
+        ("t_tokenize_ms", ctypes.c_int64),
+        ("t_encode_ms", ctypes.c_int64),
+        ("t_generate_ms", ctypes.c_int64),
+        ("t_decode_ms", ctypes.c_int64),
+        ("t_total_ms", ctypes.c_int64),
         ("audio_duration_ms", ctypes.c_int64),
-        ("rtf",              ctypes.c_float),
-        ("rss_peak_bytes",   ctypes.c_uint64),
-        ("rss_end_bytes",    ctypes.c_uint64),
+        ("rtf", ctypes.c_float),
+        ("rss_peak_bytes", ctypes.c_uint64),
+        ("rss_end_bytes", ctypes.c_uint64),
     ]
 
 
@@ -140,10 +142,8 @@ def _load_library() -> ctypes.CDLL:
                 # etc.). On Windows the loader needs that directory on the
                 # DLL search path before CDLL is called.
                 if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
-                    try:
+                    with contextlib.suppress(OSError):
                         os.add_dll_directory(str(path.parent))
-                    except OSError:
-                        pass
                 _lib = ctypes.CDLL(str(path))
                 _lib_path = path
                 _bind_symbols(_lib)
@@ -151,9 +151,7 @@ def _load_library() -> ctypes.CDLL:
             except OSError as err:
                 tried.append(f"  {path}: {err}")
 
-        raise LunavoxLibraryError(
-            "Failed to load liblunavox. Tried:\n  - " + "\n  - ".join(tried)
-        )
+        raise LunavoxLibraryError("Failed to load liblunavox. Tried:\n  - " + "\n  - ".join(tried))
 
 
 def _bind_symbols(lib: ctypes.CDLL) -> None:
@@ -196,35 +194,53 @@ def _bind_symbols(lib: ctypes.CDLL) -> None:
     lib.lunavox_synthesize.restype = audio_ptr
 
     lib.lunavox_synthesize_with_voice_file.argtypes = [
-        ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(_CParams)
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.c_char_p,
+        ctypes.POINTER(_CParams),
     ]
     lib.lunavox_synthesize_with_voice_file.restype = audio_ptr
 
     lib.lunavox_synthesize_with_voice_samples.argtypes = [
-        ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_float),
-        ctypes.c_int32, ctypes.POINTER(_CParams)
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_int32,
+        ctypes.POINTER(_CParams),
     ]
     lib.lunavox_synthesize_with_voice_samples.restype = audio_ptr
 
     lib.lunavox_synthesize_with_embedding.argtypes = [
-        ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_float),
-        ctypes.c_int32, ctypes.POINTER(_CParams)
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_int32,
+        ctypes.POINTER(_CParams),
     ]
     lib.lunavox_synthesize_with_embedding.restype = audio_ptr
 
     lib.lunavox_synthesize_custom.argtypes = [
-        ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p,
-        ctypes.c_char_p, ctypes.POINTER(_CParams)
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.c_char_p,
+        ctypes.c_char_p,
+        ctypes.POINTER(_CParams),
     ]
     lib.lunavox_synthesize_custom.restype = audio_ptr
 
     lib.lunavox_synthesize_design.argtypes = [
-        ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(_CParams)
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.c_char_p,
+        ctypes.POINTER(_CParams),
     ]
     lib.lunavox_synthesize_design.restype = audio_ptr
 
     lib.lunavox_extract_embedding_file.argtypes = [
-        ctypes.c_void_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_float), ctypes.c_int32
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.POINTER(ctypes.c_float),
+        ctypes.c_int32,
     ]
     lib.lunavox_extract_embedding_file.restype = ctypes.c_int32
 
@@ -271,7 +287,9 @@ class SynthesisResult:
     guess from kwargs.
     """
 
-    audio: "object"  # numpy.ndarray; type kept loose so numpy is a runtime dep, not an import-time one
+    audio: (
+        object  # numpy.ndarray; type kept loose so numpy is a runtime dep, not an import-time one
+    )
     sample_rate: int
     stats: SynthesisStats
     mode: SynthesisMode
@@ -306,7 +324,7 @@ def default_params() -> SynthesisParams:
 # ---------------------------------------------------------------------------
 
 
-def _to_c_params(p: Optional[SynthesisParams]) -> tuple[_CParams, "list[bytes]"]:
+def _to_c_params(p: Optional[SynthesisParams]) -> tuple[_CParams, list[bytes]]:
     """Copy a ``SynthesisParams`` into a ``_CParams``.
 
     Returns both the struct *and* the list of backing byte buffers that
@@ -327,7 +345,7 @@ def _to_c_params(p: Optional[SynthesisParams]) -> tuple[_CParams, "list[bytes]"]
     cp.repetition_penalty = float(p.repetition_penalty)
     cp.language_id = int(p.language_id)
 
-    held: "list[bytes]" = []
+    held: list[bytes] = []
     if p.ref_text:
         buf = p.ref_text.encode("utf-8")
         held.append(buf)
@@ -410,11 +428,9 @@ def set_log_callback(cb: Optional[LogCallback]) -> None:
             text = ctypes.string_at(message_ptr).decode("utf-8", errors="replace")
         except Exception:
             return
-        try:
+        # Never let a Python exception escape across the C boundary.
+        with contextlib.suppress(Exception):
             cb(int(level), text)
-        except Exception:
-            # Never let a Python exception escape across the C boundary.
-            pass
 
     _log_cb_ctype = _LOG_CALLBACK_T(_trampoline)
     _log_cb_holder = cb
@@ -449,18 +465,13 @@ class Engine:
             # Pull the error the C API stashed during the failed create —
             # passing handle=None retrieves the process-wide last-error.
             err_ptr = self._lib.lunavox_get_error(ctypes.c_void_p(0))
-            detail = (
-                err_ptr.decode("utf-8", errors="replace")
-                if err_ptr else "unknown error"
-            )
-            raise LunavoxSynthesisError(
-                f"lunavox_create failed for {self.model_dir}: {detail}"
-            )
+            detail = err_ptr.decode("utf-8", errors="replace") if err_ptr else "unknown error"
+            raise LunavoxSynthesisError(f"lunavox_create failed for {self.model_dir}: {detail}")
         self._handle = handle
 
     # --- lifecycle -----------------------------------------------------
 
-    def __enter__(self) -> "Engine":
+    def __enter__(self) -> Engine:
         return self
 
     def __exit__(self, *exc) -> None:
@@ -472,10 +483,8 @@ class Engine:
             self._handle = None
 
     def __del__(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.close()
-        except Exception:
-            pass
 
     # --- introspection -------------------------------------------------
 

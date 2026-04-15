@@ -42,7 +42,14 @@ class TimeDelayNetBlock(nn.Module):
 
 
 class Res2NetBlock(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, scale: int = 8, kernel_size: int = 3, dilation: int = 1):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        scale: int = 8,
+        kernel_size: int = 3,
+        dilation: int = 1,
+    ):
         super().__init__()
         in_channel = in_channels // scale
         hidden_channel = out_channels // scale
@@ -111,7 +118,9 @@ class SqueezeExcitationRes2NetBlock(nn.Module):
     ):
         super().__init__()
         self.tdnn1 = TimeDelayNetBlock(in_channels, out_channels, kernel_size=1, dilation=1)
-        self.res2net_block = Res2NetBlock(out_channels, out_channels, res2net_scale, kernel_size, dilation)
+        self.res2net_block = Res2NetBlock(
+            out_channels, out_channels, res2net_scale, kernel_size, dilation
+        )
         self.tdnn2 = TimeDelayNetBlock(out_channels, out_channels, kernel_size=1, dilation=1)
         self.se_block = SqueezeExcitationBlock(out_channels, se_channels, out_channels)
 
@@ -141,7 +150,9 @@ class AttentiveStatisticsPooling(nn.Module):
     def _length_to_mask(self, length, max_len=None, dtype=None, device=None):
         if max_len is None:
             max_len = length.max().long().item()
-        mask = torch.arange(max_len, device=length.device, dtype=length.dtype).expand(len(length), max_len) < length.unsqueeze(1)
+        mask = torch.arange(max_len, device=length.device, dtype=length.dtype).expand(
+            len(length), max_len
+        ) < length.unsqueeze(1)
         return torch.as_tensor(mask, dtype=dtype, device=device)
 
     def _compute_statistics(self, x, m, dim=2):
@@ -177,8 +188,12 @@ class AttentiveStatisticsPooling(nn.Module):
 class Qwen3TTSSpeakerEncoder(nn.Module):
     def __init__(self, config: SpeakerEncoderConfig):
         super().__init__()
-        if len(config.enc_channels) != len(config.enc_kernel_sizes) or len(config.enc_channels) != len(config.enc_dilations):
-            raise ValueError("enc_channels, enc_kernel_sizes and enc_dilations should have same length")
+        if len(config.enc_channels) != len(config.enc_kernel_sizes) or len(
+            config.enc_channels
+        ) != len(config.enc_dilations):
+            raise ValueError(
+                "enc_channels, enc_kernel_sizes and enc_dilations should have same length"
+            )
         self.blocks = nn.ModuleList()
 
         self.blocks.append(
@@ -252,7 +267,7 @@ def load_speaker_encoder_from_base_dir(base_dir: Path) -> Qwen3TTSSpeakerEncoder
     state_dict = {}
     for k, v in tensors.items():
         if k.startswith("speaker_encoder."):
-            state_dict[k[len("speaker_encoder."):]] = v
+            state_dict[k[len("speaker_encoder.") :]] = v
     if not state_dict:
         raise RuntimeError("No speaker encoder tensors found in model.safetensors")
 

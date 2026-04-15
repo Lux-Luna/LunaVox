@@ -8,9 +8,9 @@ this file and nothing else.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from huggingface_hub import snapshot_download
 from huggingface_hub.constants import HF_HUB_CACHE
@@ -25,11 +25,11 @@ log = logging.getLogger(__name__)
 class ModelSpec:
     """Catalog entry for one published Qwen3-TTS model."""
 
-    name: str            # internal key used by CLI flags and models/<name>/
-    repo: str            # HuggingFace repo basename (under HF_ORG)
-    display_name: str    # human-readable label for prompts / logs
-    size: str            # "0.6B" / "1.7B"
-    mode: str            # "base" / "custom" / "design"
+    name: str  # internal key used by CLI flags and models/<name>/
+    repo: str  # HuggingFace repo basename (under HF_ORG)
+    display_name: str  # human-readable label for prompts / logs
+    size: str  # "0.6B" / "1.7B"
+    mode: str  # "base" / "custom" / "design"
 
     @property
     def repo_id(self) -> str:
@@ -39,11 +39,29 @@ class ModelSpec:
 # Registry order determines the order shown in interactive prompts and
 # `--help` enumerations — list smallest / most common first.
 _REGISTRY: tuple[ModelSpec, ...] = (
-    ModelSpec("base_small",    "Qwen3-TTS-12Hz-0.6B-Base",        "Qwen3-TTS-12Hz-0.6B-Base",        "0.6B", "base"),
-    ModelSpec("custom_small",  "Qwen3-TTS-12Hz-0.6B-CustomVoice", "Qwen3-TTS-12Hz-0.6B-CustomVoice", "0.6B", "custom"),
-    ModelSpec("base",          "Qwen3-TTS-12Hz-1.7B-Base",        "Qwen3-TTS-12Hz-1.7B-Base",        "1.7B", "base"),
-    ModelSpec("custom",        "Qwen3-TTS-12Hz-1.7B-CustomVoice", "Qwen3-TTS-12Hz-1.7B-CustomVoice", "1.7B", "custom"),
-    ModelSpec("design",        "Qwen3-TTS-12Hz-1.7B-VoiceDesign", "Qwen3-TTS-12Hz-1.7B-VoiceDesign", "1.7B", "design"),
+    ModelSpec("base_small", "Qwen3-TTS-12Hz-0.6B-Base", "Qwen3-TTS-12Hz-0.6B-Base", "0.6B", "base"),
+    ModelSpec(
+        "custom_small",
+        "Qwen3-TTS-12Hz-0.6B-CustomVoice",
+        "Qwen3-TTS-12Hz-0.6B-CustomVoice",
+        "0.6B",
+        "custom",
+    ),
+    ModelSpec("base", "Qwen3-TTS-12Hz-1.7B-Base", "Qwen3-TTS-12Hz-1.7B-Base", "1.7B", "base"),
+    ModelSpec(
+        "custom",
+        "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        "Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        "1.7B",
+        "custom",
+    ),
+    ModelSpec(
+        "design",
+        "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+        "Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+        "1.7B",
+        "design",
+    ),
 )
 
 MODELS: dict[str, ModelSpec] = {spec.name: spec for spec in _REGISTRY}

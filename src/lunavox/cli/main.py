@@ -12,14 +12,19 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.table import Table
 
-from lunavox.build.lib_downloader import LIBS_CONFIG, update_library, download_platform_libs
+from lunavox.build.lib_downloader import LIBS_CONFIG, download_platform_libs, update_library
 from lunavox.build.main import run_build
-from lunavox.core.deps import DEPENDENCY_GROUPS, DependencyPolicy, ensure_dependency_group, missing_modules
+from lunavox.core.deps import (
+    DEPENDENCY_GROUPS,
+    DependencyPolicy,
+    ensure_dependency_group,
+    missing_modules,
+)
 from lunavox.core.project import resolve_project_root
 from lunavox.core.ui import console
 from lunavox.model import (
-    ModelDownloader,
     ModelConvertPipeline,
+    ModelDownloader,
     Models,
     all_models,
     model_keys,
@@ -95,9 +100,13 @@ def _ensure_convert_deps(state: RuntimeState) -> None:
 @app.callback()
 def main(
     ctx: typer.Context,
-    project_root: Optional[Path] = typer.Option(None, "--project-root", help="LunaVox project root"),
+    project_root: Optional[Path] = typer.Option(
+        None, "--project-root", help="LunaVox project root"
+    ),
     yes: bool = typer.Option(False, "--yes", help="Auto confirm install/download prompts"),
-    no_install: bool = typer.Option(False, "--no-install", help="Never auto-install missing Python dependencies"),
+    no_install: bool = typer.Option(
+        False, "--no-install", help="Never auto-install missing Python dependencies"
+    ),
     verbose: bool = typer.Option(False, "--verbose", help="Verbose command output"),
 ) -> None:
     if ctx.resilient_parsing:
@@ -105,6 +114,7 @@ def main(
     root = resolve_project_root(project_root)
     log_file = root / "logs" / "latest.log"
     from lunavox.core import logging as lvlog
+
     lvlog.session_start(
         log_file,
         header=f"LunaVox CLI session start: {time.strftime('%Y-%m-%d %H:%M:%S')}",
@@ -192,6 +202,7 @@ def pull_model_command(
     state = _state(ctx)
     _pull_model_internal(state, model)
 
+
 def _pull_model_internal(state: RuntimeState, model: Optional[str]) -> list[str]:
     selected_keys = _select_models(
         header="Model Pull Selection",
@@ -234,27 +245,28 @@ def bootstrap_command(
 ) -> None:
     """Guided interactive setup: Pull -> Download Libs -> Build -> Test."""
     state = _state(ctx)
-    
+
     # 1. Pull Model
     _pull_model_internal(state, model)
-    
+
     # 2. Download Libs
     _download_libs_internal(state, platform)
-    
+
     # 3. Build
     _build_internal(state, clean=clean, j=j, toolchain=toolchain)
-    
+
     # 4. Interactive Synthesis Test
     _synthesis_test_interactive(state)
-    
+
     console.print("[success]Bootstrap completed successfully.[/success]")
+
 
 def _synthesis_test_interactive(state: RuntimeState) -> None:
     models_dir = state.project_root / "models"
     if not models_dir.exists():
         console.print("[warn]Models directory missing. Skipping test.[/]")
         return
-        
+
     available = []
     for d in models_dir.iterdir():
         if d.is_dir() and not d.name.startswith("."):
@@ -263,50 +275,58 @@ def _synthesis_test_interactive(state: RuntimeState) -> None:
             has_onnx = any(d.glob("*.onnx"))
             if has_gguf or has_onnx:
                 available.append(d.name)
-                
+
     if not available:
         console.print("[warn]No models translated/pulled yet. Skipping test.[/]")
         return
-        
+
     console.print("\n[bold cyan]═══ Synthesis Test ═══[/]")
     for i, name in enumerate(available, 1):
         console.print(f"  [bold]{i}) {name}[/]")
     console.print("  [bold]0) Skip Test[/]")
-    
+
     choice = typer.prompt("\nSelect a model for synthesis test", default="1")
     if choice == "0":
         return
-        
+
     try:
         idx = int(choice) - 1
         selected_model = available[idx]
     except Exception:
         console.print("[error]Invalid selection.[/]")
         return
-        
+
     text = typer.prompt("Enter test text", default="Hi, this is lunavox speaking English.")
-    instruct = typer.prompt("Enter voice instruction", default="Natural and clear speech with a pleasant tone.")
-    
+    instruct = typer.prompt(
+        "Enter voice instruction", default="Natural and clear speech with a pleasant tone."
+    )
+
     from lunavox.core.platform import executable_suffix
+
     exe = state.project_root / "build" / f"lunavox-cli{executable_suffix()}"
     if not exe.exists():
         console.print(f"[error]Executable not found at {exe}.[/]")
         return
-        
+
     output_wav = state.project_root / "output" / "bootstrap_test.wav"
     output_wav.parent.mkdir(exist_ok=True, parents=True)
-    
+
     cmd = [
         str(exe),
-        "-m", f"models/{selected_model}",
-        "-t", text,
-        "--instruct", instruct,
-        "-o", f"output/bootstrap_test.wav"
+        "-m",
+        f"models/{selected_model}",
+        "-t",
+        text,
+        "--instruct",
+        instruct,
+        "-o",
+        "output/bootstrap_test.wav",
     ]
-    
+
     console.print(f"[stage]Running synthesis: {' '.join(cmd)}[/]")
     try:
         import subprocess
+
         subprocess.run(cmd, cwd=str(state.project_root), check=True)
         console.print(f"[success]Test successful! Output saved to: {output_wav}[/]")
     except Exception as e:
@@ -316,13 +336,20 @@ def _synthesis_test_interactive(state: RuntimeState) -> None:
 @app.command("download-libs")
 def download_libs_command(
     ctx: typer.Context,
-    platform_key: Optional[str] = typer.Option(None, "--platform", "-p", help="Target platform (win_cuda, win_vulkan, etc.)"),
-    lib: Optional[str] = typer.Option(None, "--lib", help="Download a specific library only (onnx, llama)"),
-    backend: Optional[str] = typer.Option(None, "--backend", help="Specific backend for the library"),
+    platform_key: Optional[str] = typer.Option(
+        None, "--platform", "-p", help="Target platform (win_cuda, win_vulkan, etc.)"
+    ),
+    lib: Optional[str] = typer.Option(
+        None, "--lib", help="Download a specific library only (onnx, llama)"
+    ),
+    backend: Optional[str] = typer.Option(
+        None, "--backend", help="Specific backend for the library"
+    ),
 ) -> None:
     """Download binary dependencies (ONNX Runtime, Llama.cpp) for your platform."""
     state = _state(ctx)
     _download_libs_internal(state, platform_key, lib, backend)
+
 
 def _download_libs_internal(
     state: RuntimeState,
@@ -331,11 +358,13 @@ def _download_libs_internal(
     backend: Optional[str] = None,
 ) -> None:
     config = LIBS_CONFIG
-    
+
     # 1. Handle Single Lib/Backend override
     if lib:
         if lib not in config["libraries"]:
-            raise RuntimeError(f"Unknown library '{lib}'. Available: {', '.join(config['libraries'].keys())}")
+            raise RuntimeError(
+                f"Unknown library '{lib}'. Available: {', '.join(config['libraries'].keys())}"
+            )
         if not backend:
             # Interactive backend selection for this lib
             backends = config["libraries"][lib]["backends"]
@@ -345,7 +374,7 @@ def _download_libs_internal(
                 console.print(f"  {i}) {opt}")
             idx = int(typer.prompt("Enter choice", default="1")) - 1
             backend = options[idx]
-        
+
         console.print(Panel(f"Downloading {lib} ({backend})", style="stage", expand=False))
         update_library(lib, backend, str(state.project_root))
         console.print("[success]Library download completed.[/success]")
@@ -356,23 +385,23 @@ def _download_libs_internal(
         # Interactive platform selection
         platforms = config["platforms"]
         options = list(platforms.keys())
-        
+
         console.print("\n[bold cyan]═══ Library Download Selection ═══[/]")
         for i, key in enumerate(options, 1):
             console.print(f"  [bold]{i}) {platforms[key]['display_name']}[/]")
-        
+
         console.print("  [bold]0) Cancel[/]")
-        
+
         choice = typer.prompt("\nSelect your target platform", default="1")
         if choice == "0":
             console.print("[warn]Cancelled.[/]")
             return
-        
+
         try:
             idx = int(choice) - 1
             platform_key = options[idx]
-        except (ValueError, IndexError):
-            raise RuntimeError("Invalid selection.")
+        except (ValueError, IndexError) as err:
+            raise RuntimeError("Invalid selection.") from err
 
     console.print(f"[stage]Selected platform: {platform_key}[/]")
     download_platform_libs(platform_key, str(state.project_root))

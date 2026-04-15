@@ -4,8 +4,8 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import onnx
 import torch
@@ -24,15 +24,15 @@ if hasattr(sys.stdout, "reconfigure"):
 if str(HF_EXPORT_DIR) not in sys.path:
     sys.path.insert(0, str(HF_EXPORT_DIR))
 
+from .hf_export.tokenizer_12hz.modeling_qwen3_tts_tokenizer_v2 import (  # noqa: E402
+    Qwen3TTSTokenizerV2Model,
+)
 from .onnx_export_wrappers import (  # noqa: E402
     CodecEncoderExportWrapper,
     SpeakerEncoderExportWrapper,
     StatefulDecoderDynamoCombined,
 )
 from .speaker_encoder_local import load_speaker_encoder_from_base_dir  # noqa: E402
-from .hf_export.tokenizer_12hz.modeling_qwen3_tts_tokenizer_v2 import (  # noqa: E402
-    Qwen3TTSTokenizerV2Model,
-)
 
 
 def eprint(msg: str) -> None:
@@ -73,11 +73,14 @@ def export_codec_encoder(base_dir: Path, output_dir: Path) -> Path:
     model.config.return_dict = False
     if hasattr(model, "encoder") and hasattr(model.encoder, "config"):
         model.encoder.config.return_dict = False
-    model.encoder.apply(lambda m: m.remove_weight_norm() if hasattr(m, "remove_weight_norm") else None)
+    model.encoder.apply(
+        lambda m: m.remove_weight_norm() if hasattr(m, "remove_weight_norm") else None
+    )
 
     wrapper = CodecEncoderExportWrapper(model).eval()
     dummy_input = torch.randn(1, 24000)
     tmp_fp32 = output_dir / "qwen3_tts_codec_encoder.fp32.onnx"
+
     def export_with_torchscript() -> None:
         torch.onnx.export(
             wrapper,
@@ -169,7 +172,9 @@ def export_decoder(base_dir: Path, output_dir: Path) -> Path:
     wrapper = StatefulDecoderDynamoCombined(model.decoder).to("cpu").eval()
     num_layers = wrapper.num_layers
     cfg = model.decoder.config
-    num_heads = cfg.num_key_value_heads if hasattr(cfg, "num_key_value_heads") else cfg.num_attention_heads
+    num_heads = (
+        cfg.num_key_value_heads if hasattr(cfg, "num_key_value_heads") else cfg.num_attention_heads
+    )
     head_dim = cfg.head_dim
 
     bsz = 1
@@ -207,7 +212,13 @@ def export_decoder(base_dir: Path, output_dir: Path) -> Path:
     )
 
     input_names = ["audio_codes", "pre_conv_history", "latent_buffer", "conv_history", "is_last"]
-    output_names = ["final_wav", "valid_samples", "next_pre_conv_history", "next_latent_buffer", "next_conv_history"]
+    output_names = [
+        "final_wav",
+        "valid_samples",
+        "next_pre_conv_history",
+        "next_latent_buffer",
+        "next_conv_history",
+    ]
     input_names.extend([f"past_key_{i}" for i in range(num_layers)])
     input_names.extend([f"past_value_{i}" for i in range(num_layers)])
     output_names.extend([f"next_key_{i}" for i in range(num_layers)])
@@ -247,17 +258,27 @@ def quantize_int8_models(output_dir: Path, targets: Iterable[Path]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    ap = argparse.ArgumentParser(description="Export Qwen3-TTS ONNX artifacts from local model files")
-    ap.add_argument("--base-dir", required=True, help="Base model directory (Qwen3-TTS-12Hz-0.6B-Base)")
-    ap.add_argument("--tokenizer-dir", default="", help="Compatibility arg (unused, local export auto-detects)")
-    ap.add_argument("--output-dir", required=True, help="Destination directory for exported ONNX files")
+    ap = argparse.ArgumentParser(
+        description="Export Qwen3-TTS ONNX artifacts from local model files"
+    )
+    ap.add_argument(
+        "--base-dir", required=True, help="Base model directory (Qwen3-TTS-12Hz-0.6B-Base)"
+    )
+    ap.add_argument(
+        "--tokenizer-dir", default="", help="Compatibility arg (unused, local export auto-detects)"
+    )
+    ap.add_argument(
+        "--output-dir", required=True, help="Destination directory for exported ONNX files"
+    )
     ap.add_argument(
         "--stage",
         choices=["codec_encoder", "speaker_encoder", "decoder", "quantize", "all"],
         default="all",
         help="Run a single stage or all stages",
     )
-    ap.add_argument("--enable-quant", action="store_true", help="Enable optional local INT8 quantization")
+    ap.add_argument(
+        "--enable-quant", action="store_true", help="Enable optional local INT8 quantization"
+    )
     return ap.parse_args()
 
 

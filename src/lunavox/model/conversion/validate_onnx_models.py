@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import List, Tuple
 
 import numpy as np
 import onnxruntime as ort
@@ -19,11 +18,11 @@ def _load_session(path: Path) -> ort.InferenceSession:
     return ort.InferenceSession(str(path), so, providers=["CPUExecutionProvider"])
 
 
-def detect_codec_grid(codec_path: Path) -> Tuple[int, int, List[int]]:
+def detect_codec_grid(codec_path: Path) -> tuple[int, int, list[int]]:
     sess = _load_session(codec_path)
     inp = sess.get_inputs()[0].name
 
-    ok_lengths: List[int] = []
+    ok_lengths: list[int] = []
     # Start from 19200 so common valid points like 24000/25920 are sampled.
     for n in range(19200, 42001, 320):
         x = np.zeros((1, n), dtype=np.float32)
@@ -99,7 +98,9 @@ def validate_decoder_io(decoder_path: Path) -> None:
 
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Validate local ONNX artifacts for lunavox runtime")
-    ap.add_argument("--models-dir", required=True, help="models directory containing exported ONNX files")
+    ap.add_argument(
+        "--models-dir", required=True, help="models directory containing exported ONNX files"
+    )
     return ap.parse_args()
 
 
@@ -117,7 +118,7 @@ def main() -> int:
         base, stride, ok_lengths = detect_codec_grid(codec)
         eprint(f"[ok] codec runtime check passed (base={base}, stride={stride})")
         any_validated = True
-    
+
     if speaker.exists():
         validate_speaker(speaker)
         eprint("[ok] speaker output shape check passed")

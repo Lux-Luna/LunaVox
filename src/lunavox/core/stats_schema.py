@@ -139,7 +139,7 @@ def parse_stats_json(data: Any) -> ParsedStats:
     from pathlib import Path
 
     if isinstance(data, (str, Path)):
-        with open(data, "r", encoding="utf-8") as f:
+        with open(data, encoding="utf-8") as f:
             data = json.load(f)
 
     if not isinstance(data, dict):

@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-from typing import Optional
-
 import torch
 import torch.nn as nn
 
@@ -175,7 +173,9 @@ class DecoderPart3Upsample(nn.Module):
 
         total_acc_f = total_acc_t.to(torch.float32)
         lookahead_f = lookahead_t.to(torch.float32)
-        num_finalize_f = is_last * total_acc_f + (1.0 - is_last) * torch.clamp(total_acc_f - lookahead_f, min=0.0)
+        num_finalize_f = is_last * total_acc_f + (1.0 - is_last) * torch.clamp(
+            total_acc_f - lookahead_f, min=0.0
+        )
         num_finalize = num_finalize_f.to(torch.long)
         num_finalize_idx = num_finalize[0]
 
@@ -196,7 +196,9 @@ class DecoderPart3Upsample(nn.Module):
         bsz, channels = accumulated.size(0), accumulated.size(1)
         indices = torch.arange(self.conv_history_window, device=device, dtype=torch.long)
         target_indices = (num_finalize_idx - self.conv_history_window) + indices
-        gather_indices = torch.clamp(target_indices, min=0).unsqueeze(0).unsqueeze(0).expand(bsz, channels, -1)
+        gather_indices = (
+            torch.clamp(target_indices, min=0).unsqueeze(0).unsqueeze(0).expand(bsz, channels, -1)
+        )
         next_conv_hist = torch.gather(accumulated, 2, gather_indices)
         return final_wav, valid_samples, next_latent_buf, next_conv_hist
 

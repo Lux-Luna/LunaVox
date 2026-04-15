@@ -48,4 +48,3 @@ def resolve_project_root(explicit_root: Path | None = None) -> Path:
             target.mkdir(parents=True, exist_ok=True)
 
     return candidate
-

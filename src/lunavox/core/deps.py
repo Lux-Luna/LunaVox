@@ -4,9 +4,9 @@ import importlib.util
 import os
 import subprocess
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from rich.prompt import Confirm
 
@@ -43,7 +43,9 @@ class DependencyPolicy:
     no_install: bool = False
 
 
-def ensure_dependency_group(group: str, policy: DependencyPolicy, project_root: Path | None = None) -> None:
+def ensure_dependency_group(
+    group: str, policy: DependencyPolicy, project_root: Path | None = None
+) -> None:
     if group not in DEPENDENCY_GROUPS:
         raise RuntimeError(f"Unknown dependency group: {group}")
 

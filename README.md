@@ -154,6 +154,13 @@ Design voice using text descriptions:
 
 ---
 
+## 📝 Changelog
+
+Release history and per-version highlights are tracked in
+**[CHANGELOG.md](CHANGELOG.md)**.
+
+---
+
 ## 🙏 Acknowledgements
 
 Inspired by or based on:

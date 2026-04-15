@@ -20,13 +20,12 @@ from pathlib import Path
 import torch
 from safetensors.torch import load_file, save_file
 
-
 REPO_ROOT = Path(
     os.environ.get("LUNAVOX_PROJECT_ROOT", str(Path(__file__).resolve().parents[4]))
 ).resolve()
 HF_EXPORT_DIR = Path(__file__).resolve().parent / "hf_export"
-LLAMA_QUANT = REPO_ROOT / "lib" / "llama" / (
-    "llama-quantize.exe" if os.name == "nt" else "llama-quantize"
+LLAMA_QUANT = (
+    REPO_ROOT / "lib" / "llama" / ("llama-quantize.exe" if os.name == "nt" else "llama-quantize")
 )
 
 
@@ -48,9 +47,24 @@ def _write_minimal_tokenizer(dst_hf_dir: Path) -> None:
         "padding": None,
         "added_tokens": [],
         "normalizer": None,
-        "pre_tokenizer": {"type": "ByteLevel", "add_prefix_space": False, "trim_offsets": True, "use_regex": True},
-        "post_processor": {"type": "ByteLevel", "add_prefix_space": True, "trim_offsets": False, "use_regex": True},
-        "decoder": {"type": "ByteLevel", "add_prefix_space": True, "trim_offsets": True, "use_regex": True},
+        "pre_tokenizer": {
+            "type": "ByteLevel",
+            "add_prefix_space": False,
+            "trim_offsets": True,
+            "use_regex": True,
+        },
+        "post_processor": {
+            "type": "ByteLevel",
+            "add_prefix_space": True,
+            "trim_offsets": False,
+            "use_regex": True,
+        },
+        "decoder": {
+            "type": "ByteLevel",
+            "add_prefix_space": True,
+            "trim_offsets": True,
+            "use_regex": True,
+        },
         "model": {"type": "BPE", "vocab": vocab, "merges": ["a b"]},
     }
     with open(dst_hf_dir / "tokenizer.json", "w", encoding="utf-8") as f:
@@ -67,7 +81,7 @@ def _write_minimal_tokenizer(dst_hf_dir: Path) -> None:
 def _extract_talker_hf(base_dir: Path, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     weights = load_file(str(base_dir / "model.safetensors"))
-    with open(base_dir / "config.json", "r", encoding="utf-8") as f:
+    with open(base_dir / "config.json", encoding="utf-8") as f:
         full_cfg = json.load(f)
 
     talker_cfg = dict(full_cfg.get("talker_config", {}))
@@ -118,7 +132,7 @@ def _extract_predictor_hf(base_dir: Path, out_dir: Path, embeddings_dir: Path) -
     out_dir.mkdir(parents=True, exist_ok=True)
 
     weights = load_file(str(base_dir / "model.safetensors"))
-    with open(base_dir / "config.json", "r", encoding="utf-8") as f:
+    with open(base_dir / "config.json", encoding="utf-8") as f:
         full_cfg = json.load(f)
     pred_cfg = dict(full_cfg.get("talker_config", {}).get("code_predictor_config", {}))
 
@@ -168,7 +182,7 @@ def _extract_predictor_hf(base_dir: Path, out_dir: Path, embeddings_dir: Path) -
         for key, tensor in weights.items():
             if key.startswith(prefix):
                 found = True
-                out_weights[f"model.layers.{layer_count}." + key[len(prefix):]] = tensor
+                out_weights[f"model.layers.{layer_count}." + key[len(prefix) :]] = tensor
         if not found:
             break
         layer_count += 1
@@ -222,7 +236,7 @@ def _convert_hf_to_gguf(hf_dir: Path, out_gguf: Path) -> None:
         return "qwen2"
 
     def patched_load_hparams(dir_model: Path, is_mistral_format: bool):  # type: ignore[no-untyped-def]
-        with open(dir_model / "config.json", "r", encoding="utf-8") as f:
+        with open(dir_model / "config.json", encoding="utf-8") as f:
             cfg = json.load(f)
         if "llm_config" in cfg:
             cfg["text_config"] = cfg["llm_config"]
@@ -261,8 +275,14 @@ def _quantize(src_f16: Path, dst_quant: Path, quant_type: str) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Convert talker/predictor to llama.cpp GGUF (Q5_K + Q8_0)")
-    ap.add_argument("--input", required=True, help="HF base model directory (contains model.safetensors/config.json)")
+    ap = argparse.ArgumentParser(
+        description="Convert talker/predictor to llama.cpp GGUF (Q5_K + Q8_0)"
+    )
+    ap.add_argument(
+        "--input",
+        required=True,
+        help="HF base model directory (contains model.safetensors/config.json)",
+    )
     ap.add_argument("--out-talker", required=True, help="Output talker q5_k GGUF path")
     ap.add_argument("--out-predictor", required=True, help="Output predictor q8_0 GGUF path")
     ap.add_argument(
@@ -271,7 +291,9 @@ def main() -> int:
         help="Embeddings directory (optional, used to write proj_weight/proj_bias when projection exists)",
     )
     ap.add_argument("--work-dir", default="", help="Temporary working directory")
-    ap.add_argument("--keep-work-dir", action="store_true", help="Keep temporary extraction artifacts")
+    ap.add_argument(
+        "--keep-work-dir", action="store_true", help="Keep temporary extraction artifacts"
+    )
     args = ap.parse_args()
 
     input_dir = Path(args.input).resolve()
@@ -283,9 +305,7 @@ def main() -> int:
         else out_talker.parent / "embeddings"
     )
     work_dir = (
-        Path(args.work_dir).resolve()
-        if args.work_dir
-        else out_talker.parent / "_tmp_hf_extract"
+        Path(args.work_dir).resolve() if args.work_dir else out_talker.parent / "_tmp_hf_extract"
     )
 
     if work_dir.exists():

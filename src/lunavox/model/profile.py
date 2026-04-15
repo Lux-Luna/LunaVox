@@ -63,7 +63,7 @@ class ModelProfile:
         return f"Qwen3-TTS-12Hz-{size}-{mtype}"
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ModelProfile":
+    def from_dict(cls, data: dict[str, Any]) -> ModelProfile:
         # Use .get() with explicit defaults so a partial JSON (older
         # model variant, converted before a field was added) still
         # loads. The C++ side validates in is_valid() — this Python
@@ -89,12 +89,12 @@ class ModelProfile:
         )
 
     @classmethod
-    def load(cls, path: Path | str) -> "ModelProfile":
+    def load(cls, path: Path | str) -> ModelProfile:
         """Load ``model_profile.json`` from a model directory or file."""
         p = Path(path)
         if p.is_dir():
             p = p / "model_profile.json"
-        with open(p, "r", encoding="utf-8-sig") as f:
+        with open(p, encoding="utf-8-sig") as f:
             data = json.load(f)
         if not isinstance(data, dict):
             raise ValueError(f"model_profile.json must be an object, got {type(data).__name__}")

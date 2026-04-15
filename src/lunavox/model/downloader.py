@@ -5,7 +5,8 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 
 from lunavox.core.ui import console
-from .config import MODELS, get_model, model_keys
+
+from .config import get_model, model_keys
 
 
 class ModelDownloader:

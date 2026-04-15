@@ -20,4 +20,3 @@ THEME = Theme(
 # to plain text in non-TTY contexts. `safe_box` keeps panel borders using
 # ASCII-safe characters even when the font lacks Unicode box glyphs.
 console = Console(theme=THEME, safe_box=True)
-
