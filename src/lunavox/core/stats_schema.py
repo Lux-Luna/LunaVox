@@ -36,6 +36,10 @@ class TimingMs(TypedDict, total=False):
     generate: int
     decode: int
     total: int
+    # Wall time from synth start to the moment the first decoder chunk
+    # finishes and the first PCM samples become available (streaming
+    # pipeline). 0 for code paths that don't drive the threaded decoder.
+    first_audio: int
 
     # Fine-grained sub-timings populated when the engine instrumentation
     # is compiled with the detailed-timing flag. Consumers should treat
@@ -50,6 +54,14 @@ class TimingMs(TypedDict, total=False):
     decoder_tensor_extract: int
     decoder_state_trim: int
     pcm_gather: int
+
+
+class StreamStats(TypedDict, total=False):
+    """Streaming pipeline diagnostics. Populated for every synth call —
+    the threaded decoder is always on."""
+
+    first_chunk_frames: int
+    t_first_audio_ms: int
 
 
 class MemoryBytes(TypedDict, total=False):
@@ -74,6 +86,7 @@ class RunStats(TypedDict, total=False):
     audio_duration_s: float
     rtf: float
     timing_ms: TimingMs
+    stream: StreamStats
     mem: MemoryBytes
     effective_language_id: int
 

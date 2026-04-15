@@ -5,6 +5,7 @@
 #include "model_profile.h"
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -46,6 +47,15 @@ public:
         int32_t talker_seed,
         int32_t predictor_seed,
         std::vector<int32_t> & output_codes);
+
+    // Streaming hook: fired inside the generate() loop after each frame
+    // (16 codes) is appended to output_codes. The callback receives a pointer
+    // into output_codes for the newly appended frame and the number of frames
+    // (currently always 1, left as a parameter for future batched hooks).
+    // Empty callback = disabled (zero overhead).
+    using on_frames_ready_cb = std::function<void(const int32_t * new_frame_codes, int32_t n_new_frames)>;
+    void set_on_frames_ready(on_frames_ready_cb cb) { on_frames_ready_ = std::move(cb); }
+    void clear_on_frames_ready() { on_frames_ready_ = nullptr; }
 
     int32_t last_eos_step() const { return last_eos_step_; } // -1 means reached max_frames without EOS
     int32_t last_ctx_required() const { return last_ctx_required_; }
@@ -142,6 +152,8 @@ private:
     std::vector<float> scratch_emb0_pred_;
     std::vector<float> scratch_prefill_;
     std::vector<float> scratch_emb_next_;
+
+    on_frames_ready_cb on_frames_ready_;
 };
 
 } // namespace lunavox

@@ -125,8 +125,8 @@ bool TalkerPredictor::load(
             predictor_n_ctx,
             n_threads_,
             false,
-            64,
-            64,
+            16,
+            16,
             "predictor",
             error_msg_)) {
         return false;
@@ -924,8 +924,12 @@ bool TalkerPredictor::generate(
             return false;
         }
 
+        const size_t new_frame_start = output_codes.size();
         output_codes.insert(output_codes.end(), frame_codes.begin(), frame_codes.end());
         ++generated_frames;
+        if (on_frames_ready_) {
+            on_frames_ready_(output_codes.data() + new_frame_start, 1);
+        }
         const int64_t t_talk_start = now_ms();
         if (!run_decode_step(audio_sum, master_hidden)) {
             return false;

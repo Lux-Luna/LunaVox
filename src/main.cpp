@@ -681,7 +681,12 @@ int main(int argc, char ** argv) {
                     "      \"decoder_tensor_extract\": %lld,\n"
                     "      \"decoder_state_trim\": %lld,\n"
                     "      \"pcm_gather\": %lld,\n"
+                    "      \"first_audio\": %lld,\n"
                     "      \"total\": %lld\n"
+                    "    },\n"
+                    "    \"stream\": {\n"
+                    "      \"first_chunk_frames\": %d,\n"
+                    "      \"t_first_audio_ms\": %lld\n"
                     "    },\n"
                     "    \"rtf\": %.6f,\n"
                     "    \"mem\": {\n"
@@ -737,7 +742,10 @@ int main(int argc, char ** argv) {
                     (long long) r.t_decoder_tensor_extract_ms,
                     (long long) r.t_decoder_state_trim_ms,
                     (long long) r.t_pcm_gather_ms,
+                    (long long) r.t_first_audio_ms,
                     (long long) r.t_total_ms,
+                    r.first_chunk_frames_used,
+                    (long long) r.t_first_audio_ms,
                     rtf,
                     (unsigned long long) r.mem_rss_start_bytes,
                     (unsigned long long) r.mem_rss_end_bytes,

@@ -52,8 +52,15 @@ bool append_cuda_provider(Ort::SessionOptions & opts, bool low_mem_mode, std::st
 
 bool append_dml_provider(Ort::SessionOptions & opts, std::string & error_msg) {
     try {
-        // Generic approach for DirectML
-        opts.AppendExecutionProvider("DmlExecutionProvider", {{"device_id", "0"}});
+        // disable_metacommands=1: bypasses fused DML metacommand kernels, which reduces
+        // session workspace at a potential small decode latency cost. Gated by env var so
+        // users can opt out if decoder RTF regresses on their GPU.
+        const char * no_meta = std::getenv("LUNAVOX_DML_NO_METACOMMANDS");
+        std::unordered_map<std::string, std::string> dml_opts{{"device_id", "0"}};
+        if (no_meta && no_meta[0] && no_meta[0] != '0') {
+            dml_opts["disable_metacommands"] = "1";
+        }
+        opts.AppendExecutionProvider("DmlExecutionProvider", dml_opts);
         return true;
     } catch (const std::exception & e) {
         error_msg = e.what(); return false;
