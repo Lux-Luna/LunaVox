@@ -24,7 +24,7 @@
 
 - **Windows** 10/11（VS 2022/2025）、**Linux** Ubuntu 22.04+（GCC ≥ 9.0）或 **macOS** 12+ Apple Silicon
 - **CMake 3.16+**（推荐 Ninja）+ C++17 编译器
-- **Python 3.10+**（CLI 与转换工具链）
+- **Python 3.11+**（CLI 与转换工具链）
 
 ## 📊 性能基线
 

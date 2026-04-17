@@ -24,7 +24,7 @@
 
 - **Windows** 10/11 (VS 2022/2025), **Linux** Ubuntu 22.04+ (GCC ≥ 9.0), or **macOS** 12+ on Apple Silicon
 - **CMake 3.16+** (Ninja recommended) and a compatible C++17 compiler
-- **Python 3.10+** for the CLI and conversion toolchain
+- **Python 3.11+** for the CLI and conversion toolchain
 
 ## 📊 Performance
 

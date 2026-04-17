@@ -22,15 +22,10 @@ from __future__ import annotations
 
 import contextlib
 import os
-import sys
+import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Optional
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:  # pragma: no cover — exercised on 3.10 CI jobs
-    import tomli as tomllib
 
 from lunavox.core.project import resolve_project_root
 
