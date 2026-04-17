@@ -35,8 +35,7 @@ PBS_TAG = "20260414"
 PBS_PY = "3.11.15"
 PBS_ASSET = f"cpython-{PBS_PY}+{PBS_TAG}-x86_64-pc-windows-msvc-install_only.tar.gz"
 PBS_URL = (
-    f"https://github.com/astral-sh/python-build-standalone/releases/download/"
-    f"{PBS_TAG}/{PBS_ASSET}"
+    f"https://github.com/astral-sh/python-build-standalone/releases/download/{PBS_TAG}/{PBS_ASSET}"
 )
 
 # ``lib/metadata.json`` strings written by ``lunavox build libs``.
@@ -355,9 +354,7 @@ def zip_bundle() -> Path:
         (d / ".gitkeep").write_text("", encoding="utf-8")
 
     # 5) marker + launchers + readme
-    (stage_dir / ".lunavox-root").write_text(
-        f"lunavox v{ver} cli+gui bundle\n", encoding="utf-8"
-    )
+    (stage_dir / ".lunavox-root").write_text(f"lunavox v{ver} cli+gui bundle\n", encoding="utf-8")
     write(stage_dir / "lunavox.bat", LAUNCHER_CLI)
     write(stage_dir / "lunavox-gui.bat", LAUNCHER_GUI)
     write(stage_dir / "README.md", _bundle_readme(ver))

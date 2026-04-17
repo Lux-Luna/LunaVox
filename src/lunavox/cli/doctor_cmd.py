@@ -26,10 +26,9 @@ def register(parent: typer.Typer) -> None:
         table.add_column("Result")
         table.add_column("Details")
 
-        dev_layout = (
-            (st.project_root / "CMakeLists.txt").exists()
-            and (st.project_root / "src").exists()
-        )
+        dev_layout = (st.project_root / "CMakeLists.txt").exists() and (
+            st.project_root / "src"
+        ).exists()
         deployment_layout = (st.project_root / DEPLOYMENT_MARKER).exists()
         root_ok = (
             (dev_layout or deployment_layout)
