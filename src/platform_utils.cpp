@@ -242,6 +242,14 @@ bool process_memory_snapshot(ProcessMemorySnapshot & out) {
 #endif
 }
 
+uint32_t current_pid() {
+#ifdef _WIN32
+    return (uint32_t) GetCurrentProcessId();
+#else
+    return (uint32_t) getpid();
+#endif
+}
+
 // --- Memory-mapped read-only files -------------------------------------------
 
 #ifndef _WIN32

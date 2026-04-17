@@ -8,7 +8,7 @@ and the :class:`Engine` wrapper, not here.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from typing import Any, Optional
 
@@ -37,6 +37,10 @@ class SynthesisParams:
     any field produces a fresh struct passed to the next synthesize
     call. The ``ref_text`` field is an optional prompt hint used by
     voice-clone and voice-design flows.
+
+    This dataclass is the **single source of truth** for sampler
+    defaults across CLI / HTTP / WS / GUI. All entries override fields
+    via :meth:`from_overrides` rather than re-declaring defaults.
     """
 
     max_audio_tokens: int = 0
@@ -48,10 +52,74 @@ class SynthesisParams:
     language_id: int = -1
     ref_text: Optional[str] = None
 
+    @classmethod
+    def from_overrides(cls, **overrides: Any) -> "SynthesisParams":
+        """Build a fresh instance, applying only the non-``None`` overrides.
+
+        Unknown keys raise ``TypeError`` so typos surface at the call
+        site instead of silently ignoring an option. ``None`` values
+        are dropped — they mean "no override, use the default" — so
+        callers can pass through optional CLI / API fields directly
+        without per-field ``if`` guards.
+        """
+        valid = {f.name for f in fields(cls)}
+        filtered: dict[str, Any] = {}
+        for key, value in overrides.items():
+            if key not in valid:
+                raise TypeError(f"Unknown SynthesisParams field: {key!r}")
+            if value is not None:
+                filtered[key] = value
+        return cls(**filtered)
+
+
+@dataclass(frozen=True)
+class MemStats:
+    """Process-level RSS + VRAM snapshots for one synthesize call.
+
+    All three time points (``start`` / ``end`` / ``peak``) come from the
+    same in-engine sampling loop, so derived deltas (peak − start =
+    synthesis-driven growth, end − start = post-run residual) are
+    self-consistent — there is no Python-side baseline to race against.
+
+    VRAM is attributed to this process's PID via
+    ``nvmlDevice*RunningProcesses``; ``vram_measured`` is the
+    authoritative "did NVML return real numbers" flag. When it is
+    ``False`` the ``vram_*`` fields are undefined — callers must render
+    "—" / "N/A" rather than ``0.00 GB``. The old convention of using
+    ``vram_peak_bytes > 0`` as the gate was incorrect: a zero reading on
+    a CPU-only run is a legitimate measurement.
+    """
+
+    rss_start_bytes: int = 0
+    rss_end_bytes: int = 0
+    rss_peak_bytes: int = 0
+    vram_start_bytes: int = 0
+    vram_end_bytes: int = 0
+    vram_peak_bytes: int = 0
+    vram_measured: bool = False
+
+    @property
+    def rss_peak_delta_bytes(self) -> int:
+        """Synthesis-driven RSS high-water growth."""
+        return max(0, self.rss_peak_bytes - self.rss_start_bytes)
+
+    @property
+    def rss_leak_bytes(self) -> int:
+        """RSS still above start at end-of-run — useful for leak triage."""
+        return max(0, self.rss_end_bytes - self.rss_start_bytes)
+
+    @property
+    def vram_peak_delta_bytes(self) -> int:
+        return max(0, self.vram_peak_bytes - self.vram_start_bytes)
+
+    @property
+    def vram_leak_bytes(self) -> int:
+        return max(0, self.vram_end_bytes - self.vram_start_bytes)
+
 
 @dataclass
 class SynthesisStats:
-    """Per-run timing and memory stats echoed from the C engine."""
+    """Per-run timing + memory stats echoed from the C engine."""
 
     t_tokenize_ms: int = 0
     t_encode_ms: int = 0
@@ -60,8 +128,7 @@ class SynthesisStats:
     t_total_ms: int = 0
     audio_duration_ms: int = 0
     rtf: float = 0.0
-    rss_peak_bytes: int = 0
-    rss_end_bytes: int = 0
+    mem: MemStats = field(default_factory=MemStats)
 
 
 @dataclass

@@ -44,7 +44,9 @@ with Engine(Path("models/base_small")) as eng:
     )
 
     print(f"RTF: {result.stats.rtf:.3f}")
-    print(f"Peak RSS: {result.stats.rss_peak_bytes / 1024**2:.1f} MB")
+    print(f"Peak RSS delta: {result.stats.mem.rss_peak_delta_bytes / 1024**2:.1f} MB")
+    if result.stats.mem.vram_measured:
+        print(f"Peak VRAM delta: {result.stats.mem.vram_peak_delta_bytes / 1024**2:.1f} MB")
     # result.audio is a numpy.float32 array in [-1, 1], mono @ sample_rate
 ```
 

@@ -72,11 +72,12 @@ def test_stats_card_formats_a_real_stats_object(gui_root: Any):
             t_total_ms=702,
             audio_duration_ms=2500,
             rtf=0.28,
-            rss_peak_bytes=1_500_000_000,
         )
         card.update_stats(stats)
         # A labelled value must display as something other than the
         # empty placeholder ``—`` after update.
         assert card._rows["rtf"].cget("text") != "—"
+        assert card._rows["total"].cget("text") != "—"
+        assert card._rows["tokenize"].cget("text") != "—"
     finally:
         card.destroy()

@@ -1,26 +1,30 @@
 """``lunavox synth`` — direct in-process synthesis via the runtime API.
 
-Before this command existed, the only way to synthesize from the CLI
-was to run the C++ ``lunavox-cli`` exe as a subprocess. ``lunavox
-synth`` is the native path: it loads ``Engine`` in-process, picks a
-``Voice``, and writes a WAV. Same code path the GUI and future serve
-layer will use, so it's the canonical smoke test for every release.
+Phase 6 makes this a thin adapter over :mod:`lunavox.core.synth`:
+voice resolution, parameter defaulting, auto-split, and WAV encoding
+all live in core. This command now only does what a CLI front-end
+should: parse flags, report progress, write the file.
 """
 
 from __future__ import annotations
 
-import struct
-import wave
 from pathlib import Path
-from typing import Any, Optional
+from typing import Literal, Optional, cast
 
 import typer
 
+from lunavox.core.synth import (
+    SynthesisPipeline,
+    VoiceResolutionError,
+    VoiceSpec,
+    f32_to_wav,
+    resolve_voice,
+)
+
+VoiceMode = Literal["base", "clone", "custom", "design"]
 from lunavox.core.ui import console
 
 from ._common import RuntimeState, state
-
-app_command = typer.Typer  # only used for type hints below; app created in main.py
 
 
 def register(parent: typer.Typer) -> None:
@@ -102,9 +106,19 @@ def _run_synth(
             f"{resolved_model}` first."
         )
 
-    v = _build_voice(voice, reference, speaker, instruct)
-    params = SynthesisParams(
-        temperature=(temperature if temperature is not None else st.config.temperature),
+    spec = VoiceSpec(
+        mode=_coerce_voice_mode(voice),
+        reference=str(reference) if reference is not None else None,
+        speaker=speaker,
+        instruct=instruct,
+    )
+    try:
+        voice_obj = resolve_voice(spec)
+    except VoiceResolutionError as err:
+        raise RuntimeError(str(err)) from err
+
+    params = SynthesisParams.from_overrides(
+        temperature=temperature if temperature is not None else st.config.temperature,
         top_p=top_p if top_p is not None else st.config.top_p,
         top_k=top_k if top_k is not None else st.config.top_k,
         n_threads=st.config.n_threads,
@@ -118,8 +132,9 @@ def _run_synth(
     )
 
     with Engine(model_dir, n_threads=st.config.n_threads) as engine:
-        result = engine.synthesize(text, voice=v, params=params)
-        _write_wav(output, result.audio, result.sample_rate)
+        pipeline = SynthesisPipeline(engine)
+        result = pipeline.synthesize(text, voice=voice_obj, params=params)
+        output.write_bytes(f32_to_wav(result.audio, result.sample_rate))
 
     console.print(
         f"[success]Synthesis complete: {output} "
@@ -128,43 +143,15 @@ def _run_synth(
     )
 
 
-def _build_voice(
-    voice: str,
-    reference: Optional[Path],
-    speaker: Optional[str],
-    instruct: Optional[str],
-) -> Any:
-    """Translate ``--voice`` + the related flags into a :class:`Voice`."""
-    from lunavox.runtime import Voice
+def _coerce_voice_mode(mode: str) -> VoiceMode:
+    """Normalise the ``--voice`` flag into one of the four canonical modes.
 
-    v = voice.lower()
-    if v == "base":
-        return Voice.base()
-    if v == "clone":
-        if reference is None:
-            raise RuntimeError("--voice clone requires --ref <path>")
-        return Voice.clone_file(reference)
-    if v == "custom":
-        if not speaker:
-            raise RuntimeError("--voice custom requires --speaker <id>")
-        return Voice.custom(speaker, instruct=instruct or "")
-    if v == "design":
-        if not instruct:
-            raise RuntimeError("--voice design requires --instruct <text>")
-        return Voice.design(instruct)
-    raise RuntimeError(f"Unknown voice mode: {voice}. Expected base|clone|custom|design.")
-
-
-def _write_wav(path: Path, audio: Any, sample_rate: int) -> None:
-    """Write a mono 16-bit PCM WAV. Takes any iterable of float samples
-    in [-1, 1]; GUI and CLI share the same helper."""
-    pcm16 = bytearray()
-    for sample in audio:
-        clipped = max(-1.0, min(1.0, float(sample)))
-        pcm16 += struct.pack("<h", int(clipped * 32767.0))
-
-    with wave.open(str(path), "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(int(sample_rate))
-        wf.writeframes(bytes(pcm16))
+    Case-insensitive; unknown values fail fast with a typer-friendly
+    error so the user sees a clean usage hint.
+    """
+    m = mode.lower()
+    if m not in {"base", "clone", "custom", "design"}:
+        raise RuntimeError(
+            f"Unknown voice mode: {mode}. Expected base|clone|custom|design."
+        )
+    return cast(VoiceMode, m)

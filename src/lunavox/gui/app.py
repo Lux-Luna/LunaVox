@@ -10,13 +10,11 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-try:
-    import customtkinter as ctk  # pyright: ignore[reportMissingImports]
-except ImportError as err:  # pragma: no cover — gated by [gui] extra
-    raise ImportError('customtkinter is required: pip install "lunavox[gui]"') from err
+import customtkinter as ctk  # pyright: ignore[reportMissingImports]
 
 from lunavox.cli._config import ResolvedConfig, load_config
 
+from .engine_session import EngineSession
 from .i18n import Translator
 from .theme import (
     BG_SIDEBAR,
@@ -33,7 +31,7 @@ from .theme import (
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
 )
-from .views import LibraryView, SettingsView, SynthView
+from .views import BuildView, LibraryView, SettingsView, SynthView
 
 
 class LunaVoxApp(ctk.CTk):  # pyright: ignore[reportUntypedBaseClass]
@@ -50,10 +48,14 @@ class LunaVoxApp(ctk.CTk):  # pyright: ignore[reportUntypedBaseClass]
         self._t = Translator(lang="en")
         self._active_view: Optional[Any] = None
         self._nav_buttons: dict[str, Any] = {}
+        # Owns the optional persistent Engine. Lives on the app, not on
+        # SynthView, because _show_view destroys views on every tab
+        # switch — pinning the engine there would re-cold-load it.
+        self._engine_session = EngineSession()
 
         self.title("LunaVox")
         self.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
-        self.minsize(980, 640)
+        self.minsize(1080, 640)
         ctk.set_appearance_mode("System")
         ctk.set_default_color_theme("blue")
         self.configure(fg_color=BG_SURFACE)
@@ -64,6 +66,11 @@ class LunaVoxApp(ctk.CTk):  # pyright: ignore[reportUntypedBaseClass]
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
+
+        # Free the persistent engine (if any) before the Tk window
+        # tears down, so the C library finalises cleanly instead of
+        # surviving past the interpreter's mainloop exit.
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self._show_view("synthesize")
 
@@ -88,6 +95,7 @@ class LunaVoxApp(ctk.CTk):  # pyright: ignore[reportUntypedBaseClass]
         entries = [
             ("synthesize", "nav.synthesize"),
             ("library", "nav.library"),
+            ("build", "nav.build"),
             ("settings", "nav.settings"),
         ]
         for row, (view_id, label_key) in enumerate(entries, start=2):
@@ -124,15 +132,20 @@ class LunaVoxApp(ctk.CTk):  # pyright: ignore[reportUntypedBaseClass]
             btn.configure(fg_color=PRIMARY if vid == view_id else "transparent")
 
         if view_id == "synthesize":
-            view = SynthView(self._content, self._config, self._t)
+            view = SynthView(
+                self._content, self._config, self._t, engine_session=self._engine_session
+            )
         elif view_id == "library":
             view = LibraryView(self._content, self._config, self._t)
+        elif view_id == "build":
+            view = BuildView(self._content, self._config, self._t)
         elif view_id == "settings":
             view = SettingsView(
                 self._content,
                 self._config,
                 self._t,
                 on_lang_changed=self._set_language,
+                engine_session=self._engine_session,
             )
         else:
             return
@@ -152,6 +165,12 @@ class LunaVoxApp(ctk.CTk):  # pyright: ignore[reportUntypedBaseClass]
         self._content = ctk.CTkFrame(self, fg_color="transparent")
         self._content.grid(row=0, column=1, sticky="nsew", padx=SPACE_LG, pady=SPACE_LG)
         self._show_view("settings")
+
+    # --- lifecycle -----------------------------------------------------
+
+    def _on_close(self) -> None:
+        self._engine_session.unload()
+        self.destroy()
 
     # --- entrypoint ----------------------------------------------------
 

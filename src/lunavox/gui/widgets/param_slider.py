@@ -11,10 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
-try:
-    import customtkinter as ctk  # pyright: ignore[reportMissingImports]
-except ImportError as err:  # pragma: no cover — gated by [gui] extra
-    raise ImportError('customtkinter is required: pip install "lunavox[gui]"') from err
+import customtkinter as ctk  # pyright: ignore[reportMissingImports]
 
 from ..theme import FONT_BODY, SPACE_MD, SPACE_SM
 

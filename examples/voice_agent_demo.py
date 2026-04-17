@@ -30,7 +30,7 @@ Prerequisites
 -------------
 In one terminal::
 
-    pip install "lunavox[serve]"
+    pip install lunavox
     lunavox model pull --model base_small
     lunavox build
     lunavox serve --batch-size 2 --port 8765
@@ -82,6 +82,29 @@ _FAKE_LLM_REPLY = (
     "Thank you for listening!"
 )
 
+# Longer multilingual reply for stress-testing the Phase 6 auto-split
+# pipeline. Each individual sentence is within normal bounds, but the
+# total exceeds the pipeline's ``auto_split_threshold`` many times
+# over — so the server must split, synthesize per segment, and stitch
+# PCM chunks back together transparently. English + Chinese + Japanese
+# mixed so the multi-language punctuation table gets exercised end-to-end.
+_LONG_MULTILINGUAL_REPLY = (
+    "Welcome to the LunaVox long-text demo. "
+    "This extended reply exercises the automatic sentence splitter. "
+    "It mixes several languages on purpose. "
+    "你好,世界。这是一个中文句子,测试全角标点的自动切分能力。"
+    "今天天气很好,我们一起散步吧!"
+    "こんにちは、世界。これは日本語の文章です。"
+    "長い文章でも、句読点に沿って綺麗に切り分けられるはずです。"
+    "Back to English now. "
+    "The pipeline ensures that chunks arrive in order across every "
+    "segment, and only the very last audio chunk carries the "
+    "end-of-stream signal. "
+    "That means downstream consumers see one clean stream regardless "
+    "of how many internal splits happened on the server side. "
+    "最后用一句中文结束整段演示。"
+)
+
 
 async def _fake_llm_tokens(
     reply: str = _FAKE_LLM_REPLY,
@@ -91,8 +114,8 @@ async def _fake_llm_tokens(
 
     The delay mimics an LLM streaming tokens at ~25 tokens/second.
     Whitespace is preserved so the server's
-    :class:`~lunavox.serve.sentence_buffer.SentenceBuffer` sees
-    boundary cues (terminator + space) at the right moments.
+    :class:`~lunavox.core.text.StreamingSentenceBuffer` sees boundary
+    cues (terminator + space) at the right moments.
     """
     delay = word_delay_ms / 1000.0
     # Split on spaces but keep the spaces so the receiver can stitch
@@ -146,12 +169,16 @@ async def run_demo(args: argparse.Namespace) -> int:
     pcm_chunks: list[bytes] = []
     terminal: dict[str, Any] | None = None
 
+    reply_text = _LONG_MULTILINGUAL_REPLY if args.long else _FAKE_LLM_REPLY
+
     async with websockets.connect(url, max_size=None) as ws:
         await ws.send(json.dumps(init_frame))
 
         async def _producer() -> None:
             nonlocal first_text_sent_at
-            async for token in _fake_llm_tokens(word_delay_ms=args.word_delay_ms):
+            async for token in _fake_llm_tokens(
+                reply=reply_text, word_delay_ms=args.word_delay_ms
+            ):
                 if first_text_sent_at is None:
                     first_text_sent_at = time.perf_counter()
                 await ws.send(json.dumps({"text": token}))
@@ -244,6 +271,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--instruct", default=None)
     parser.add_argument("--temperature", type=float, default=0.7)
     parser.add_argument("--top-p", dest="top_p", type=float, default=1.0)
+    parser.add_argument(
+        "--long",
+        action="store_true",
+        help="Use the long multilingual reply instead of the short demo "
+        "script. Exercises the Phase 6 auto-split pipeline end-to-end: "
+        "total input well over the server's split threshold, mixed "
+        "EN/CJK punctuation, chunk ordering preserved across segments.",
+    )
     return parser.parse_args(argv)
 
 

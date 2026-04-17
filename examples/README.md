@@ -1,28 +1,27 @@
 # LunaVox Examples
 
-Self-contained scripts that exercise LunaVox from the outside — the
-same way a real integration would. Each example is a single file
-with no build step; each assumes `lunavox` is installed
-(`pip install "lunavox[serve]"` covers the serving-layer demos).
+Self-contained scripts that exercise LunaVox from the outside — each
+is a single file with no build step and assumes `lunavox` is installed
+(`pip install lunavox` already ships the serving layer).
 
 ## Index
 
 | File | What it shows | Requires |
 | :--- | :--- | :--- |
-| [`voice_agent_demo.py`](voice_agent_demo.py) | Streaming text **into** `lunavox serve` word-by-word the way an LLM would, and getting audio back sentence-by-sentence. Measures first-audio TTFB and prints per-sentence stats. | A running `lunavox serve`, the `websockets` pip package |
+| [`voice_agent_demo.py`](voice_agent_demo.py) | Streams text **into** `lunavox serve` word-by-word (LLM-style) and gets audio back sentence-by-sentence; reports first-audio TTFB and per-sentence stats. | Running `lunavox serve`; `pip install websockets` |
 
 ## Running `voice_agent_demo.py`
 
-In one terminal:
+Terminal 1:
 
 ```bash
-pip install "lunavox[serve]"
+pip install lunavox
 lunavox model pull --model base_small
 lunavox build
 lunavox serve --batch-size 2 --port 8765
 ```
 
-In another terminal:
+Terminal 2:
 
 ```bash
 pip install websockets
@@ -30,76 +29,25 @@ python examples/voice_agent_demo.py --port 8765 --word-delay-ms 40 \
     --output output/agent_demo.wav
 ```
 
-You should see a summary like:
+The script's `--help`, the module docstring, and the stats summary it
+prints at the end cover every flag and metric — start there for
+details. The "first-audio TTFB" it reports is the metric that matters
+for voice-agent UX: the delay from the moment the upstream LLM starts
+replying to the moment LunaVox has audio to play. The
+`WS /v1/stream/text` endpoint exists specifically to keep this number
+small; see [serve guide](../docs/en/guide/serve.md) for the protocol.
 
-```
-============================================================
-  WAV written       : output/agent_demo.wav
-  audio samples     : 245,760
-  audio seconds     : 10.24
-  sentences         : 5
-  first-audio TTFB  : 240 ms  (from first text chunk → first PCM frame)
-  total wall time   : 3280 ms
-  audio / wall      : 3.12×  (>1 means the agent is faster than real-time talking)
-  last-sentence     : rtf=0.185  total_ms=420  duration_ms=2280
-============================================================
-```
-
-The "first-audio TTFB" is the metric that matters for voice-agent
-UX: it's the delay from the moment the user's LLM starts generating
-a reply to the moment LunaVox has audio to play. The
-`WS /v1/stream/text` endpoint exists specifically to make this
-number small — without sentence-level streaming you'd pay
-"full LLM reply time + first-sentence synth time" instead of "first
-sentence LLM time + first-sentence synth time".
-
-### Using a different voice mode
-
-Clone from a reference audio file:
+### Other voice modes
 
 ```bash
-python examples/voice_agent_demo.py \
-    --voice clone \
-    --reference ref/ref_0.6B.json \
-    --output output/agent_clone.wav
-```
-
-Custom speaker:
-
-```bash
-python examples/voice_agent_demo.py \
-    --voice custom --speaker Vivian --instruct "Use an excited tone." \
-    --output output/agent_custom.wav
-```
-
-Design from a description:
-
-```bash
-python examples/voice_agent_demo.py \
-    --voice design --instruct "A warm, calm narrator voice." \
-    --output output/agent_design.wav
+python examples/voice_agent_demo.py --voice clone --reference ref/ref_0.6B.json -o output/clone.wav
+python examples/voice_agent_demo.py --voice custom --speaker Vivian --instruct "Use an excited tone." -o output/custom.wav
+python examples/voice_agent_demo.py --voice design --instruct "A warm, calm narrator voice." -o output/design.wav
 ```
 
 ### Plugging in a real LLM
 
-The script's fake LLM is one function — `_fake_llm_tokens` — that
-yields strings asynchronously. Replace it with any
-`AsyncIterator[str]` producing your own source:
-
-```python
-async def openai_tokens() -> AsyncIterator[str]:
-    client = AsyncOpenAI()
-    stream = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": "Tell me a story."}],
-        stream=True,
-    )
-    async for event in stream:
-        delta = event.choices[0].delta.content
-        if delta:
-            yield delta
-```
-
-The rest of the pipeline (sentence boundary detection, concurrent
-synthesis, audio streaming) is handled by `lunavox serve`, so you
-don't need to change anything else.
+Replace `_fake_llm_tokens` with any `AsyncIterator[str]` — e.g. an
+OpenAI streaming client yielding each delta. The rest of the pipeline
+(sentence boundaries, concurrent synthesis, audio streaming) is owned
+by `lunavox serve`, so nothing else changes.

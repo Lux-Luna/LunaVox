@@ -75,8 +75,15 @@ static LunavoxAudio * to_c_audio(const lunavox::tts_result & result) {
     out->rtf = (out->audio_duration_ms > 0)
         ? (float) ((double) result.t_total_ms / (double) out->audio_duration_ms)
         : 0.0f;
-    out->rss_peak_bytes = result.mem_rss_peak_bytes;
-    out->rss_end_bytes  = result.mem_rss_end_bytes;
+    out->mem.rss_start_bytes  = result.mem_rss_start_bytes;
+    out->mem.rss_end_bytes    = result.mem_rss_end_bytes;
+    out->mem.rss_peak_bytes   = result.mem_rss_peak_bytes;
+    out->mem.vram_start_bytes = result.mem_vram_start_bytes;
+    out->mem.vram_end_bytes   = result.mem_vram_end_bytes;
+    out->mem.vram_peak_bytes  = result.mem_vram_peak_bytes;
+    out->mem.vram_measured    = result.mem_vram_measured ? 1u : 0u;
+    out->mem._pad             = 0;
+    out->_pad                 = 0.0f;
     return out;
 }
 

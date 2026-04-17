@@ -1,14 +1,16 @@
-"""Pool holder sitting between the FastAPI app and :class:`BatchEngine`.
+"""Pool holder sitting between the FastAPI app and the synth pipeline.
 
-Phase 5A held a single :class:`Engine` and an ``asyncio.Lock`` to
-serialise concurrent requests. 5B replaces that with a
-:class:`BatchEngine` pool of ``N`` engines whose internal
-``asyncio.Queue`` already provides back-pressure — so the lock is
-gone and handlers just call into the pool directly.
+Phase 5A held a single :class:`Engine` + ``asyncio.Lock`` to serialise
+concurrent requests. 5B replaced that with a :class:`BatchEngine` pool
+whose idle queue provides back-pressure. This Phase 6 refactor folds
+in one more layer: the holder now exposes an
+:class:`AsyncSynthesisPipeline` as its primary handle, so endpoints
+never touch the batch pool directly. Voice resolution and parameter
+merging also leave this class — they're single-sourced in
+:mod:`lunavox.core.synth`.
 
-The class name :class:`EngineHolder` is kept for backwards
-compatibility of the import site (the serve module's handlers); it
-now wraps a :class:`BatchEngine` instead of a single engine.
+The class still owns the lifecycle (lazy load / close) of the pool
+so the FastAPI ``lifespan`` hook has one object to drive.
 """
 
 from __future__ import annotations
@@ -16,15 +18,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from lunavox.runtime import BatchEngine, SynthesisParams
+from lunavox.core.synth import AsyncSynthesisPipeline
+from lunavox.runtime import BatchEngine
 
 
 class EngineHolder:
-    """Thin adapter around :class:`BatchEngine` for the FastAPI layer.
+    """Owns one :class:`BatchEngine` and the :class:`AsyncSynthesisPipeline`
+    that wraps it.
 
-    Construction is lazy — the underlying pool is loaded by
-    :meth:`load`, which the FastAPI ``lifespan`` context manager
-    awaits on startup. Handlers read ``batch`` directly once loaded.
+    Endpoints read ``pipeline`` for every synthesis call; the pool is
+    still exposed via ``batch`` for the ``/metrics`` endpoint which
+    needs pool-level telemetry (idle / busy counts).
     """
 
     def __init__(
@@ -33,11 +37,14 @@ class EngineHolder:
         *,
         batch_size: int = 4,
         n_threads: int = 4,
+        auto_split_threshold: int = 240,
     ) -> None:
         self.model_dir = Path(model_dir)
         self.batch_size = batch_size
         self.n_threads = n_threads
+        self.auto_split_threshold = auto_split_threshold
         self._batch: Optional[BatchEngine] = None
+        self._pipeline: Optional[AsyncSynthesisPipeline] = None
 
     async def load(self) -> None:
         if self._batch is not None:
@@ -48,11 +55,16 @@ class EngineHolder:
             n_threads=self.n_threads,
         )
         await self._batch.load()
+        self._pipeline = AsyncSynthesisPipeline(
+            self._batch,
+            auto_split_threshold=self.auto_split_threshold,
+        )
 
     def close(self) -> None:
         if self._batch is not None:
             self._batch.close()
             self._batch = None
+            self._pipeline = None
 
     @property
     def batch(self) -> BatchEngine:
@@ -61,26 +73,11 @@ class EngineHolder:
         return self._batch
 
     @property
+    def pipeline(self) -> AsyncSynthesisPipeline:
+        if self._pipeline is None:
+            raise RuntimeError("EngineHolder.load() has not been awaited yet")
+        return self._pipeline
+
+    @property
     def sample_rate(self) -> int:
         return self.batch.sample_rate
-
-    def build_params(
-        self,
-        *,
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-        top_k: Optional[int] = None,
-        max_audio_tokens: Optional[int] = None,
-    ) -> SynthesisParams:
-        """Merge request-level overrides onto :class:`SynthesisParams` defaults."""
-        params = SynthesisParams()
-        if temperature is not None:
-            params.temperature = float(temperature)
-        if top_p is not None:
-            params.top_p = float(top_p)
-        if top_k is not None:
-            params.top_k = int(top_k)
-        if max_audio_tokens is not None:
-            params.max_audio_tokens = int(max_audio_tokens)
-        params.n_threads = self.n_threads
-        return params

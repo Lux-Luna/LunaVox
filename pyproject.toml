@@ -15,9 +15,25 @@ dependencies = [
   "rich>=13.7.0",
   "huggingface_hub>=0.24.0",
   "tomli>=2.0; python_version < '3.11'",
+  "numpy",
+  # Desktop GUI (lunavox gui) — ~50 MB, pulled in by default.
+  "customtkinter>=5.2.0",
+  "pygame>=2.5.0",
+  # sounddevice streams float32 chunks through PortAudio for the
+  # GUI's live-preview playback; pygame is retained for replay.
+  "sounddevice>=0.4",
+  # HTTP / WebSocket serving (lunavox serve) — ~20 MB, pulled in by default.
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.0",
+  "prometheus-client>=0.20",
 ]
 
 [project.optional-dependencies]
+# Heavy toolchain for source-weights → GGUF/ONNX conversion (multi-GB
+# torch + onnx stack). Only needed at conversion time; the compiled
+# native library handles inference without torch/onnx on the Python
+# side, so runtime users never pay this cost.
 convert = [
   "torch>=2.1",
   "torchaudio>=2.1",
@@ -27,7 +43,6 @@ convert = [
   "onnxruntime",
   "onnxruntime-tools",
   "gguf",
-  "numpy",
   "tqdm",
   "safetensors",
   "sentencepiece",
@@ -37,29 +52,17 @@ convert = [
   "einops",
   "onnxscript",
 ]
+# Contributor tooling: tests, linters, docs site, release. Not needed
+# by end users.
 dev = [
   "pytest>=8.2",
   "ruff>=0.6",
   "pyright>=1.1.380",
   "build>=1.2",
   "twine>=5.1",
-]
-docs = [
   "mkdocs>=1.6",
   "mkdocs-material>=9.5",
   "mkdocstrings[python]>=0.26",
-]
-gui = [
-  "customtkinter>=5.2.0",
-  "pygame>=2.5.0",
-  "numpy",
-]
-serve = [
-  "fastapi>=0.110",
-  "uvicorn[standard]>=0.30",
-  "pydantic>=2.0",
-  "prometheus-client>=0.20",
-  "numpy",
 ]
 
 [project.scripts]

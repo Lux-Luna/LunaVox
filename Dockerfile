@@ -106,7 +106,7 @@ WORKDIR /app
 # runtime dependencies in lockstep with whatever version was tested.
 ARG LUNAVOX_VERSION=2.2.0
 RUN python -m pip install --no-cache-dir --upgrade pip \
- && python -m pip install --no-cache-dir "lunavox[serve]==${LUNAVOX_VERSION}"
+ && python -m pip install --no-cache-dir "lunavox==${LUNAVOX_VERSION}"
 
 # Copy the built C++ artifacts from the builder stage. The layout
 # mirrors what `lunavox build` produces in a dev checkout so

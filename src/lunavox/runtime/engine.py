@@ -28,6 +28,7 @@ from typing import Any, Optional, Union
 from . import _capi
 from .errors import LunavoxSynthesisError
 from .params import (
+    MemStats,
     SynthesisChunk,
     SynthesisMode,
     SynthesisParams,
@@ -85,6 +86,15 @@ def _consume_audio(ptr: Any, mode: SynthesisMode) -> SynthesisResult:
     # buffer protocol without a Python-list detour.
     pcm = np.frombuffer(memoryview(pcm_ptr.contents), dtype=np.float32).copy()
 
+    mem = MemStats(
+        rss_start_bytes=int(audio.mem.rss_start_bytes),
+        rss_end_bytes=int(audio.mem.rss_end_bytes),
+        rss_peak_bytes=int(audio.mem.rss_peak_bytes),
+        vram_start_bytes=int(audio.mem.vram_start_bytes),
+        vram_end_bytes=int(audio.mem.vram_end_bytes),
+        vram_peak_bytes=int(audio.mem.vram_peak_bytes),
+        vram_measured=bool(audio.mem.vram_measured),
+    )
     stats = SynthesisStats(
         t_tokenize_ms=int(audio.t_tokenize_ms),
         t_encode_ms=int(audio.t_encode_ms),
@@ -93,8 +103,7 @@ def _consume_audio(ptr: Any, mode: SynthesisMode) -> SynthesisResult:
         t_total_ms=int(audio.t_total_ms),
         audio_duration_ms=int(audio.audio_duration_ms),
         rtf=float(audio.rtf),
-        rss_peak_bytes=int(audio.rss_peak_bytes),
-        rss_end_bytes=int(audio.rss_end_bytes),
+        mem=mem,
     )
     result = SynthesisResult(
         audio=pcm,

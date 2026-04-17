@@ -46,6 +46,23 @@ class CParams(ctypes.Structure):
     ]
 
 
+class CMemStats(ctypes.Structure):
+    # Mirrors LunavoxMemStats in lunavox_c_api.h — layout is stable across
+    # every synthesize call, regardless of voice mode. `_pad` exists so
+    # the struct size is 8-byte aligned (reads of uint64 fields stay
+    # aligned when CAudio embeds this inline).
+    _fields_ = [
+        ("rss_start_bytes", ctypes.c_uint64),
+        ("rss_end_bytes", ctypes.c_uint64),
+        ("rss_peak_bytes", ctypes.c_uint64),
+        ("vram_start_bytes", ctypes.c_uint64),
+        ("vram_end_bytes", ctypes.c_uint64),
+        ("vram_peak_bytes", ctypes.c_uint64),
+        ("vram_measured", ctypes.c_uint32),
+        ("_pad", ctypes.c_uint32),
+    ]
+
+
 class CAudio(ctypes.Structure):
     _fields_ = [
         ("samples", ctypes.POINTER(ctypes.c_float)),
@@ -58,8 +75,11 @@ class CAudio(ctypes.Structure):
         ("t_total_ms", ctypes.c_int64),
         ("audio_duration_ms", ctypes.c_int64),
         ("rtf", ctypes.c_float),
-        ("rss_peak_bytes", ctypes.c_uint64),
-        ("rss_end_bytes", ctypes.c_uint64),
+        # Pair-with-rtf padding keeps the nested mem sub-struct on an
+        # 8-byte boundary so the uint64 fields inside it read correctly
+        # under strict-alignment targets.
+        ("_pad", ctypes.c_float),
+        ("mem", CMemStats),
     ]
 
 

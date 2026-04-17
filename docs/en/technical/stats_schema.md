@@ -68,9 +68,20 @@ The shared shape is pinned in `src/lunavox/core/stats_schema.py`. Adding a field
 
 ## C API Subset
 
-`LunavoxAudio` exposes a flat subset of the above directly on the audio struct, so the C / Python binding does not need an extra round-trip:
+`LunavoxAudio` exposes a subset of the above directly on the audio struct, so the C / Python binding does not need an extra round-trip. Memory / VRAM samples live in a nested `LunavoxMemStats` block so callers see a single `mem.*_peak_delta_bytes` computation path instead of juggling flat fields:
 
 ```c
+typedef struct LunavoxMemStats {
+    uint64_t rss_start_bytes;
+    uint64_t rss_end_bytes;
+    uint64_t rss_peak_bytes;
+    uint64_t vram_start_bytes;
+    uint64_t vram_end_bytes;
+    uint64_t vram_peak_bytes;
+    uint32_t vram_measured;  /* 1 = NVML returned per-PID attributed bytes; 0 = not measured */
+    uint32_t _pad;
+} LunavoxMemStats;
+
 typedef struct LunavoxAudio {
     const float* samples;
     int32_t  n_samples;
@@ -82,12 +93,18 @@ typedef struct LunavoxAudio {
     int64_t  t_total_ms;
     int64_t  audio_duration_ms;
     float    rtf;
-    uint64_t rss_peak_bytes;
-    uint64_t rss_end_bytes;
+    float    _pad;
+    LunavoxMemStats mem;
 } LunavoxAudio;
 ```
 
-The Python binding mirrors this subset as `SynthesisStats`. The finer `llama_*` / `decoder_*` sub-timings only appear in the JSON file output.
+### VRAM attribution
+
+`vram_*` fields are sampled via NVML using `nvmlDevice*RunningProcesses` and filtered to the engine's own PID — readings reflect LunaVox's own allocations, not whole-device usage. When NVML is unavailable, or when the driver cannot attribute a per-process byte count for the current process, `vram_measured` stays `0` and the `vram_*` fields are undefined. Clients MUST gate VRAM rendering on `vram_measured`, not on `vram_peak_bytes > 0` (a zero reading on a CPU-only run is a legitimate measurement).
+
+### Python / HTTP mirrors
+
+The Python binding mirrors this as `MemStats` + `SynthesisStats` (see `lunavox.runtime.params`), and the HTTP / WS API echoes it as `SynthStatsResponse { mem: MemStatsResponse }` with the same field names. `MemStats.rss_peak_delta_bytes` / `vram_peak_delta_bytes` are computed properties — they return `peak - start` clamped at zero, which is the single correct "synthesis-driven growth" figure for UIs to display. The finer `llama_*` / `decoder_*` sub-timings only appear in the JSON file output.
 
 ## Consumers
 

@@ -27,6 +27,7 @@ from .batch_engine import BatchEngine
 from .engine import Engine, LogCallback
 from .errors import LunavoxLibraryError, LunavoxSynthesisError
 from .params import (
+    MemStats,
     SynthesisChunk,
     SynthesisMode,
     SynthesisParams,
@@ -42,6 +43,7 @@ __all__ = [
     "LogCallback",
     "LunavoxLibraryError",
     "LunavoxSynthesisError",
+    "MemStats",
     "SynthesisChunk",
     "SynthesisMode",
     "SynthesisParams",

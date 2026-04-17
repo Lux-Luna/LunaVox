@@ -150,6 +150,18 @@ struct tts_result {
     uint64_t mem_phys_end_bytes = 0;
     uint64_t mem_phys_peak_bytes = 0;
 
+    // GPU VRAM snapshots (bytes). Sampled via NVML at each sample_memory
+    // checkpoint during synthesis and filtered to this engine's own PID, so
+    // the numbers reflect LunaVox's own allocations rather than whole-device
+    // usage. `mem_vram_measured` is the authoritative "did NVML give us a
+    // real reading" flag — callers must NOT use `vram_peak_bytes > 0` for
+    // that, because a zero peak (engine loaded no GPU weights) is
+    // legitimately different from "not measured".
+    uint64_t mem_vram_start_bytes = 0;
+    uint64_t mem_vram_end_bytes = 0;
+    uint64_t mem_vram_peak_bytes = 0;
+    bool     mem_vram_measured = false;
+
     // Clone/generation diagnostics for alignment & noisy-audio triage.
     int32_t spk_emb_dim = 0;
     float spk_emb_l2 = 0.0f;

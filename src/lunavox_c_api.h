@@ -23,6 +23,26 @@ typedef struct LunavoxSynthesisParams {
     const char* ref_text;        /* Optional reference text for cloned voice */
 } LunavoxSynthesisParams;
 
+/* Per-run memory snapshots. Sampled at every checkpoint during synthesis;
+ * `rss_*` is the process's working set in bytes, `vram_*` is the sum of
+ * this process's VRAM allocations across all visible NVIDIA devices
+ * (per-PID via nvmlDevice*RunningProcesses, not whole-device usage).
+ *
+ * `vram_measured` is the authoritative "did NVML give us a real reading"
+ * flag — readers MUST NOT use `vram_peak_bytes > 0` for that, because zero
+ * is a legitimate reading (CPU-only run on an NVIDIA host). When
+ * `vram_measured == 0` the vram_* fields are undefined. */
+typedef struct LunavoxMemStats {
+    uint64_t rss_start_bytes;
+    uint64_t rss_end_bytes;
+    uint64_t rss_peak_bytes;
+    uint64_t vram_start_bytes;
+    uint64_t vram_end_bytes;
+    uint64_t vram_peak_bytes;
+    uint32_t vram_measured;   /* 1 = NVML returned per-PID attributed bytes; 0 = not measured */
+    uint32_t _pad;            /* align struct size to 8-byte boundary */
+} LunavoxMemStats;
+
 /* Generated audio + per-run stats. Each synthesize call returns a fresh
  * LunavoxAudio; all timing values are milliseconds, memory values are
  * bytes. `audio_duration_ms` is derived from n_samples / sample_rate.
@@ -43,10 +63,10 @@ typedef struct LunavoxAudio {
     /* Derived */
     int64_t audio_duration_ms;
     float   rtf;
+    float   _pad;                  /* align mem to 8-byte boundary */
 
-    /* Memory snapshots (bytes) */
-    uint64_t rss_peak_bytes;
-    uint64_t rss_end_bytes;
+    /* Memory / VRAM snapshots */
+    LunavoxMemStats mem;
 } LunavoxAudio;
 
 /* Fill params with defaults */

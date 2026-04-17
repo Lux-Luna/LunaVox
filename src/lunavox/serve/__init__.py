@@ -1,10 +1,9 @@
 """HTTP serving layer for LunaVox.
 
-Gated behind the ``[serve]`` optional extra. ``pip install
-"lunavox[serve]"`` pulls FastAPI, uvicorn, and pydantic. The CLI
-``lunavox serve`` command is the main entry; :class:`EngineHolder`
-and :func:`create_app` are also importable for embedding the HTTP
-surface inside a larger application.
+FastAPI, uvicorn, pydantic and prometheus-client ship with the base
+install. The CLI ``lunavox serve`` command is the main entry;
+:class:`EngineHolder` and :func:`create_app` are also importable for
+embedding the HTTP surface inside a larger application.
 
 Phase 5A scope: single in-process :class:`lunavox.runtime.Engine`
 serialised via an ``asyncio.Lock`` so concurrent HTTP / WebSocket

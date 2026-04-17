@@ -81,8 +81,13 @@ int main(int argc, char ** argv) {
     Logger::instance().init("logs/latest.log");
 
     uint64_t vram_start = 0;
+    bool vram_start_attributed = false;
     if (lunavox::NVMLMonitor::instance().init()) {
-        vram_start = lunavox::NVMLMonitor::instance().get_used_vram();
+        auto s = lunavox::NVMLMonitor::instance().sample_pid_vram(platform::current_pid());
+        if (s.attributed) {
+            vram_start = s.bytes;
+            vram_start_attributed = true;
+        }
     }
 
     std::vector<std::string> args = platform::utf8_args(argc, argv);
@@ -588,9 +593,14 @@ int main(int argc, char ** argv) {
     LOG_USER("[ Resource Usage (Last Run) ]");
     LOG_USER("  - Peak RAM:       %.2f GB", (double)last_res.mem_rss_peak_bytes / (1024.0 * 1024.0 * 1024.0));
     if (lunavox::NVMLMonitor::instance().is_available()) {
-        uint64_t vram_end = lunavox::NVMLMonitor::instance().get_used_vram();
-        double delta_gb = (double)(vram_end > vram_start ? vram_end - vram_start : 0) / (1024.0 * 1024.0 * 1024.0);
-        LOG_USER("  - GPU VRAM Delta: %.2f GB (%s)", delta_gb, lunavox::NVMLMonitor::instance().get_device_name().c_str());
+        auto end_sample = lunavox::NVMLMonitor::instance().sample_pid_vram(platform::current_pid());
+        if (vram_start_attributed && end_sample.attributed) {
+            uint64_t vram_end = end_sample.bytes;
+            double delta_gb = (double)(vram_end > vram_start ? vram_end - vram_start : 0) / (1024.0 * 1024.0 * 1024.0);
+            LOG_USER("  - GPU VRAM Delta: %.2f GB (%s)", delta_gb, lunavox::NVMLMonitor::instance().get_device_name().c_str());
+        } else {
+            LOG_USER("  - GPU VRAM Delta: N/A (per-process attribution unavailable)");
+        }
     } else {
         LOG_USER("  - GPU VRAM Delta: N/A (NVML not initialized)");
     }

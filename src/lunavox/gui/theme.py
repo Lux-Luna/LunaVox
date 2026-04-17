@@ -41,6 +41,6 @@ CORNER_RADIUS = 12
 
 # Fixed window geometry — big enough to show synth + stats cards on a
 # laptop without scrolling, small enough to fit on a 1080p second display.
-WINDOW_WIDTH = 1180
+WINDOW_WIDTH = 1320
 WINDOW_HEIGHT = 720
 SIDEBAR_WIDTH = 220
