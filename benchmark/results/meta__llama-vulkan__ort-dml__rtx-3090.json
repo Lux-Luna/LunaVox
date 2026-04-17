@@ -1,0 +1,35 @@
+{
+  "run_tag": "llama-vulkan__ort-dml__rtx-3090",
+  "run_label": "llama.cpp/vulkan + ORT/DirectML on NVIDIA GeForce RTX 3090",
+  "timestamp_utc": "2026-04-17T01:18:30+00:00",
+  "git_commit": "6c53207ddee962b2266a751a53ab9f61d083c8a2",
+  "git_branch": "dev",
+  "conda_env": "base",
+  "python_version": "3.13.11",
+  "platform": {
+    "system": "Windows",
+    "release": "11",
+    "version": "10.0.26200",
+    "machine": "AMD64",
+    "processor": "Intel64 Family 6 Model 151 Stepping 2, GenuineIntel",
+    "node": "AngelPlayer"
+  },
+  "cpu_name": "12th Gen Intel(R) Core(TM) i9-12900K",
+  "gpu_name": "NVIDIA GeForce RTX 3090",
+  "build": {
+    "onnx": {
+      "provider": "DmlExecutionProvider",
+      "version": "1.24.4",
+      "platform": "windows",
+      "installed_at": "2026-04-15 00:08:15"
+    },
+    "llama": {
+      "backend": "vulkan",
+      "version": "b8470",
+      "platform": "windows",
+      "installed_at": "2026-04-15 00:08:24"
+    }
+  },
+  "cli_binary": "build/lunavox-cli.exe",
+  "cli_binary_mtime": "2026-04-17T00:22:37+00:00"
+}

@@ -72,8 +72,7 @@ hints; CLI is **typer**; Rich comes from `lunavox.core.ui.console`
 `_state(ctx)`; logging through `core.logging`; paths via `pathlib.Path`
 + `core.project.resolve_project_root`; heavy deps lazy via
 `core.deps.ensure_dependency_group` (no top-level `import torch`).
-User-facing strings default English; Chinese only in `docs/zh/` and
-`代办.txt`.
+User-facing strings default English; Chinese only in `docs/zh/`.
 
 **GUI** — thin shell over `runtime.Engine` + `Voice`; model/build ops
 reuse CLI internals (e.g. `cli.synth_cmd._run_synth`). **No
@@ -90,13 +89,13 @@ material). No backwards-compat shims — delete old paths.
 
 **Never** modify contents of `lib/ build/ logs/ models/ ref/`; the
 `LICENSE` files; `pyproject.toml` `license` / `authors` / `version`
-(release task only); `代办.txt` (user's); `hf_export/` (no real uploads).
+(release task only); `hf_export/` (no real uploads).
 
 **Confirm first**: C ABI signature changes, `libs.json` bumps, `lunavox
 model pull` source switches, deleting whole `src/*.cpp` or
 `src/lunavox/` modules. **Escalate**: multi-GB downloads, HF uploads,
-version bumps or release tags, unexplained RTF regression, `代办.txt`
-conflicts, cross-platform change the host cannot verify.
+version bumps or release tags, unexplained RTF regression,
+cross-platform change the host cannot verify.
 
 **Free**: rename / move / refactor / delete stale abstractions, CLI
 flag renames, module or doc restructuring, C++ internals (non-ABI).

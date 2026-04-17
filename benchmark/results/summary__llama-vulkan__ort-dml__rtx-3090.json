@@ -1,0 +1,125 @@
+{
+  "config": {
+    "text": "LunaVox is a lightweight on-device text-to-speech engine built on Qwen3, optimized for low-latency streaming synthesis on consumer GPUs.",
+    "text_length_chars": 136,
+    "warmup_runs": 5,
+    "repeat_runs": 100,
+    "model_dir": "models/base_small",
+    "ref": "ref/ref_0.6B.json",
+    "first_chunk_frames": 8,
+    "sample_rate": 24000
+  },
+  "load": {
+    "t_load_ms": 1562,
+    "t_warmup_ms": 330
+  },
+  "wall_elapsed_s": 130.76,
+  "total_ms": {
+    "n": 100,
+    "mean": 1221.66,
+    "median": 1224.0,
+    "stddev": 14.465,
+    "min": 1182.0,
+    "max": 1248.0,
+    "p50": 1224.0,
+    "p95": 1242.1,
+    "p99": 1248.0
+  },
+  "ttfb_ms": {
+    "n": 100,
+    "mean": 177.81,
+    "median": 174.5,
+    "stddev": 7.963,
+    "min": 170.0,
+    "max": 202.0,
+    "p50": 174.5,
+    "p95": 197.0,
+    "p99": 198.04
+  },
+  "rtf": {
+    "n": 100,
+    "mean": 0.138,
+    "median": 0.138,
+    "stddev": 0.002,
+    "min": 0.133,
+    "max": 0.141,
+    "p50": 0.138,
+    "p95": 0.14,
+    "p99": 0.141
+  },
+  "realtime_multiplier": 7.269,
+  "stage_mean_ms": {
+    "tokenize": 0.3,
+    "encode": 0.0,
+    "generate": 1138.5,
+    "decode": 376.3
+  },
+  "audio_duration_s": {
+    "n": 100,
+    "mean": 8.88,
+    "median": 8.88,
+    "stddev": 0.0,
+    "min": 8.88,
+    "max": 8.88,
+    "p50": 8.88,
+    "p95": 8.88,
+    "p99": 8.88
+  },
+  "throughput_chars_per_sec": {
+    "n": 100,
+    "mean": 111.34,
+    "median": 111.111,
+    "stddev": 1.327,
+    "min": 108.974,
+    "max": 115.059,
+    "p50": 111.111,
+    "p95": 113.717,
+    "p99": 114.009
+  },
+  "memory": {
+    "rss_peak_max_mb": 995.11,
+    "rss_peak_mean_mb": 993.18,
+    "phys_peak_max_mb": 995.11,
+    "vram_peak_mb": 1245.75,
+    "vram_steady_mb": 1173.81,
+    "vram_baseline_mb": 2074.04,
+    "vram_peak_absolute_mb": 3319.79,
+    "vram_n_samples": 1200,
+    "vram_skipped_reason": null
+  },
+  "meta": {
+    "run_tag": "llama-vulkan__ort-dml__rtx-3090",
+    "run_label": "llama.cpp/vulkan + ORT/DirectML on NVIDIA GeForce RTX 3090",
+    "timestamp_utc": "2026-04-17T01:18:30+00:00",
+    "git_commit": "6c53207ddee962b2266a751a53ab9f61d083c8a2",
+    "git_branch": "dev",
+    "conda_env": "base",
+    "python_version": "3.13.11",
+    "platform": {
+      "system": "Windows",
+      "release": "11",
+      "version": "10.0.26200",
+      "machine": "AMD64",
+      "processor": "Intel64 Family 6 Model 151 Stepping 2, GenuineIntel",
+      "node": "AngelPlayer"
+    },
+    "cpu_name": "12th Gen Intel(R) Core(TM) i9-12900K",
+    "gpu_name": "NVIDIA GeForce RTX 3090",
+    "build": {
+      "onnx": {
+        "provider": "DmlExecutionProvider",
+        "version": "1.24.4",
+        "platform": "windows",
+        "installed_at": "2026-04-15 00:08:15"
+      },
+      "llama": {
+        "backend": "vulkan",
+        "version": "b8470",
+        "platform": "windows",
+        "installed_at": "2026-04-15 00:08:24"
+      }
+    },
+    "cli_binary": "build/lunavox-cli.exe",
+    "cli_binary_mtime": "2026-04-17T00:22:37+00:00"
+  }
+}
