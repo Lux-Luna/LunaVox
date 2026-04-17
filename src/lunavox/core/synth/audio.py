@@ -36,7 +36,7 @@ def f32_to_pcm16(audio: Any) -> bytes:
     # have returned a view of the caller's memory (e.g. when ``audio``
     # is already an ndarray). Copy unconditionally — the cost is ~1 µs
     # per KB and guarantees correctness.
-    clipped = np.clip(arr, -1.0, 1.0)
+    clipped = arr.clip(-1.0, 1.0)
     scaled = np.rint(clipped * 32767.0).astype(np.int16, copy=False)
     return scaled.tobytes()
 
