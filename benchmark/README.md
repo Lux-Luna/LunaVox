@@ -74,7 +74,7 @@ benchmark/
 
 ## Dependencies
 
-- Python 3.10+
+- Python 3.11+
 - `pynvml` (optional) — without it, VRAM columns fall back to `n/a` with a
   `vram_skipped_reason`. The CPU backend run is still valid without NVML.
 
