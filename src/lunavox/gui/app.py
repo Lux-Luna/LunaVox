@@ -31,7 +31,7 @@ from .theme import (
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
 )
-from .views import BuildView, LibraryView, SettingsView, SynthView
+from .views import LibraryView, SettingsView, SynthView
 
 
 class LunaVoxApp(ctk.CTk):  # pyright: ignore[reportUntypedBaseClass]
@@ -95,7 +95,6 @@ class LunaVoxApp(ctk.CTk):  # pyright: ignore[reportUntypedBaseClass]
         entries = [
             ("synthesize", "nav.synthesize"),
             ("library", "nav.library"),
-            ("build", "nav.build"),
             ("settings", "nav.settings"),
         ]
         for row, (view_id, label_key) in enumerate(entries, start=2):
@@ -116,7 +115,7 @@ class LunaVoxApp(ctk.CTk):  # pyright: ignore[reportUntypedBaseClass]
         # Bottom-aligned footer.
         ctk.CTkLabel(
             sidebar,
-            text="v2.2.0",
+            text="v2.2.2",
             font=FONT_BODY,
             text_color=TEXT_MUTED,
         ).grid(row=11, column=0, sticky="sw", padx=SPACE_LG, pady=SPACE_SM)
@@ -137,8 +136,6 @@ class LunaVoxApp(ctk.CTk):  # pyright: ignore[reportUntypedBaseClass]
             )
         elif view_id == "library":
             view = LibraryView(self._content, self._config, self._t)
-        elif view_id == "build":
-            view = BuildView(self._content, self._config, self._t)
         elif view_id == "settings":
             view = SettingsView(
                 self._content,

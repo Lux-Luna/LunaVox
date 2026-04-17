@@ -20,7 +20,7 @@ non-Qwen3 architectures, backwards-compat shims.
 | Build + model | `build/*.py` (+ `libs.json`); `model/{config.py,downloader.py,pipeline.py,conversion/}` |
 | GUI / HTTP-WS | `gui/` (customtkinter + pygame); `serve/` (FastAPI) |
 | Core utilities | `core/{ui,logging,project,platform,deps}.py` |
-| Docs + metadata + runtime dirs | `docs/{en,zh}/`; `pyproject.toml` (2.2.0); `models/ ref/ build/ logs/latest.log` |
+| Docs + metadata + runtime dirs | `docs/{en,zh}/`; `pyproject.toml` (2.2.2); `models/ ref/ build/ logs/latest.log` |
 
 ## 2. Task routing
 

@@ -32,7 +32,7 @@ lunavox model pull --model base_small
 ## 2. Build the image
 
 ```bash
-docker build -t lunavox:2.2.0 .
+docker build -t lunavox:2.2.2 .
 ```
 
 First-run cost is ~8–15 min on a modern laptop (mostly CMake + C++
@@ -68,13 +68,13 @@ docker run --rm \
     -v "$(pwd)/models:/app/models:ro" \
     -v "$(pwd)/ref:/app/ref:ro" \
     -v "$(pwd)/output:/app/output" \
-    lunavox:2.2.0
+    lunavox:2.2.2
 
 # Pass through any lunavox serve flags
 docker run --rm \
     -p 8000:8000 \
     -v "$(pwd)/models:/app/models:ro" \
-    lunavox:2.2.0 \
+    lunavox:2.2.2 \
     lunavox serve --host 0.0.0.0 --port 8000 --batch-size 2 --model base_small
 ```
 
@@ -90,7 +90,7 @@ runs `lunavox build libs --platform linux_cpu` then
 
 **Stage 2 — runtime** (`python:3.11-slim-bookworm`). Installs only
 `libgomp1` / `libstdc++6` / `dumb-init`, creates a non-root `lunavox`
-user (UID 10001), `pip install lunavox==2.2.0` from PyPI, copies
+user (UID 10001), `pip install lunavox==2.2.2` from PyPI, copies
 prebuilt `/src/build/` + `/src/lib/` from stage 1. Writes a
 `.lunavox-root` deployment marker so
 `lunavox.core.project.resolve_project_root()` trusts `/app` without

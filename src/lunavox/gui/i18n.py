@@ -14,7 +14,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "app.subtitle": "Qwen3-TTS inference",
         "nav.synthesize": "Synthesize",
         "nav.library": "Library",
-        "nav.build": "Build",
         "nav.settings": "Settings",
         "lang.toggle": "中文",
         # Synthesize view
@@ -85,16 +84,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "lib.task_cancelled": "Cancelled by user.",
         "lib.dialog_cancel": "Cancel",
         "lib.dialog_close": "Close",
-        # Build view
-        "build.title": "Build",
-        "build.subtitle": "Compile the native LunaVox C++ engine.",
-        "build.run_btn": "Build engine",
-        "build.clean_label": "Clean before build",
-        "build.jobs_label": "Parallel jobs",
-        "build.toolchain_label": "Toolchain",
-        "build.running_title": "Building LunaVox engine",
-        "build.idle": "Press Build engine to start.",
-        "build.in_progress": "Build in progress…",
         # Settings view
         "settings.title": "Settings",
         "settings.threads_label": "Threads",
@@ -111,7 +100,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "app.subtitle": "Qwen3-TTS 推理引擎",
         "nav.synthesize": "合成",
         "nav.library": "素材库",
-        "nav.build": "构建",
         "nav.settings": "设置",
         "lang.toggle": "English",
         # Synthesize view
@@ -181,16 +169,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "lib.task_cancelled": "已取消。",
         "lib.dialog_cancel": "取消",
         "lib.dialog_close": "关闭",
-        # Build view
-        "build.title": "构建",
-        "build.subtitle": "编译 LunaVox C++ 原生引擎。",
-        "build.run_btn": "开始构建",
-        "build.clean_label": "构建前清理",
-        "build.jobs_label": "并行任务数",
-        "build.toolchain_label": "工具链",
-        "build.running_title": "正在构建 LunaVox 引擎",
-        "build.idle": "点击「开始构建」启动。",
-        "build.in_progress": "构建进行中…",
         # Settings view
         "settings.title": "设置",
         "settings.threads_label": "线程数",

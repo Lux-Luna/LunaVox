@@ -29,7 +29,7 @@ lunavox model pull --model base_small
 ## 2. 构建镜像
 
 ```bash
-docker build -t lunavox:2.2.0 .
+docker build -t lunavox:2.2.2 .
 ```
 
 首次构建耗时 ~8–15 分钟，主要花在 CMake 和 C++ 编译。缓存命中后：
@@ -64,13 +64,13 @@ docker run --rm \
     -v "$(pwd)/models:/app/models:ro" \
     -v "$(pwd)/ref:/app/ref:ro" \
     -v "$(pwd)/output:/app/output" \
-    lunavox:2.2.0
+    lunavox:2.2.2
 
 # 透传任意 lunavox serve flag
 docker run --rm \
     -p 8000:8000 \
     -v "$(pwd)/models:/app/models:ro" \
-    lunavox:2.2.0 \
+    lunavox:2.2.2 \
     lunavox serve --host 0.0.0.0 --port 8000 --batch-size 2 --model base_small
 ```
 
@@ -86,7 +86,7 @@ docker run --rm \
 
 **Stage 2 — runtime**（`python:3.11-slim-bookworm`）。只装 `libgomp1`
 / `libstdc++6` / `dumb-init`，创建非 root 用户 `lunavox`（UID 10001），
-从 PyPI 安装 `lunavox==2.2.0`，从 stage 1 拷 `/src/build/` 和
+从 PyPI 安装 `lunavox==2.2.2`，从 stage 1 拷 `/src/build/` 和
 `/src/lib/` 过来。写 `.lunavox-root` 部署布局标记，让
 `lunavox.core.project.resolve_project_root()` 认可 `/app` 为合法 root
 （容器里没有 `CMakeLists.txt` / `src/`）。设置

@@ -3,7 +3,7 @@
 # Prereqs:
 #
 #   1. Build the image:
-#        docker build -t lunavox:2.2.0 .
+#        docker build -t lunavox:2.2.2 .
 #
 #   2. Pull a model to ./models/ on the host (this is a one-shot, the
 #      container doesn't do it because model downloads are ~GB):
@@ -26,7 +26,7 @@
 
 services:
   lunavox:
-    image: lunavox:2.2.0
+    image: lunavox:2.2.2
     container_name: lunavox
     restart: unless-stopped
 

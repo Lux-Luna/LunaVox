@@ -15,7 +15,7 @@
 #   Stage 2 (runtime)  — slim Python base with only the runtime OS
 #                        libraries (libgomp1 / libstdc++6) that ONNX
 #                        Runtime needs. Pip-installs lunavox from PyPI
-#                        (so we get the exact 2.2.0 release), copies
+#                        (so we get the exact 2.2.2 release), copies
 #                        the prebuilt C++ artifacts from stage 1, and
 #                        marks /app as a deployment-layout project
 #                        root via the .lunavox-root sentinel file.
@@ -26,7 +26,7 @@
 #
 #     docker run --rm -p 8000:8000 \
 #         -v $(pwd)/models:/app/models \
-#         lunavox:2.2.0
+#         lunavox:2.2.2
 #
 # Or use the companion compose.yml which does the mount for you.
 
@@ -104,7 +104,7 @@ WORKDIR /app
 
 # Install LunaVox from PyPI. Pinning to the image tag keeps the
 # runtime dependencies in lockstep with whatever version was tested.
-ARG LUNAVOX_VERSION=2.2.0
+ARG LUNAVOX_VERSION=2.2.2
 RUN python -m pip install --no-cache-dir --upgrade pip \
  && python -m pip install --no-cache-dir "lunavox==${LUNAVOX_VERSION}"
 
@@ -136,6 +136,6 @@ EXPOSE 8000
 # Default command: start the server listening on 0.0.0.0 so the
 # container's port is reachable from the host. --batch-size auto
 # picks a pool size based on container memory limits. Override any
-# of these via `docker run ... lunavox:2.2.0 serve --batch-size 1`.
+# of these via `docker run ... lunavox:2.2.2 serve --batch-size 1`.
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["lunavox", "serve", "--host", "0.0.0.0", "--port", "8000", "--batch-size", "auto"]

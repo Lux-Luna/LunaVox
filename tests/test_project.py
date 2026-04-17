@@ -21,7 +21,7 @@ def _make_fake_root(base: Path) -> Path:
 def _make_deployment_root(base: Path) -> Path:
     """Deployment layout: just the ``.lunavox-root`` marker file."""
     base.mkdir(parents=True, exist_ok=True)
-    (base / DEPLOYMENT_MARKER).write_text("lunavox 2.2.0 deployment\n", encoding="utf-8")
+    (base / DEPLOYMENT_MARKER).write_text("lunavox 2.2.2 deployment\n", encoding="utf-8")
     return base
 
 

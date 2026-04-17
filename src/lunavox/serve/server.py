@@ -121,7 +121,7 @@ def create_app(
 
     app = FastAPI(
         title="LunaVox",
-        version="2.2.0",
+        version="2.2.2",
         description="HTTP / WebSocket serving layer for LunaVox Qwen3-TTS.",
         lifespan=lifespan,
     )
