@@ -110,9 +110,7 @@ class VoicePicker(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
             speaker = self._speaker_var.get().strip()
             if not speaker:
                 return None
-            instruct = (
-                self._instruct_var.get().strip() if self._instruct_support() else ""
-            )
+            instruct = self._instruct_var.get().strip() if self._instruct_support() else ""
             return VoiceSpec.custom(speaker, instruct=instruct)
         if mode == "design":
             instruct = self._instruct_var.get().strip()
@@ -190,7 +188,10 @@ class VoicePicker(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
         if current and self._ref_dir is not None:
             try:
                 as_path = Path(current)
-                if as_path.parent.resolve() == self._ref_dir.resolve() and as_path.name in ref_files:
+                if (
+                    as_path.parent.resolve() == self._ref_dir.resolve()
+                    and as_path.name in ref_files
+                ):
                     initial = as_path.name
             except Exception:  # noqa: BLE001 — bad path → just fall back to custom
                 pass
@@ -206,9 +207,7 @@ class VoicePicker(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
         ctk.CTkLabel(frame, text=self._t("synth.reference_label"), font=FONT_BODY).grid(
             row=2, column=0, columnspan=2, sticky="w", pady=(SPACE_SM, SPACE_SM)
         )
-        entry = ctk.CTkEntry(
-            frame, textvariable=self._reference_var, placeholder_text="ref.wav"
-        )
+        entry = ctk.CTkEntry(frame, textvariable=self._reference_var, placeholder_text="ref.wav")
         entry.grid(row=3, column=0, sticky="ew", padx=(0, SPACE_SM))
         ctk.CTkButton(
             frame,
@@ -236,13 +235,13 @@ class VoicePicker(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
         if speakers:
             if self._speaker_var.get() not in speakers:
                 self._speaker_var.set(speakers[0])
-            ctk.CTkOptionMenu(
-                frame, values=speakers, variable=self._speaker_var
-            ).grid(row=1, column=0, sticky="ew", pady=(0, SPACE_SM))
+            ctk.CTkOptionMenu(frame, values=speakers, variable=self._speaker_var).grid(
+                row=1, column=0, sticky="ew", pady=(0, SPACE_SM)
+            )
         else:
-            ctk.CTkEntry(
-                frame, textvariable=self._speaker_var, placeholder_text="Vivian"
-            ).grid(row=1, column=0, sticky="ew", pady=(0, SPACE_SM))
+            ctk.CTkEntry(frame, textvariable=self._speaker_var, placeholder_text="Vivian").grid(
+                row=1, column=0, sticky="ew", pady=(0, SPACE_SM)
+            )
 
         if self._instruct_support():
             self._add_instruct_controls(frame, start_row=2, presets=custom_presets(self._t.lang))
@@ -253,9 +252,7 @@ class VoicePicker(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
         frame.grid_columnconfigure(0, weight=1)
         # Design mode always needs instruct; gate symmetrically just in case.
         if self._instruct_support():
-            self._add_instruct_controls(
-                frame, start_row=0, presets=design_presets(self._t.lang)
-            )
+            self._add_instruct_controls(frame, start_row=0, presets=design_presets(self._t.lang))
         else:
             ctk.CTkLabel(
                 frame,

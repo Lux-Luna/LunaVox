@@ -168,9 +168,7 @@ class SynthView(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
             # user flips tabs and comes back, a still-loaded model
             # shows its box ticked.
             model_dir = self._config.project_root / "models" / self._current_model
-            initial_loaded = self._session.is_loaded_for(
-                model_dir, self._config.n_threads
-            )
+            initial_loaded = self._session.is_loaded_for(model_dir, self._config.n_threads)
             self._persistent_var = ctk.BooleanVar(value=initial_loaded)
             self._persistent_cb = ctk.CTkCheckBox(
                 model_row,
@@ -331,9 +329,7 @@ class SynthView(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
                 return  # already loading
             self._set_load_ui(loading=True)
             self._status.configure(text=self._t("synth.persistent_loading"))
-            self._load_worker = threading.Thread(
-                target=self._run_load, daemon=True
-            )
+            self._load_worker = threading.Thread(target=self._run_load, daemon=True)
             self._load_worker.start()
         else:
             self._session.unload()
@@ -370,9 +366,7 @@ class SynthView(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
             # Load failed — revert the visual so it matches reality.
             if self._persistent_var is not None:
                 self._persistent_var.set(False)
-            self._status.configure(
-                text=f"{self._t('synth.persistent_load_failed')}: {err}"
-            )
+            self._status.configure(text=f"{self._t('synth.persistent_load_failed')}: {err}")
 
     def _on_generate(self) -> None:
         if not self._current_model:
@@ -457,13 +451,9 @@ class SynthView(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
             out_stream: Any = None
 
             try:
-                with self._session.acquire(
-                    model_dir, n_threads=self._config.n_threads
-                ) as engine:
+                with self._session.acquire(model_dir, n_threads=self._config.n_threads) as engine:
                     pipeline = SynthesisPipeline(engine)
-                    for chunk in pipeline.synthesize_stream(
-                        text, voice=voice, params=params
-                    ):
+                    for chunk in pipeline.synthesize_stream(text, voice=voice, params=params):
                         if self._cancel.is_set():
                             break
                         if len(chunk.audio) > 0:
@@ -494,12 +484,8 @@ class SynthView(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
                 # the UI now — don't clobber its state with ours.
                 return
 
-            full_audio = (
-                np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.float32)
-            )
-            self.after(
-                0, self._on_synthesis_done, full_audio, sr, final_stats, ttfb_ms
-            )
+            full_audio = np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.float32)
+            self.after(0, self._on_synthesis_done, full_audio, sr, final_stats, ttfb_ms)
         except Exception as err:  # noqa: BLE001 — surfaced to user via status line
             self.after(0, self._on_synthesis_error, err)
 

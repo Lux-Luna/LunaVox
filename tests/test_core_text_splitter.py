@@ -43,10 +43,7 @@ def test_constructor_rejects_invalid_bounds():
 
 def test_strong_split_on_english():
     # Well over max_chars to force real splitting.
-    text = (
-        "First sentence here. Second sentence is also here! "
-        "And a third one? Finally the fourth."
-    )
+    text = "First sentence here. Second sentence is also here! And a third one? Finally the fourth."
     s = TextSplitter(max_chars=40, min_chars=4)
     segments = s.split(text)
     assert len(segments) >= 3
@@ -56,10 +53,7 @@ def test_strong_split_on_english():
 
 
 def test_strong_split_on_chinese_fullwidth():
-    text = (
-        "第一句很长需要被切分。第二句也是一个完整的句子！"
-        "第三句是一个疑问句？第四句是个终结句。"
-    )
+    text = "第一句很长需要被切分。第二句也是一个完整的句子！第三句是一个疑问句？第四句是个终结句。"
     s = TextSplitter(max_chars=16, min_chars=4)
     segments = s.split(text)
     assert len(segments) >= 3
@@ -184,9 +178,9 @@ def test_no_segment_exceeds_max_chars_regardless_of_input():
     s = TextSplitter(max_chars=60, min_chars=4)
     for text in inputs:
         segments = s.split(text)
-        assert all(
-            len(seg) <= s.max_chars for seg in segments
-        ), f"max_chars violated on input: {text[:40]!r}"
+        assert all(len(seg) <= s.max_chars for seg in segments), (
+            f"max_chars violated on input: {text[:40]!r}"
+        )
 
 
 # ---------------------------------------------------------------------

@@ -20,6 +20,7 @@ or re-enable buttons.
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import threading
 from collections.abc import Callable
@@ -82,9 +83,7 @@ class ConversionDialog(ctk.CTkToplevel):  # pyright: ignore[reportUntypedBaseCla
         self.grid_rowconfigure(1, weight=1)
 
         header = ctk.CTkLabel(self, text=self.title(), font=FONT_HEADING)
-        header.grid(
-            row=0, column=0, sticky="w", padx=SPACE_LG, pady=(SPACE_LG, SPACE_SM)
-        )
+        header.grid(row=0, column=0, sticky="w", padx=SPACE_LG, pady=(SPACE_LG, SPACE_SM))
 
         log_frame = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=CORNER_RADIUS)
         log_frame.grid(row=1, column=0, sticky="nsew", padx=SPACE_LG, pady=SPACE_SM)
@@ -109,10 +108,9 @@ class ConversionDialog(ctk.CTkToplevel):  # pyright: ignore[reportUntypedBaseCla
         self._button.grid(row=0, column=1, sticky="e")
 
     def _grab(self) -> None:
-        try:
+        # grab_set races on some WMs
+        with contextlib.suppress(Exception):
             self.grab_set()
-        except Exception:  # noqa: BLE001 — grab_set races on some WMs
-            pass
 
     # --- start ---------------------------------------------------------
 
@@ -182,10 +180,9 @@ class ConversionDialog(ctk.CTkToplevel):  # pyright: ignore[reportUntypedBaseCla
         self._button.configure(text=self._t("lib.dialog_close"))
         status_key = "lib.task_done" if success else "lib.task_cancelled"
         self._status.configure(text=self._t(status_key))
-        try:
+        # don't let callbacks break the modal
+        with contextlib.suppress(Exception):
             self._on_done(success)
-        except Exception:  # noqa: BLE001 — don't let callbacks break the modal
-            pass
 
     # --- button handling ----------------------------------------------
 
@@ -194,10 +191,8 @@ class ConversionDialog(ctk.CTkToplevel):  # pyright: ignore[reportUntypedBaseCla
             self._close()
             return
         if self._proc and self._proc.poll() is None:
-            try:
+            with contextlib.suppress(Exception):
                 self._proc.terminate()
-            except Exception:  # noqa: BLE001
-                pass
         # Thread-target tasks can't be cancelled cooperatively here; mark
         # them as done so the dialog closes cleanly once the thread wraps.
         self._append_log(self._t("lib.task_cancelled"))
@@ -210,8 +205,6 @@ class ConversionDialog(ctk.CTkToplevel):  # pyright: ignore[reportUntypedBaseCla
             self._close()
 
     def _close(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.grab_release()
-        except Exception:  # noqa: BLE001
-            pass
         self.destroy()

@@ -53,7 +53,7 @@ class SynthesisParams:
     ref_text: Optional[str] = None
 
     @classmethod
-    def from_overrides(cls, **overrides: Any) -> "SynthesisParams":
+    def from_overrides(cls, **overrides: Any) -> SynthesisParams:
         """Build a fresh instance, applying only the non-``None`` overrides.
 
         Unknown keys raise ``TypeError`` so typos surface at the call

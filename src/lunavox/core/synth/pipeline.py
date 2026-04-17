@@ -111,8 +111,8 @@ class _PipelineBase:
         if auto_split_threshold < 1:
             raise ValueError("auto_split_threshold must be >= 1")
         self.auto_split_threshold = auto_split_threshold
-        self.splitter = splitter if splitter is not None else TextSplitter(
-            max_chars=auto_split_threshold
+        self.splitter = (
+            splitter if splitter is not None else TextSplitter(max_chars=auto_split_threshold)
         )
 
     def _segments(self, text: str) -> list[str]:
@@ -169,9 +169,7 @@ class SynthesisPipeline(_PipelineBase):
         if len(segments) == 1:
             return self.engine.synthesize(segments[0], voice=voice, params=params)
 
-        results = [
-            self.engine.synthesize(seg, voice=voice, params=params) for seg in segments
-        ]
+        results = [self.engine.synthesize(seg, voice=voice, params=params) for seg in segments]
         merged_audio = _merge_audio(results)
         return SynthesisResult(
             audio=merged_audio,
@@ -297,9 +295,7 @@ class AsyncSynthesisPipeline(_PipelineBase):
         collected_stats: list[SynthesisStats] = []
         for seg_idx, seg in enumerate(segments):
             is_final_segment = seg_idx == len(segments) - 1
-            async for chunk in self.batch.synthesize_stream(
-                seg, voice=voice, params=params
-            ):
+            async for chunk in self.batch.synthesize_stream(seg, voice=voice, params=params):
                 if chunk.is_last:
                     if chunk.stats is not None:
                         collected_stats.append(chunk.stats)

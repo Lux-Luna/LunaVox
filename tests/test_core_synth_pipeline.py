@@ -43,7 +43,9 @@ def _fake_result(text: str) -> SynthesisResult:
         rtf=1.0,
         mem=MemStats(rss_peak_bytes=len(text) * 1024),
     )
-    return SynthesisResult(audio=audio, sample_rate=SAMPLE_RATE, stats=stats, mode=SynthesisMode.BASE)
+    return SynthesisResult(
+        audio=audio, sample_rate=SAMPLE_RATE, stats=stats, mode=SynthesisMode.BASE
+    )
 
 
 class FakeEngine:

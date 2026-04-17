@@ -122,9 +122,7 @@ class TextSplitter:
         if max_chars < 1:
             raise ValueError("max_chars must be >= 1")
         if min_chars < 1 or min_chars > max_chars:
-            raise ValueError(
-                f"min_chars must be in [1, max_chars={max_chars}], got {min_chars}"
-            )
+            raise ValueError(f"min_chars must be in [1, max_chars={max_chars}], got {min_chars}")
         self.max_chars = max_chars
         self.min_chars = min_chars
         self.prefer_strong = prefer_strong
@@ -165,9 +163,7 @@ class TextSplitter:
 
     # --- internals ----------------------------------------------------
 
-    def _refine(
-        self, segments: list[str], pattern: re.Pattern[str]
-    ) -> list[str]:
+    def _refine(self, segments: list[str], pattern: re.Pattern[str]) -> list[str]:
         """Re-split any segment longer than ``max_chars`` using ``pattern``."""
         out: list[str] = []
         for seg in segments:

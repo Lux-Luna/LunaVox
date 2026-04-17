@@ -20,11 +20,11 @@ from lunavox.core.synth import (
     f32_to_wav,
     resolve_voice,
 )
-
-VoiceMode = Literal["base", "clone", "custom", "design"]
 from lunavox.core.ui import console
 
 from ._common import RuntimeState, state
+
+VoiceMode = Literal["base", "clone", "custom", "design"]
 
 
 def register(parent: typer.Typer) -> None:
@@ -151,7 +151,5 @@ def _coerce_voice_mode(mode: str) -> VoiceMode:
     """
     m = mode.lower()
     if m not in {"base", "clone", "custom", "design"}:
-        raise RuntimeError(
-            f"Unknown voice mode: {mode}. Expected base|clone|custom|design."
-        )
+        raise RuntimeError(f"Unknown voice mode: {mode}. Expected base|clone|custom|design.")
     return cast(VoiceMode, m)

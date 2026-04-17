@@ -17,6 +17,7 @@ still works on a stock environment.
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from pathlib import Path
@@ -88,9 +89,9 @@ class LibraryView(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
             self._build_model_row(models_card, i, spec)
 
         if not specs:
-            ctk.CTkLabel(
-                models_card, text=self._t("lib.no_models"), text_color=TEXT_MUTED
-            ).grid(row=1, column=0, columnspan=2, sticky="w", padx=SPACE_LG, pady=SPACE_MD)
+            ctk.CTkLabel(models_card, text=self._t("lib.no_models"), text_color=TEXT_MUTED).grid(
+                row=1, column=0, columnspan=2, sticky="w", padx=SPACE_LG, pady=SPACE_MD
+            )
 
         ctk.CTkLabel(models_card, text="").grid(
             row=len(specs) + 1, column=0, columnspan=2, pady=(0, SPACE_SM)
@@ -100,9 +101,7 @@ class LibraryView(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
         runtimes_card = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=CORNER_RADIUS)
         runtimes_card.grid(row=2, column=0, sticky="ew", pady=(0, SPACE_MD))
         runtimes_card.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(
-            runtimes_card, text=self._t("lib.runtimes_section"), font=FONT_HEADING
-        ).grid(
+        ctk.CTkLabel(runtimes_card, text=self._t("lib.runtimes_section"), font=FONT_HEADING).grid(
             row=0, column=0, columnspan=3, sticky="w", padx=SPACE_LG, pady=(SPACE_LG, SPACE_SM)
         )
         ctk.CTkLabel(
@@ -170,23 +169,17 @@ class LibraryView(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
 
     # --- runtime rows --------------------------------------------------
 
-    def _build_runtime_row(
-        self, parent: Any, row_index: int, lib_name: str, info: Any
-    ) -> None:
+    def _build_runtime_row(self, parent: Any, row_index: int, lib_name: str, info: Any) -> None:
         title = LIBS_CONFIG["libraries"].get(lib_name, {}).get("display_name", lib_name)
         if info is not None:
-            status = self._t("lib.runtime_installed").format(
-                label=info.label, version=info.version
-            )
+            status = self._t("lib.runtime_installed").format(label=info.label, version=info.version)
         else:
             status = self._t("lib.runtime_missing")
         label_text = f"{title}\n{status}"
 
         # Use a frame so we can attach DnD targets and visually indicate the drop zone.
         row_frame = ctk.CTkFrame(parent, fg_color="transparent")
-        row_frame.grid(
-            row=row_index, column=0, columnspan=3, sticky="ew", padx=SPACE_LG, pady=2
-        )
+        row_frame.grid(row=row_index, column=0, columnspan=3, sticky="ew", padx=SPACE_LG, pady=2)
         row_frame.grid_columnconfigure(0, weight=1)
 
         info_label = ctk.CTkLabel(
@@ -250,9 +243,7 @@ class LibraryView(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
         info = read_lib_metadata(self._config.project_root).get(lib_name)
         title = LIBS_CONFIG["libraries"].get(lib_name, {}).get("display_name", lib_name)
         if info is not None:
-            status = self._t("lib.runtime_installed").format(
-                label=info.label, version=info.version
-            )
+            status = self._t("lib.runtime_installed").format(label=info.label, version=info.version)
         else:
             status = self._t("lib.runtime_missing")
         widgets["info"].configure(text=f"{title}\n{status}")
@@ -320,9 +311,7 @@ class LibraryView(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
         def target(log: Any) -> None:
             log(self._t("lib.runtime_install_drop").format(lib=lib_name))
             log(str(archive))
-            install_local_archive(
-                lib_name, str(archive), str(project_root), label=archive.stem
-            )
+            install_local_archive(lib_name, str(archive), str(project_root), label=archive.stem)
             log(self._t("lib.runtime_install_done").format(lib=lib_name, backend=archive.name))
 
         def on_done(_success: bool) -> None:
@@ -356,11 +345,7 @@ class LibraryView(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
 
             total_files = _probe_total_files(spec.name)
             if total_files:
-                log(
-                    self._t("lib.task_pull_plan").format(
-                        count=total_files, name=spec.name
-                    )
-                )
+                log(self._t("lib.task_pull_plan").format(count=total_files, name=spec.name))
 
             stop = threading.Event()
             monitor = threading.Thread(
@@ -421,16 +406,12 @@ class _BackendPicker(ctk.CTkToplevel):  # pyright: ignore[reportUntypedBaseClass
             ).pack(fill="x", pady=2)
 
     def _grab(self) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.grab_set()
-        except Exception:  # noqa: BLE001
-            pass
 
     def _pick(self, backend: str) -> None:
-        try:
+        with contextlib.suppress(Exception):
             self.grab_release()
-        except Exception:  # noqa: BLE001
-            pass
         self.destroy()
         self._on_pick(backend)
 
