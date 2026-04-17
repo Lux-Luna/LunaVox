@@ -109,6 +109,76 @@ def extract_archive(archive_path, extract_dir):
         else:
             raise ValueError(f"Unsupported archive format: {archive_path}")
 
+def install_local_archive(lib_name, archive_path, root_dir, *, label=None, version="custom"):
+    """Install a backend from an archive that's already on disk.
+
+    Used by the GUI's drag-and-drop / browse path so users can stage a
+    locally-built or differently-versioned llama.cpp / onnxruntime tree
+    without going through the URL table in libs.json.
+
+    ``label`` is what gets written into ``lib/metadata.json`` (e.g.
+    ``"vulkan"`` or ``"DmlExecutionProvider"``); when omitted we record
+    the archive filename as the label so the source is at least visible.
+    """
+    archive_path = Path(archive_path)
+    if not archive_path.exists():
+        raise FileNotFoundError(f"Archive not found: {archive_path}")
+    suffix = archive_path.suffix.lower()
+    if suffix not in {".zip", ".nupkg", ".tgz"} and not str(archive_path).endswith(".tar.gz"):
+        raise ValueError(f"Unsupported archive format: {archive_path.name}")
+
+    lib_root = Path(root_dir) / "lib"
+    target_dir = lib_root / lib_name
+    temp_dir = lib_root / f"temp_{lib_name}_local"
+    lib_root.mkdir(parents=True, exist_ok=True)
+
+    try:
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        extract_archive(archive_path, temp_dir)
+
+        if suffix == ".nupkg":
+            flatten_nuget_structure(temp_dir)
+
+        extracted_items = list(temp_dir.glob("*"))
+        if len(extracted_items) == 1 and extracted_items[0].is_dir():
+            source_dir = extracted_items[0]
+        else:
+            source_dir = temp_dir
+
+        if target_dir.exists():
+            shutil.rmtree(target_dir)
+        shutil.copytree(source_dir, target_dir)
+
+        metadata_file = lib_root / "metadata.json"
+        all_metadata = {}
+        if metadata_file.exists():
+            try:
+                with open(metadata_file, "r", encoding="utf-8") as f:
+                    all_metadata = json.load(f)
+            except Exception:
+                pass
+
+        all_metadata[lib_name] = {
+            "provider" if lib_name == "onnx" else "backend": label or archive_path.stem,
+            "version": version,
+            "platform": platform.system().lower(),
+            "installed_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        with open(metadata_file, "w", encoding="utf-8") as f:
+            json.dump(all_metadata, f, indent=2)
+
+        console.print(
+            f"[bold green]✔[/] [white]Lib {lib_name} installed from local archive at[/] "
+            f"[cyan]{target_dir}[/]"
+        )
+
+    finally:
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+
+
 def update_library(lib_name, backend, root_dir):
     if lib_name not in LIB_URLS:
         raise ValueError(f"Unknown library: {lib_name}")

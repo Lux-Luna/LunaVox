@@ -1,5 +1,6 @@
 #include "lunavox_engine.h"
 #include "logger.h"
+#include "nvml_monitor.h"
 #include "platform_utils.h"
 #include "string_utils.h"
 #include "timing_utils.h"
@@ -1223,11 +1224,41 @@ tts_result Engine::synthesize_internal(
         result.mem_phys_end_bytes = mem.phys_footprint_bytes;
         result.mem_rss_peak_bytes = std::max(result.mem_rss_peak_bytes, mem.rss_bytes);
         result.mem_phys_peak_bytes = std::max(result.mem_phys_peak_bytes, mem.phys_footprint_bytes);
+
+        // NVML init is idempotent (guarded by initialized_), so probing on
+        // every sample is cheap. sample_pid_vram filters nvmlDevice*Running
+        // Processes by this engine's own PID so another process churning
+        // VRAM on the same (or a sibling) GPU can't pollute our baseline /
+        // peak. When `attributed` is false NVML is either unavailable or
+        // couldn't produce a per-process byte count — leave the vram_*
+        // fields untouched and keep `mem_vram_measured` at its last value.
+        auto & nvml = NVMLMonitor::instance();
+        if (!nvml.is_available()) nvml.init();
+        if (nvml.is_available()) {
+            auto sample = nvml.sample_pid_vram(platform::current_pid());
+            if (sample.attributed) {
+                if (!result.mem_vram_measured) {
+                    // First attributed reading — anchor the start point
+                    // here. Relying on `start == 0` as the sentinel was
+                    // wrong: zero is a legitimate "no VRAM allocated yet"
+                    // value and using it caused the start marker to slip
+                    // to a later non-zero sample, under-counting the peak
+                    // delta.
+                    result.mem_vram_start_bytes = sample.bytes;
+                    result.mem_vram_peak_bytes = sample.bytes;
+                    result.mem_vram_measured = true;
+                }
+                result.mem_vram_end_bytes = sample.bytes;
+                result.mem_vram_peak_bytes = std::max(result.mem_vram_peak_bytes, sample.bytes);
+            }
+        }
+
         if (params.print_timing) {
-            LOG_DEBUG("  [mem] %-24s rss=%s  phys=%s",
+            LOG_DEBUG("  [mem] %-24s rss=%s  phys=%s  vram=%s",
                     stage,
                     format_bytes(mem.rss_bytes).c_str(),
-                    format_bytes(mem.phys_footprint_bytes).c_str());
+                    format_bytes(mem.phys_footprint_bytes).c_str(),
+                    format_bytes(result.mem_vram_end_bytes).c_str());
         }
     };
 

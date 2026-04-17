@@ -2,48 +2,31 @@
 
 # 🌌 LunaVox: High-Performance C++ Inference Engine for Qwen3-TTS
 
-![Version](https://img.shields.io/badge/version-2.2.0-blueviolet?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-2.2.2-blueviolet?style=for-the-badge)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-0078d7?style=for-the-badge&logo=windows&logoColor=white)
 ![CoreML](https://img.shields.io/badge/iOS-CoreML-000000?style=for-the-badge&logo=apple&logoColor=white)
 ![C++](https://img.shields.io/badge/C++-17-00599C?style=for-the-badge&logo=c%2B%2B)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 
-**LunaVox** is a high-performance C++ inference engine specifically designed for **Qwen3-TTS**. Through streamlined architecture and deep hardware optimization, it provides extreme speech synthesis speed and flexibility. Whether for local embedded devices, desktop applications, or high-performance servers, LunaVox delivers stable, low-latency TTS experience.
-
----
+**LunaVox** is a high-performance C++ inference engine built specifically for **Qwen3-TTS**. A streamlined architecture and deep hardware optimization deliver stable, low-latency TTS for embedded devices, desktop apps, and servers alike.
 
 ## 🚀 Key Features
 
-- **Lightweight Runtime**: Runs with only ONNX Runtime and a custom Llama inference library, no heavy Python environment required.
-- **Native Multi-language Support**: Built-in automatic language detection, supporting **Chinese, English, Japanese, Korean, Russian, German, French, Italian, Spanish, and Portuguese**.
-- **Unified `Voice` API**: One `engine.synthesize(text, voice, params)` call covers Base, Voice Cloning, Custom Voice, and Voice Design. No more six-method surface.
-- **HTTP + WebSocket serving** (`lunavox serve`): FastAPI app with `POST /v1/synth` and streaming `WS /v1/stream`, powered by the same in-process engine — see [serve guide](docs/en/guide/serve.md).
-- **Desktop GUI** (`lunavox gui`): Sidebar-navigation customtkinter app (Synthesize / Library / Settings) driving the same in-process engine as the CLI.
-- **Profile-driven CLI**: `~/.lunavox/config.toml` profiles layered with env vars and CLI flags so `lunavox --profile quality synth …` is a one-liner.
-- **Modern Build System**: Automatic toolchain detection. Supports Windows (MSVC), Linux (GCC), and macOS (Clang/Apple Silicon).
-- **Cross-platform Hardware Acceleration**: Deeply integrated with CUDA (NVIDIA), CoreML/Metal (Apple), DML (DirectX 12), and Vulkan.
+- **Lightweight runtime** — ONNX Runtime + a custom llama.cpp wrapper, no heavy Python required at inference time.
+- **Native multi-language** — automatic language detection across Chinese, English, Japanese, Korean, Russian, German, French, Italian, Spanish, Portuguese.
+- **Unified `Voice` API** — one `engine.synthesize(text, voice, params)` covers Base, Voice Cloning, Custom Voice, and Voice Design.
+- **HTTP + WebSocket serving** (`lunavox serve`): FastAPI app with `POST /v1/synth` and streaming `WS /v1/stream` — see [serve guide](docs/en/guide/serve.md).
+- **Desktop GUI** (`lunavox gui`): customtkinter app (Synthesize / Library / Settings) driving the same in-process engine.
+- **Profile-driven CLI** — layered `~/.lunavox/config.toml` / env / flag precedence so `lunavox --profile quality synth …` is a one-liner.
+- **Cross-platform hardware acceleration** — CUDA (NVIDIA), CoreML/Metal (Apple), DML (DirectX 12), and Vulkan.
 
----
+## 🛠️ Requirements
 
-## 🛠️ Environment & Build Requirements
+- **Windows** 10/11 (VS 2022/2025), **Linux** Ubuntu 22.04+ (GCC ≥ 9.0), or **macOS** 12+ on Apple Silicon
+- **CMake 3.16+** (Ninja recommended) and a compatible C++17 compiler
+- **Python 3.10+** for the CLI and conversion toolchain
 
-### 1. System Environment
-- **Windows**: Windows 10/11 (VS 2022/2025 supported)
-- **Linux**: Ubuntu 22.04+ or mainstream distributions (GCC >= 9.0)
-- **macOS**: Apple Silicon (M1/M2/M3), macOS 12+ (Metal support)
-- **Compiler**: MSVC (v143/v144), GCC 10.0+, or Apple Clang
-- **Build Tools**: CMake 3.16+, **Ninja** is recommended for faster builds.
-
-### 2. Dependencies
-- **Python 3.10+**: For model conversion and automation.
-- **ONNX Runtime SDK**: Platform-specific C++ dynamic libraries.
-- **Llama Runtime**: Pre-compiled backend binaries.
-
----
-
-## 📊 Performance Benchmarks
-
-The following table shows the average performance of LunaVox across different backend configurations. For detailed reports, see the **[Windows Performance Evaluation Report](docs/en/benchmark/windows_performance.md)**.
+## 📊 Performance
 
 | Configuration | **TTFB (ms)** | RTF | Peak RAM | VRAM | Speedup |
 | :--- | ---: | ---: | ---: | ---: | ---: |
@@ -53,103 +36,35 @@ The following table shows the average performance of LunaVox across different ba
 | **LunaVox (CUDA 13)** | 175 | 0.213 | 1.41 GB | 1.33 GB | 23.78× |
 | **LunaVox (Vulkan + DML)** | **194** | **0.152** | **0.97 GB** | 1.00 GB | **33.33×** |
 
-> [!NOTE]
-> - **Test Model**: **Qwen3-TTS-12Hz-0.6B-Base** with voice cloning using the pre-computed `ref/ref_0.6B.json` feature file.
-> - **Test Environment**: Intel i9-12900K + NVIDIA RTX 3090, Windows 11.
-> - **Test Standard**: 5 warm-up runs (discarded) + **100 measurement runs** per backend, fixed 25-word English sentence. All three backends built from the same commit.
-> - **TTFB** (time-to-first-byte) is the streaming-pipeline delay from synth start to the first PCM sample becoming available — the latency a streaming caller actually observes.
-> - Full per-run distribution (p50 / p95 / p99 / stddev) and raw stats in [`benchmark/report.md`](benchmark/report.md).
+Model `Qwen3-TTS-12Hz-0.6B-Base` with `ref/ref_0.6B.json` cloning on Intel i9-12900K + RTX 3090 / Windows 11 — 5 warmup + 100 measurement runs on a fixed 25-word English sentence. Full per-run distribution in [`benchmark/report.md`](benchmark/report.md); detailed analysis in [Windows performance report](docs/en/benchmark/windows_performance.md).
 
----
-
-### 3. CLI Tool & Dependency Installation
+## 📦 Install & quick start
 
 ```powershell
-pip install lunavox               # core CLI
-pip install "lunavox[serve]"      # + HTTP / WebSocket server
-pip install "lunavox[gui]"        # + desktop GUI
-pip install "lunavox[convert]"    # + source → GGUF conversion toolchain
+pip install lunavox               # core CLI + GUI + HTTP/WebSocket server (default)
+pip install "lunavox[convert]"    # + source → GGUF conversion toolchain (heavy, optional)
 ```
 
-> [!NOTE]
-> **Developer Note**: LunaVox is published on PyPI. Standard users only need to run `pip install lunavox`. For research into model conversion or quantization pipelines, switch to the **[cli-only](https://github.com/Lux-Luna/LunaVox/tree/cli-only)** branch to get the latest source and internal tools.
-
-## 📦 Quick Setup (One-Key Setup)
-
-LunaVox recommends using the `bootstrap` command to complete **Model Pulling, Runtime Library Download, Project Build, and Smoke Test** in one go.
-
-### 1. Automatic Guided Setup (Recommended)
 ```powershell
-# Execute full automatic setup
-lunavox bootstrap
+lunavox bootstrap                 # one-key: pull model + libs + build + smoke test
 ```
 
-### 2. Local Build (From Source)
-If you need fine-grained control:
-```powershell
-# 1. Download pre-converted models (or use 'model convert' for local weights)
-lunavox model pull
+Prefer step-by-step? Run `lunavox model pull`, `lunavox build libs`, then `lunavox build --clean`. For CUDA see [CUDA on Windows](docs/en/install/cuda_windows.md). Full command reference: **[CLI manual](docs/en/guide/cli_reference.md)**.
 
-# 2. Download C++ runtime libraries
-lunavox build libs
+## 🎙️ Synthesis
 
-# 3. Compile the project
-lunavox build --clean
-```
-
-> [!TIP]
-> For detailed commands and advanced parameters, see the **[LunaVox CLI Reference Manual](docs/en/guide/cli_reference.md)**.
-
----
-
-## 🧱 Runtime Libraries
-
-LunaVox automatically downloads appropriate ONNX Runtime and Llama.cpp into the `lib/` directory. For CUDA configurations, see:
-- **[CUDA Windows Dependency Guide (CUDA 12 / 13)](docs/en/install/cuda_windows.md)**
-
----
-
-## 🎙️ Inference Testing & Modes
-
-`lunavox synth` drives the in-process Python `Engine` and writes a WAV —
-same code path used by the GUI and benchmarks. The standalone
-`./build/lunavox-cli` executable still works for profiling and
-Python-free environments.
-
-Detailed tutorial: **[CLI Usage Tutorial](docs/en/guide/usage_tutorial.md)**.
-
-### 1. Voice Cloning
-Mimic a specific voice using reference audio (`.wav`) or pre-computed features (`.json`):
 ```bash
-lunavox synth "Okay, fine, I'm just gonna leave this sock monkey here. Goodbye." \
-  --voice clone --ref ref/ref_0.6B.json \
-  -o output/cloned.wav
+lunavox synth "Hello from LunaVox." -o out.wav                       # base voice
+lunavox synth "…" --voice clone  --ref ref/ref_0.6B.json -o out.wav  # voice cloning
+lunavox synth "…" --voice custom --speaker Vivian --instruct "…"     # catalog speaker
+lunavox synth "…" --voice design --instruct "A warm, calm narrator." # text-to-voice design
+lunavox gui                                                          # desktop GUI
 ```
 
-### 2. Custom Voice
-Use built-in expert speaker IDs:
-```bash
-lunavox synth "She said she would be here by noon." \
-  --voice custom --speaker Vivian --instruct "Use angry tone." \
-  -o output/custom.wav
-```
+The standalone `./build/lunavox-cli` works the same way in Python-free environments. Full mode documentation: **[usage tutorial](docs/en/guide/usage_tutorial.md)**.
 
-### 3. Voice Design
-Design voice from a text description:
-```bash
-lunavox synth "It's in the top drawer... wait, it's empty? No way, that's impossible!" \
-  --voice design --instruct "Speak in an incredulous tone, with a hint of panic." \
-  -o output/designed.wav
-```
+### Embedded Python
 
-### 4. Desktop GUI
-```bash
-pip install "lunavox[gui]"
-lunavox gui
-```
-The GUI is a three-view (Synthesize / Library / Settings) customtkinter app calling the same `Engine` API — no CLI string-building.
-
-### 5. Embedded Python usage
 ```python
 from lunavox.runtime import Engine, SynthesisParams, Voice
 
@@ -159,44 +74,28 @@ with Engine("models/base_small") as engine:
         voice=Voice.clone_file("ref/ref_0.6B.json"),
         params=SynthesisParams(temperature=0.7),
     )
-    # result.audio is a numpy.float32 mono array in [-1, 1]
-    print(f"RTF {result.stats.rtf:.3f}")
+    print(f"RTF {result.stats.rtf:.3f}")  # result.audio is a float32 [-1, 1] mono array
 ```
 
----
+## 📈 Observability
 
-## 📈 Monitoring & Logging
+- `--stats-json report.json` — RTF + memory breakdown per synthesis
+- `logs/latest.log` — build and runtime output
+- `-j N` — CPU thread count (default 4)
 
-- **Detailed Stats**: Add `--stats-json report.json` to get RTF and memory analysis.
-- **Logs**: All build and runtime output is logged to `../../logs/latest.log`.
-- **Thread Control**: Use `-j` (default 4) to adjust CPU thread usage.
+## 📖 Documentation
 
----
-
-## 📖 Documentation Site
-
-Full bilingual documentation — guide, CLI reference, technical details,
-benchmarks, and Python API autodoc — is published at:
-
-- **https://lux-luna.github.io/LunaVox/**
-
-Local preview:
+Full bilingual docs — guide, CLI reference, technical details, benchmarks, Python API — are published at **https://lux-luna.github.io/LunaVox/**. Local preview:
 
 ```bash
-pip install -e ".[docs]"
+pip install -e ".[dev]"
 mkdocs serve
 ```
 
-## 📝 Changelog
-
-Release history and per-version highlights are tracked in
-**[CHANGELOG.md](CHANGELOG.md)**.
-
----
+Release history: **[CHANGELOG.md](CHANGELOG.md)**.
 
 ## 🙏 Acknowledgements
 
-Inspired by or based on:
-- **[Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS)**: Powerful base weights and architecture design.
-- **[onnxruntime](https://github.com/microsoft/onnxruntime)**: High-performance audio decoding backend.
-- **[llama.cpp](https://github.com/ggml-org/llama.cpp)**: Core for LLM sequence prediction.
+- **[Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS)** — base weights and architecture
+- **[onnxruntime](https://github.com/microsoft/onnxruntime)** — audio decoding backend
+- **[llama.cpp](https://github.com/ggml-org/llama.cpp)** — LLM sequence prediction core

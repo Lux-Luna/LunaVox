@@ -68,9 +68,20 @@
 
 ## C API 子集
 
-`LunavoxAudio` 把上面字段中的常用子集直接平铺在结构体里，避免 Python 绑定再 round-trip：
+`LunavoxAudio` 把常用字段直接放在结构体里，避免 Python 绑定再 round-trip。内存 / VRAM 采样被集中进嵌套子结构 `LunavoxMemStats`，这样消费者只需要读一个 `mem.*_peak_delta_bytes`，而不必在多个扁平字段上自行组合：
 
 ```c
+typedef struct LunavoxMemStats {
+    uint64_t rss_start_bytes;
+    uint64_t rss_end_bytes;
+    uint64_t rss_peak_bytes;
+    uint64_t vram_start_bytes;
+    uint64_t vram_end_bytes;
+    uint64_t vram_peak_bytes;
+    uint32_t vram_measured;  /* 1 = NVML 返回按 PID 归属的字节数；0 = 未测 */
+    uint32_t _pad;
+} LunavoxMemStats;
+
 typedef struct LunavoxAudio {
     const float* samples;
     int32_t  n_samples;
@@ -82,12 +93,18 @@ typedef struct LunavoxAudio {
     int64_t  t_total_ms;
     int64_t  audio_duration_ms;
     float    rtf;
-    uint64_t rss_peak_bytes;
-    uint64_t rss_end_bytes;
+    float    _pad;
+    LunavoxMemStats mem;
 } LunavoxAudio;
 ```
 
-Python 绑定以 `SynthesisStats` 镜像同一子集。更细的 `llama_*` / `decoder_*` 仅出现在 JSON 文件输出中。
+### VRAM 归属
+
+`vram_*` 字段通过 NVML 的 `nvmlDevice*RunningProcesses` 按引擎自身 PID 过滤，只统计 LunaVox 进程自己的占用，而非整卡用量。当 NVML 不可用、或驱动无法对本进程返回按字节计数时，`vram_measured` 保持为 `0`，此时 `vram_*` 字段值未定义。消费者**必须**用 `vram_measured` 作为 VRAM 是否可展示的判据，而不是 `vram_peak_bytes > 0`（CPU-only 场景下零值是合法读数）。
+
+### Python / HTTP 镜像
+
+Python 绑定将其镜像为 `MemStats` + `SynthesisStats`（见 `lunavox.runtime.params`）；HTTP / WS API 以 `SynthStatsResponse { mem: MemStatsResponse }` 复用同一组字段。`MemStats.rss_peak_delta_bytes` / `vram_peak_delta_bytes` 是计算属性，返回 `peak - start` 钳在 0 以上 —— 这是 UI 展示"本次合成的实际增长"时唯一正确的数字。更细的 `llama_*` / `decoder_*` 仅出现在 JSON 文件输出中。
 
 ## 使用方
 

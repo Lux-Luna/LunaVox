@@ -1,8 +1,7 @@
 """``lunavox serve`` — HTTP / WebSocket serving layer.
 
 Thin CLI wrapper around :func:`lunavox.serve.server.create_app`.
-Gated behind the ``[serve]`` optional extra; missing extras print
-a clear install hint instead of a ``ModuleNotFoundError`` stack.
+The FastAPI/uvicorn stack ships with the base install.
 """
 
 from __future__ import annotations
@@ -40,21 +39,10 @@ def register(parent: typer.Typer) -> None:
         """Start the HTTP / WebSocket serving layer."""
         st = state(ctx)
 
-        try:
-            import uvicorn  # pyright: ignore[reportMissingImports]
+        import uvicorn
 
-            from lunavox.serve.auto_batch import (  # pyright: ignore[reportMissingImports]
-                resolve_batch_size,
-            )
-            from lunavox.serve.server import create_app  # pyright: ignore[reportMissingImports]
-        except ImportError as err:
-            console.print(
-                "[error]The serve extra is not installed. Run:[/]\n"
-                '  [bold]pip install "lunavox[serve]"[/]\n'
-                f"([dim]import failed: {err}[/])",
-                markup=True,
-            )
-            raise typer.Exit(code=1) from err
+        from lunavox.serve.auto_batch import resolve_batch_size
+        from lunavox.serve.server import create_app
 
         resolved_model = model or st.config.model
         model_dir: Path = st.project_root / "models" / resolved_model

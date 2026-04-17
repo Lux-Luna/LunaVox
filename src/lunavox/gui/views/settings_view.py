@@ -1,11 +1,8 @@
-"""Read-only settings summary + language toggle.
+"""Settings — threads, language, and a readout of the active native runtimes.
 
-Editing the config file is the CLI's job (or you edit
-``~/.lunavox/config.toml`` directly). The GUI just shows what's
-currently active so the user knows which profile is driving
-synthesis. Applying changes here mutates the in-memory
-:class:`ResolvedConfig` for the running session only — persistent
-edits go through the TOML file on disk.
+The CLI's TOML profiles are intentionally absent from this view: the
+GUI only edits session-scoped knobs and points at the Library view for
+swapping the llama.cpp / onnxruntime backend on disk.
 """
 
 from __future__ import annotations
@@ -14,15 +11,13 @@ import contextlib
 from collections.abc import Callable
 from typing import Any, Optional
 
-try:
-    import customtkinter as ctk  # pyright: ignore[reportMissingImports]
-except ImportError as err:  # pragma: no cover — gated by [gui] extra
-    raise ImportError('customtkinter is required: pip install "lunavox[gui]"') from err
+import customtkinter as ctk  # pyright: ignore[reportMissingImports]
 
-from lunavox.cli._config import DEFAULT_CONFIG_PATH, ResolvedConfig
-from lunavox.model import all_models
+from lunavox.cli._config import ResolvedConfig
 
+from ..engine_session import EngineSession
 from ..i18n import Translator
+from ..lib_info import read_lib_metadata
 from ..theme import (
     BG_CARD,
     CORNER_RADIUS,
@@ -43,11 +38,16 @@ class SettingsView(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
         config: ResolvedConfig,
         translator: Translator,
         on_lang_changed: Optional[Callable[[str], None]] = None,
+        engine_session: Optional[EngineSession] = None,
     ) -> None:
         super().__init__(master, fg_color="transparent")
         self._config = config
         self._t = translator
         self._on_lang_changed = on_lang_changed
+        # Optional so the view can still render in isolation (tests,
+        # the `python -m lunavox.gui.views.settings_view` debug path)
+        # but production always wires a real session in from the app.
+        self._session = engine_session
         self._build()
 
     def _build(self) -> None:
@@ -57,61 +57,42 @@ class SettingsView(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
             row=0, column=0, sticky="w", pady=(0, SPACE_MD)
         )
 
-        card = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=CORNER_RADIUS)
-        card.grid(row=1, column=0, sticky="ew")
-        card.grid_columnconfigure(1, weight=1)
+        # --- General (threads + apply) ---
+        general = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=CORNER_RADIUS)
+        general.grid(row=1, column=0, sticky="ew")
+        general.grid_columnconfigure(1, weight=1)
 
-        row = 0
-        row = self._add_row(
-            card, row, self._t("settings.profile_label"), self._config.profile_name or "default"
-        )
-
-        # Model dropdown — mutates ResolvedConfig in place on apply.
-        model_keys_list = [m.name for m in all_models()]
-        ctk.CTkLabel(card, text=self._t("settings.model_label"), font=FONT_BODY).grid(
-            row=row, column=0, sticky="w", padx=SPACE_LG, pady=SPACE_SM
-        )
-        self._model_var = ctk.StringVar(value=self._config.model)
-        ctk.CTkOptionMenu(card, values=model_keys_list, variable=self._model_var).grid(
-            row=row, column=1, sticky="ew", padx=SPACE_LG, pady=SPACE_SM
-        )
-        row += 1
-
-        ctk.CTkLabel(card, text=self._t("settings.backend_label"), font=FONT_BODY).grid(
-            row=row, column=0, sticky="w", padx=SPACE_LG, pady=SPACE_SM
-        )
-        self._backend_var = ctk.StringVar(value=self._config.backend)
-        ctk.CTkOptionMenu(
-            card, values=["auto", "cuda", "vulkan", "vulkan+dml", "cpu"], variable=self._backend_var
-        ).grid(row=row, column=1, sticky="ew", padx=SPACE_LG, pady=SPACE_SM)
-        row += 1
-
-        ctk.CTkLabel(card, text=self._t("settings.threads_label"), font=FONT_BODY).grid(
-            row=row, column=0, sticky="w", padx=SPACE_LG, pady=SPACE_SM
+        ctk.CTkLabel(general, text=self._t("settings.threads_label"), font=FONT_BODY).grid(
+            row=0, column=0, sticky="w", padx=SPACE_LG, pady=(SPACE_LG, SPACE_SM)
         )
         self._threads_var = ctk.IntVar(value=self._config.n_threads)
-        ctk.CTkEntry(card, textvariable=self._threads_var, width=80).grid(
-            row=row, column=1, sticky="w", padx=SPACE_LG, pady=SPACE_SM
-        )
-        row += 1
-
-        row = self._add_row(
-            card, row, self._t("settings.config_path_label"), str(DEFAULT_CONFIG_PATH)
+        ctk.CTkEntry(general, textvariable=self._threads_var, width=80).grid(
+            row=0, column=1, sticky="w", padx=SPACE_LG, pady=(SPACE_LG, SPACE_SM)
         )
 
-        # Apply + status line.
-        self._status_label = ctk.CTkLabel(card, text="", font=FONT_BODY, text_color=TEXT_MUTED)
-        self._status_label.grid(row=row, column=0, columnspan=2, sticky="w", padx=SPACE_LG)
-        row += 1
+        self._status_label = ctk.CTkLabel(general, text="", font=FONT_BODY, text_color=TEXT_MUTED)
+        self._status_label.grid(row=1, column=0, columnspan=2, sticky="w", padx=SPACE_LG)
 
-        ctk.CTkButton(card, text=self._t("settings.apply"), command=self._apply).grid(
-            row=row, column=0, columnspan=2, sticky="e", padx=SPACE_LG, pady=SPACE_MD
+        ctk.CTkButton(general, text=self._t("settings.apply"), command=self._apply).grid(
+            row=2, column=0, columnspan=2, sticky="e", padx=SPACE_LG, pady=(SPACE_SM, SPACE_MD)
         )
 
-        # Language toggle lives in a separate card so it always shows
-        # even if the main card is collapsed for smaller windows.
+        # --- Active runtimes (read-only readout from lib/metadata.json) ---
+        runtimes = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=CORNER_RADIUS)
+        runtimes.grid(row=2, column=0, sticky="ew", pady=(SPACE_MD, 0))
+        runtimes.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(runtimes, text=self._t("settings.runtimes_label"), font=FONT_HEADING).grid(
+            row=0, column=0, columnspan=2, sticky="w", padx=SPACE_LG, pady=(SPACE_LG, SPACE_SM)
+        )
+
+        meta = read_lib_metadata(self._config.project_root)
+        self._add_runtime_row(runtimes, 1, self._t("settings.runtime_llama"), meta.get("llama"))
+        self._add_runtime_row(runtimes, 2, self._t("settings.runtime_onnx"), meta.get("onnx"))
+        ctk.CTkLabel(runtimes, text="").grid(row=3, column=0, columnspan=2, pady=(0, SPACE_SM))
+
+        # --- Language toggle ---
         lang_card = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=CORNER_RADIUS)
-        lang_card.grid(row=2, column=0, sticky="ew", pady=(SPACE_MD, 0))
+        lang_card.grid(row=3, column=0, sticky="ew", pady=(SPACE_MD, 0))
         ctk.CTkLabel(lang_card, text="Language / 语言", font=FONT_HEADING).grid(
             row=0, column=0, sticky="w", padx=SPACE_LG, pady=(SPACE_LG, SPACE_SM)
         )
@@ -121,22 +102,28 @@ class SettingsView(ctk.CTkFrame):  # pyright: ignore[reportUntypedBaseClass]
             command=self._toggle_language,
         ).grid(row=1, column=0, sticky="w", padx=SPACE_LG, pady=(0, SPACE_LG))
 
-    def _add_row(self, parent: Any, row: int, label: str, value: str) -> int:
+    def _add_runtime_row(self, parent: Any, row: int, label: str, info: Any) -> None:
         ctk.CTkLabel(parent, text=label, font=FONT_BODY).grid(
             row=row, column=0, sticky="w", padx=SPACE_LG, pady=SPACE_SM
         )
+        if info is None:
+            value = self._t("settings.runtime_unknown")
+        else:
+            value = f"{info.label} · {info.version}"
         ctk.CTkLabel(parent, text=value, font=FONT_BODY, text_color=TEXT_MUTED).grid(
             row=row, column=1, sticky="w", padx=SPACE_LG, pady=SPACE_SM
         )
-        return row + 1
 
     def _apply(self) -> None:
-        self._config.model = self._model_var.get()
-        self._config.backend = self._backend_var.get()
-        # A bad entry shouldn't block the rest of the apply — keep the
-        # old n_threads value and let the user correct it visually.
+        old_threads = self._config.n_threads
         with contextlib.suppress(TypeError, ValueError):
             self._config.n_threads = int(self._threads_var.get())
+        # n_threads is a construction-time arg on Engine, so a cached
+        # pre-loaded engine doesn't pick it up. Drop the cache on
+        # change — when the user flips back to Synth, the Pre-load
+        # checkbox reads session state and shows itself unchecked.
+        if self._session is not None and self._config.n_threads != old_threads:
+            self._session.unload()
         self._status_label.configure(text=self._t("settings.applied"))
 
     def _toggle_language(self) -> None:

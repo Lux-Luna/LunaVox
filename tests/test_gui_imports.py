@@ -8,9 +8,11 @@ opening a real window.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
-ctk = pytest.importorskip(
+pytest.importorskip(
     "customtkinter",
     reason="GUI tests need the [gui] extra (customtkinter)",
     exc_type=ImportError,
@@ -34,18 +36,68 @@ def test_translator_fallback_to_english():
     assert t("definitely.not.a.real.key") == "definitely.not.a.real.key"
 
 
-def test_voice_picker_builds_base_voice_without_window():
-    """VoicePicker must not crash on a headless CTk root (only widget
-    construction — we don't call mainloop)."""
+def test_voice_picker_headless_no_profile(gui_root: Any):
+    """With no model profile the picker shows a hint and can't build a
+    spec — but must not crash during construction."""
     from lunavox.gui.i18n import Translator
     from lunavox.gui.widgets.voice_picker import VoicePicker
-    from lunavox.runtime import SynthesisMode
 
-    root = ctk.CTk()
+    picker = VoicePicker(gui_root, translator=Translator(lang="en"))
     try:
-        picker = VoicePicker(root, translator=Translator(lang="en"))
-        voice = picker.build_voice()
-        assert voice is not None
-        assert voice.mode is SynthesisMode.BASE
+        assert picker.build_voice_spec() is None
     finally:
-        root.destroy()
+        picker.destroy()
+
+
+def test_voice_picker_design_profile_builds_voice_spec(gui_root: Any):
+    """A design profile enables the Design tab; entering an instruction
+    produces a :class:`VoiceSpec` in design mode."""
+    from lunavox.gui.i18n import Translator
+    from lunavox.gui.widgets.voice_picker import VoicePicker
+    from lunavox.model.profile import ModelProfile
+
+    profile = ModelProfile(
+        model_type="design",
+        model_size="1.7b",
+        instruct_support=True,
+        raw={"speaker_names": []},
+    )
+    picker = VoicePicker(gui_root, translator=Translator(lang="en"), model_profile=profile)
+    try:
+        picker._instruct_var.set("Speak cheerfully.")  # noqa: SLF001
+        picker._mode_var.set("design")  # noqa: SLF001
+        spec = picker.build_voice_spec()
+        assert spec is not None
+        assert spec.mode == "design"
+        assert spec.instruct == "Speak cheerfully."
+    finally:
+        picker.destroy()
+
+
+def test_voice_picker_custom_small_hides_instruct(gui_root: Any):
+    """0.6B custom model has instruct_support=False — the picker must
+    still produce a VoiceSpec without any instruction text."""
+    from lunavox.gui.i18n import Translator
+    from lunavox.gui.widgets.voice_picker import VoicePicker
+    from lunavox.model.profile import ModelProfile
+
+    profile = ModelProfile(
+        model_type="custom",
+        model_size="0.6b",
+        instruct_support=False,
+        raw={"speaker_names": ["vivian", "aiden"]},
+    )
+    picker = VoicePicker(gui_root, translator=Translator(lang="en"), model_profile=profile)
+    try:
+        picker._mode_var.set("custom")  # noqa: SLF001
+        picker._speaker_var.set("vivian")  # noqa: SLF001
+        # Instruction text is ignored when the profile says the model
+        # doesn't support it, even if something is in the var.
+        picker._instruct_var.set("should not leak through")  # noqa: SLF001
+        spec = picker.build_voice_spec()
+        assert spec is not None
+        assert spec.mode == "custom"
+        assert spec.speaker == "vivian"
+        assert spec.instruct == ""
+    finally:
+        picker.destroy()

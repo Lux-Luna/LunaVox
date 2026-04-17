@@ -1,47 +1,54 @@
 """FastAPI application for ``lunavox serve``.
 
-Phase 5B update: the app now drives a :class:`BatchEngine` pool
-under the hood, so the old ``asyncio.Lock`` that serialised 5A
-requests is gone. Multiple clients hit :meth:`BatchEngine.submit`
-and :meth:`BatchEngine.synthesize_stream` concurrently; the pool's
-internal idle queue provides back-pressure when every engine is
-busy. WebSocket streaming now supports every voice mode (base /
-clone / custom / design).
+Refactored to go through :mod:`lunavox.core.synth` for every call.
+Endpoint handlers no longer know about:
 
-Exposed endpoints:
+* **voice resolution** — requests call their own ``to_voice_spec()``
+  and hand it to :func:`resolve_voice`, one implementation in core.
+* **param building** — ``SynthesisParams.from_overrides(**req.param_overrides())``,
+  single default source.
+* **PCM encoding** — :func:`f32_to_pcm16` / :func:`pcm16_to_wav`
+  vectorized numpy, ~100x faster than the per-sample loop they
+  replaced.
+* **long-text splitting** — :class:`AsyncSynthesisPipeline` auto-
+  splits anything over its threshold before dispatching to the
+  engine pool. Any endpoint's input text is transparently handled.
 
-* ``POST /v1/synth`` — one-shot synthesis, all voice modes, WAV
-  body + stats header.
-* ``WS /v1/stream`` — streaming WebSocket, all voice modes. Binary
-  PCM chunks followed by a terminal JSON frame.
-* ``GET /health``, ``GET /v1/models``.
+Endpoints expose the same wire protocol as before:
+
+* ``POST /v1/synth`` — one-shot, WAV body + ``X-Lunavox-Stats`` header.
+* ``WS /v1/stream`` — binary PCM frames + terminal JSON.
+* ``WS /v1/stream/text`` — LLM-streaming input, same output shape,
+  plus ``sentences`` count in the terminal frame.
 """
 
 from __future__ import annotations
 
 import contextlib
-import io
 import json
-import struct
 import time
-import wave
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
 
-try:
-    from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
-except ImportError as err:  # pragma: no cover — gated by [serve] extra
-    raise ImportError('fastapi is required: pip install "lunavox[serve]"') from err
+from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 
+from lunavox.core.synth import (
+    VoiceResolutionError,
+    f32_to_pcm16,
+    pcm16_to_wav,
+    resolve_voice,
+)
+from lunavox.core.text import StreamingSentenceBuffer
 from lunavox.model import all_models
-from lunavox.runtime import Voice
+from lunavox.runtime import SynthesisParams, Voice
 
 from .engine_holder import EngineHolder
 from .metrics import LunavoxMetrics
 from .schemas import (
     HealthResponse,
+    MemStatsResponse,
     ModelInfo,
     ModelsResponse,
     SynthRequest,
@@ -51,56 +58,34 @@ from .schemas import (
     TextStreamEnd,
     TextStreamInit,
 )
-from .sentence_buffer import SentenceBuffer
 
 
-def _build_voice(req: SynthRequest | TextStreamInit) -> Voice:
-    """Translate a validated request into a :class:`Voice`.
+def _mem_response(stats: Any) -> MemStatsResponse:
+    """Project a :class:`SynthesisStats.mem` sub-struct onto the wire model.
 
-    Accepts both the one-shot ``SynthRequest`` and the
-    ``TextStreamInit`` first-frame payload — they share the same
-    voice / reference / speaker / instruct fields.
+    Folding this into a helper keeps every `SynthStatsResponse(...)`
+    construction site one line shorter and ensures all three endpoints
+    agree on the field list — the HTTP one-shot, the WS audio stream,
+    and the WS text stream used to drift independently.
     """
-    if req.voice == "base":
-        return Voice.base()
-    if req.voice == "clone":
-        if not req.reference:
-            raise HTTPException(400, "voice=clone requires 'reference' path")
-        return Voice.clone_file(req.reference)
-    if req.voice == "custom":
-        if not req.speaker:
-            raise HTTPException(400, "voice=custom requires 'speaker'")
-        return Voice.custom(req.speaker, instruct=req.instruct or "")
-    if req.voice == "design":
-        if not req.instruct:
-            raise HTTPException(400, "voice=design requires 'instruct'")
-        return Voice.design(req.instruct)
-    raise HTTPException(400, f"Unknown voice mode: {req.voice}")
+    mem = stats.mem
+    return MemStatsResponse(
+        rss_start_bytes=mem.rss_start_bytes,
+        rss_end_bytes=mem.rss_end_bytes,
+        rss_peak_bytes=mem.rss_peak_bytes,
+        vram_start_bytes=mem.vram_start_bytes,
+        vram_end_bytes=mem.vram_end_bytes,
+        vram_peak_bytes=mem.vram_peak_bytes,
+        vram_measured=mem.vram_measured,
+    )
 
 
-def _pcm_to_wav_bytes(audio: Any, sample_rate: int) -> bytes:
-    """Serialize a float32 mono array to an in-memory 16-bit PCM WAV."""
-    pcm16 = bytearray()
-    for sample in audio:
-        clipped = max(-1.0, min(1.0, float(sample)))
-        pcm16 += struct.pack("<h", int(clipped * 32767.0))
-
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(int(sample_rate))
-        wf.writeframes(bytes(pcm16))
-    return buf.getvalue()
-
-
-def _f32_to_pcm16_bytes(audio: Any) -> bytes:
-    """Convert float32 samples in [-1, 1] to raw int16 LE PCM bytes."""
-    out = bytearray()
-    for sample in audio:
-        clipped = max(-1.0, min(1.0, float(sample)))
-        out += struct.pack("<h", int(clipped * 32767.0))
-    return bytes(out)
+def _resolve_voice_or_400(req: SynthRequest | TextStreamInit) -> Voice:
+    """Bridge :class:`VoiceResolutionError` to an HTTP 400 response."""
+    try:
+        return resolve_voice(req.to_voice_spec())
+    except VoiceResolutionError as err:
+        raise HTTPException(400, str(err)) from err
 
 
 def create_app(
@@ -108,19 +93,21 @@ def create_app(
     *,
     n_threads: int = 4,
     batch_size: int = 4,
+    auto_split_threshold: int = 240,
 ) -> FastAPI:
     """Build the FastAPI app bound to one :class:`EngineHolder`.
 
-    ``batch_size`` controls how many concurrent requests the pool
-    can service — the Phase 5B default is 4, matching the CLI
-    ``--batch-size`` flag. Pass ``batch_size=1`` for low-VRAM
-    deployments; the class falls back to single-engine behaviour
-    transparently.
+    ``auto_split_threshold`` is the char count above which incoming
+    text is automatically chunked by the pipeline — see
+    :class:`~lunavox.core.synth.AsyncSynthesisPipeline`. Default 240
+    is tuned for real-time voice agent responses; set higher for
+    batch / offline jobs where you want fewer segment boundaries.
     """
     holder = EngineHolder(
         model_dir=model_dir,
         batch_size=batch_size,
         n_threads=n_threads,
+        auto_split_threshold=auto_split_threshold,
     )
     metrics = LunavoxMetrics()
 
@@ -134,7 +121,7 @@ def create_app(
 
     app = FastAPI(
         title="LunaVox",
-        version="2.2.0",
+        version="2.2.2",
         description="HTTP / WebSocket serving layer for LunaVox Qwen3-TTS.",
         lifespan=lifespan,
     )
@@ -155,13 +142,7 @@ def create_app(
 
     @app.get("/metrics")
     async def metrics_endpoint() -> Response:
-        """Prometheus scrape endpoint.
-
-        Refreshes the pool gauges from the live :class:`BatchEngine`
-        before rendering, so a scrape arriving during quiet traffic
-        still reports the current idle/busy count.
-        """
-        batch = holder._batch  # private read OK — same package
+        batch = holder._batch
         body, content_type = metrics.render(batch)
         return Response(content=body, media_type=content_type)
 
@@ -186,22 +167,14 @@ def create_app(
 
     @app.post("/v1/synth")
     async def synth(req: SynthRequest) -> Response:
-        voice = _build_voice(req)
-        params = holder.build_params(
-            temperature=req.temperature,
-            top_p=req.top_p,
-            top_k=req.top_k,
-            max_audio_tokens=req.max_audio_tokens,
-        )
+        voice = _resolve_voice_or_400(req)
+        params = SynthesisParams.from_overrides(**req.param_overrides())
+        params.n_threads = holder.n_threads  # stays configured by the server
 
         metrics.snapshot_pool(holder.batch)
         t_start = time.perf_counter()
         try:
-            # BatchEngine.submit acquires one idle engine from the pool,
-            # runs synthesis on a background thread, and releases the
-            # engine on completion. Concurrent callers queue on the pool's
-            # internal asyncio.Queue, no explicit lock needed.
-            result = await holder.batch.submit(req.text, voice=voice, params=params)
+            result = await holder.pipeline.synthesize(req.text, voice=voice, params=params)
         except Exception:
             metrics.requests_total.labels(voice=req.voice, status="error").inc()
             raise
@@ -211,7 +184,7 @@ def create_app(
         if result.stats.rtf > 0:
             metrics.rtf.labels(voice=req.voice).observe(result.stats.rtf)
 
-        wav_bytes = _pcm_to_wav_bytes(result.audio, result.sample_rate)
+        wav_bytes = pcm16_to_wav(f32_to_pcm16(result.audio), result.sample_rate)
         meta = SynthResponseMeta(
             sample_rate=result.sample_rate,
             n_samples=int(len(result.audio)),
@@ -220,7 +193,7 @@ def create_app(
                 t_total_ms=result.stats.t_total_ms,
                 audio_duration_ms=result.stats.audio_duration_ms,
                 rtf=result.stats.rtf,
-                rss_peak_bytes=result.stats.rss_peak_bytes,
+                mem=_mem_response(result.stats),
             ),
         )
         return Response(
@@ -236,11 +209,14 @@ def create_app(
         """Sentence-streaming endpoint — all four voice modes.
 
         Protocol:
-          1. Client sends one text JSON frame matching :class:`SynthRequest`.
-          2. Server sends binary frames containing raw int16 little-endian
-             PCM chunks at the engine's sample rate (typically 24000).
-          3. Server sends one terminal JSON frame with ``done=true`` and
-             the :class:`SynthStatsResponse` payload, then closes.
+          1. Client sends one JSON :class:`SynthRequest` text frame.
+          2. Server sends binary int16 LE PCM frames.
+          3. Server sends one terminal JSON frame with ``done=true``
+             and the :class:`SynthStatsResponse` payload, then closes.
+
+        Long inputs are auto-split by the pipeline — client sees one
+        continuous PCM stream regardless of how many segments the
+        engine synthesized under the hood.
         """
         await websocket.accept()
 
@@ -252,32 +228,30 @@ def create_app(
             return
 
         try:
-            voice = _build_voice(req)
-        except HTTPException as err:
-            await websocket.close(code=1003, reason=str(err.detail))
+            voice = resolve_voice(req.to_voice_spec())
+        except VoiceResolutionError as err:
+            await websocket.close(code=1003, reason=str(err))
             return
 
-        params = holder.build_params(
-            temperature=req.temperature,
-            top_p=req.top_p,
-            top_k=req.top_k,
-            max_audio_tokens=req.max_audio_tokens,
-        )
+        params = SynthesisParams.from_overrides(**req.param_overrides())
+        params.n_threads = holder.n_threads
 
         metrics.snapshot_pool(holder.batch)
         t_start = time.perf_counter()
         final_stats: Optional[SynthStatsResponse] = None
         success = False
         try:
-            async for chunk in holder.batch.synthesize_stream(req.text, voice=voice, params=params):
+            async for chunk in holder.pipeline.synthesize_stream(
+                req.text, voice=voice, params=params
+            ):
                 if len(chunk.audio) > 0:
-                    await websocket.send_bytes(_f32_to_pcm16_bytes(chunk.audio))
+                    await websocket.send_bytes(f32_to_pcm16(chunk.audio))
                 if chunk.is_last and chunk.stats is not None:
                     final_stats = SynthStatsResponse(
                         t_total_ms=chunk.stats.t_total_ms,
                         audio_duration_ms=chunk.stats.audio_duration_ms,
                         rtf=chunk.stats.rtf,
-                        rss_peak_bytes=chunk.stats.rss_peak_bytes,
+                        mem=_mem_response(chunk.stats),
                     )
 
             terminal = {
@@ -299,7 +273,6 @@ def create_app(
             metrics.request_duration_seconds.labels(voice=req.voice).observe(elapsed)
             if final_stats is not None and final_stats.rtf > 0:
                 metrics.rtf.labels(voice=req.voice).observe(final_stats.rtf)
-            # Closing an already-closed socket raises; suppress quietly.
             with contextlib.suppress(Exception):
                 await websocket.close()
 
@@ -311,29 +284,19 @@ def create_app(
 
         Lets a caller (typically an LLM streaming reply tokens) push
         text into the synthesizer one chunk at a time and start
-        receiving audio after each complete sentence — instead of
-        waiting for the full reply to be generated first.
+        receiving audio after each complete sentence.
 
         Protocol:
-          1. Client sends one JSON text frame matching
-             :class:`TextStreamInit` (voice + sampler config, no text).
-          2. Client sends N JSON text frames matching
-             :class:`TextStreamChunk` (each carries a piece of text).
+          1. Client sends one JSON :class:`TextStreamInit` frame.
+          2. Client sends N JSON :class:`TextStreamChunk` frames.
           3. Server watches the buffer for sentence boundaries via
-             :class:`SentenceBuffer`, dispatches each complete
-             sentence to ``BatchEngine.synthesize_stream`` in order,
-             and pushes back binary int16 LE PCM frames as the
-             decoder produces them.
-          4. Client sends one JSON frame matching
-             :class:`TextStreamEnd` (``{"end": true}``) to close the
-             input channel; server flushes any partial sentence.
-          5. Server sends one terminal JSON frame
-             ``{"done": true, "sentences": <int>, "stats": {...}}``
-             with the cumulative stats of the last sentence and the
-             number of sentences synthesized, then closes.
-
-        Failure modes are returned as
-        ``{"error": "..."}`` text frames followed by a close.
+             :class:`StreamingSentenceBuffer`, dispatches each complete
+             sentence through the pipeline (which itself may sub-split
+             overlong sentences), and pushes back binary PCM frames.
+          4. Client sends one :class:`TextStreamEnd` frame; server
+             flushes any partial trailing text.
+          5. Server sends one terminal JSON frame with ``done=true``,
+             ``sentences`` count, and final stats.
         """
         await websocket.accept()
 
@@ -345,44 +308,39 @@ def create_app(
             return
 
         try:
-            voice = _build_voice(init)
-        except HTTPException as err:
-            await websocket.close(code=1003, reason=str(err.detail))
+            voice = resolve_voice(init.to_voice_spec())
+        except VoiceResolutionError as err:
+            await websocket.close(code=1003, reason=str(err))
             return
 
-        params = holder.build_params(
-            temperature=init.temperature,
-            top_p=init.top_p,
-            top_k=init.top_k,
-            max_audio_tokens=init.max_audio_tokens,
-        )
+        params = SynthesisParams.from_overrides(**init.param_overrides())
+        params.n_threads = holder.n_threads
 
-        buffer = SentenceBuffer()
+        buffer = StreamingSentenceBuffer()
         sentences_synthed = 0
         last_stats: Optional[SynthStatsResponse] = None
         success = False
         t_start = time.perf_counter()
 
         async def _synth_sentence(sentence: str) -> None:
-            """Synthesize one complete sentence and push its PCM."""
             nonlocal sentences_synthed, last_stats
             sentences_synthed += 1
-            async for chunk in holder.batch.synthesize_stream(sentence, voice=voice, params=params):
+            async for chunk in holder.pipeline.synthesize_stream(
+                sentence, voice=voice, params=params
+            ):
                 if len(chunk.audio) > 0:
-                    await websocket.send_bytes(_f32_to_pcm16_bytes(chunk.audio))
+                    await websocket.send_bytes(f32_to_pcm16(chunk.audio))
                 if chunk.is_last and chunk.stats is not None:
                     last_stats = SynthStatsResponse(
                         t_total_ms=chunk.stats.t_total_ms,
                         audio_duration_ms=chunk.stats.audio_duration_ms,
                         rtf=chunk.stats.rtf,
-                        rss_peak_bytes=chunk.stats.rss_peak_bytes,
+                        mem=_mem_response(chunk.stats),
                     )
 
         try:
             while True:
                 raw_frame = await websocket.receive_text()
-                # Cheap pre-parse to distinguish chunk vs end frame
-                # without two pydantic round trips on every message.
                 try:
                     payload = json.loads(raw_frame)
                 except ValueError as err:
@@ -390,7 +348,7 @@ def create_app(
                     continue
 
                 if isinstance(payload, dict) and payload.get("end") is True:
-                    TextStreamEnd.model_validate(payload)  # validate shape
+                    TextStreamEnd.model_validate(payload)
                     for leftover in buffer.flush():
                         await _synth_sentence(leftover)
                     break

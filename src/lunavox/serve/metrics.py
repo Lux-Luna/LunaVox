@@ -11,27 +11,20 @@ ops team can scrape ``/metrics`` and monitor a deployment:
 * ``lunavox_request_duration_seconds`` (histogram) — server-side
   latency per request, labelled by voice mode
 * ``lunavox_rtf`` (histogram) — engine real-time factor per request
-
-The whole module is gated behind the ``[serve]`` extra (importing
-:mod:`prometheus_client`); the import is at module top so callers
-get a clean ``ImportError`` if the extra is missing.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-try:
-    from prometheus_client import (
-        CONTENT_TYPE_LATEST,
-        CollectorRegistry,
-        Counter,
-        Gauge,
-        Histogram,
-        generate_latest,
-    )
-except ImportError as err:  # pragma: no cover — gated by [serve] extra
-    raise ImportError('prometheus-client is required: pip install "lunavox[serve]"') from err
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
 
 if TYPE_CHECKING:
     from lunavox.runtime import BatchEngine

@@ -75,6 +75,12 @@ struct ProcessMemorySnapshot {
 
 bool process_memory_snapshot(ProcessMemorySnapshot & out);
 
+// Current OS process id (unsigned). Wraps GetCurrentProcessId on Windows
+// and getpid on POSIX so callers never branch on _WIN32. Used by NVML
+// per-process VRAM attribution to filter nvmlDevice*RunningProcesses
+// results down to this engine's own allocations.
+uint32_t current_pid();
+
 // --- Memory-mapped read-only files -------------------------------------------
 
 // Opaque mapping handles. On Windows `file_handle` is a HANDLE and

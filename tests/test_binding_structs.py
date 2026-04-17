@@ -31,6 +31,27 @@ def test_cparams_field_order_and_types():
     assert _capi.CParams._fields_ == expected
 
 
+def test_cmemstats_field_order_and_types():
+    """Mirrors ``LunavoxMemStats`` in the C header. Field drift silently
+    misaligns uint64 reads on strict-alignment targets, so enforce both
+    name order and ctypes types."""
+    expected = [
+        ("rss_start_bytes", ctypes.c_uint64),
+        ("rss_end_bytes", ctypes.c_uint64),
+        ("rss_peak_bytes", ctypes.c_uint64),
+        ("vram_start_bytes", ctypes.c_uint64),
+        ("vram_end_bytes", ctypes.c_uint64),
+        ("vram_peak_bytes", ctypes.c_uint64),
+        ("vram_measured", ctypes.c_uint32),
+        ("_pad", ctypes.c_uint32),
+    ]
+    actual = _capi.CMemStats._fields_
+    assert [f[0] for f in actual] == [f[0] for f in expected]
+    assert [f[1] for f in actual] == [f[1] for f in expected]
+    # Size must match the C struct: 6×8 + 2×4 = 56 bytes.
+    assert ctypes.sizeof(_capi.CMemStats) == 56
+
+
 def test_caudio_field_order_and_types():
     expected = [
         ("samples", ctypes.POINTER(ctypes.c_float)),
@@ -43,8 +64,8 @@ def test_caudio_field_order_and_types():
         ("t_total_ms", ctypes.c_int64),
         ("audio_duration_ms", ctypes.c_int64),
         ("rtf", ctypes.c_float),
-        ("rss_peak_bytes", ctypes.c_uint64),
-        ("rss_end_bytes", ctypes.c_uint64),
+        ("_pad", ctypes.c_float),
+        ("mem", _capi.CMemStats),
     ]
     actual = _capi.CAudio._fields_
     assert [f[0] for f in actual] == [f[0] for f in expected]

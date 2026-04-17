@@ -45,22 +45,19 @@ def test_create_app_registers_routes(tmp_path: Path):
         assert expected in paths, f"Missing route {expected}; have {paths}"
 
 
-def test_engine_holder_build_params(tmp_path: Path):
+def test_engine_holder_constructs_without_loading(tmp_path: Path):
+    """Phase 6 moved parameter construction out of EngineHolder into
+    :class:`SynthesisParams.from_overrides`. The holder only wraps
+    lifecycle + pool + pipeline now."""
     from lunavox.serve.engine_holder import EngineHolder
 
     holder = EngineHolder(model_dir=tmp_path, n_threads=1, batch_size=2)
     assert holder.batch_size == 2
     assert holder.n_threads == 1
-
-    params = holder.build_params(temperature=0.9, top_k=20)
-    assert params.temperature == 0.9
-    assert params.top_k == 20
-    # Untouched fields keep their defaults.
-    assert params.top_p == 1.0
-    assert params.n_threads == 1
+    assert holder.auto_split_threshold == 240  # default
 
 
-def test_engine_holder_batch_raises_before_load(tmp_path: Path):
+def test_engine_holder_batch_and_pipeline_raise_before_load(tmp_path: Path):
     from lunavox.serve.engine_holder import EngineHolder
 
     holder = EngineHolder(model_dir=tmp_path, batch_size=1)
@@ -69,4 +66,28 @@ def test_engine_holder_batch_raises_before_load(tmp_path: Path):
     with pytest.raises(RuntimeError, match="load"):
         _ = holder.batch
     with pytest.raises(RuntimeError, match="load"):
+        _ = holder.pipeline
+    with pytest.raises(RuntimeError, match="load"):
         _ = holder.sample_rate
+
+
+def test_synth_request_round_trip_to_voice_spec():
+    """Schemas now carry the VoiceSpec translation themselves so
+    handlers don't have to — verify the mapping is correct."""
+    from lunavox.serve.schemas import SynthRequest
+
+    req = SynthRequest(
+        text="hi",
+        voice="custom",
+        speaker="Vivian",
+        instruct="angry",
+        temperature=0.8,
+    )
+    spec = req.to_voice_spec()
+    assert spec.mode == "custom"
+    assert spec.speaker == "Vivian"
+    assert spec.instruct == "angry"
+
+    overrides = req.param_overrides()
+    assert overrides["temperature"] == 0.8
+    assert overrides["top_p"] is None  # None means "no override"

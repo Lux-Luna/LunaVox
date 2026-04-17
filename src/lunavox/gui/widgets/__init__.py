@@ -7,8 +7,15 @@ parent-class bookkeeping. Views import them as building blocks.
 
 from __future__ import annotations
 
+from .conversion_dialog import ConversionDialog
 from .param_slider import FieldSpec, ParamSliderGroup
 from .stats_card import StatsCard
 from .voice_picker import VoicePicker
 
-__all__ = ["FieldSpec", "ParamSliderGroup", "StatsCard", "VoicePicker"]
+__all__ = [
+    "ConversionDialog",
+    "FieldSpec",
+    "ParamSliderGroup",
+    "StatsCard",
+    "VoicePicker",
+]

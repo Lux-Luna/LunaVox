@@ -1,14 +1,13 @@
 # LunaVox CLI Reference
 
-The `lunavox` CLI is the single entry point for environment setup, model
-management, native engine builds, direct in-process synthesis, and the
-desktop GUI. Pick `bootstrap` for the one-key path, or run individual
+`lunavox` is the single entry point for environment setup, model
+management, native engine builds, in-process synthesis, and the
+desktop GUI. Use `bootstrap` for the one-key path, or run individual
 commands as needed.
 
 ```powershell
-pip install lunavox           # core CLI
-pip install "lunavox[gui]"    # + desktop GUI
-pip install "lunavox[convert]"  # + source → GGUF conversion toolchain
+pip install lunavox             # core CLI + GUI + HTTP/WebSocket server
+pip install "lunavox[convert]"  # + source → GGUF conversion toolchain (optional)
 ```
 
 ## Command tree
@@ -16,36 +15,30 @@ pip install "lunavox[convert]"  # + source → GGUF conversion toolchain
 ```
 lunavox
 ├── bootstrap            One-key setup: pull → libs → build → smoke test
-├── model
-│   ├── pull             Pull pre-converted GGUF/ONNX artifacts
-│   ├── convert          Convert raw HF weights into LunaVox artifacts
-│   └── list             Show the catalog + which models are installed
-├── build                Build the C++ engine (cmake wrapper)
-│   └── libs             Download ONNX Runtime / llama.cpp binaries
+├── model {pull|convert|list}
+├── build [libs]         C++ engine build, or fetch runtime libs
 ├── synth TEXT           In-process synthesis via the Python Engine
-├── serve                HTTP + WebSocket serving layer ([serve] extra)
-├── gui                  Launch the desktop GUI (requires [gui] extra)
+├── serve                HTTP + WebSocket serving layer
+├── gui                  Launch the desktop GUI
 └── doctor               Environment + dependency health check
 ```
 
 ## 1. `doctor` — System Health Check
 
-Verifies project layout, toolchain, runtime libraries, and which
-profile is active. Run this before opening any issue.
+Verifies project layout (`src` / `lib` / `models`), `cmake` on
+`PATH`, ONNX Runtime SDK headers, llama.cpp runtime libs, the
+`[convert]` extra, and the active profile. Run before opening any
+issue.
 
 ```bash
 lunavox doctor
 ```
 
-Checks: project root + `src` / `lib` / `models`; `cmake` on `PATH`;
-ONNX Runtime SDK headers; llama.cpp runtime libs; whether the
-`[convert]` extra is installed; the currently selected profile.
-
 ## 2. `bootstrap` — One-Key Setup
 
-Runs **pull → libs → build → in-process smoke test** in sequence. The
-smoke test uses the native Python `Engine` + `Voice.base()` path — no
-subprocess, so it exercises exactly what real callers run.
+Runs **pull → libs → build → in-process smoke test** in sequence.
+The smoke test uses the native Python `Engine` + `Voice.base()` —
+exactly what real callers run.
 
 ```bash
 lunavox bootstrap
@@ -55,59 +48,33 @@ lunavox bootstrap --skip-test          # build only, no synthesis check
 
 ## 3. `model` — Catalog Management
 
-### `lunavox model pull` (recommended)
-
-Pull pre-converted GGUF / ONNX artifacts from the community mirror.
-
 ```bash
-lunavox model pull
-lunavox model pull --model base_small
-```
-
-### `lunavox model convert`
-
-Convert from raw `.safetensors` weights locally. Requires the
-`[convert]` extra and takes several minutes.
-
-```bash
-lunavox model convert --model base_small --force
+lunavox model pull                                    # pull default
+lunavox model pull --model base_small                 # pull specific
+lunavox model convert --model base_small --force      # needs [convert] extra
 lunavox model convert --all
+lunavox model list                                    # show installed state
 ```
 
-### `lunavox model list`
-
-Show every catalog entry and whether it is installed locally.
-
-```bash
-lunavox model list
-```
+`pull` fetches pre-converted GGUF / ONNX artifacts from the community
+mirror. `convert` builds them locally from raw `.safetensors` weights
+and requires the `[convert]` extra (takes several minutes).
 
 ## 4. `build` — Native Engine
 
-### `lunavox build`
-
-CMake build of the C++ engine and C ABI shared library.
-
 ```bash
-lunavox build
+lunavox build                               # cmake build
 lunavox build --clean --j 8
 lunavox build --toolchain msvc
-```
-
-### `lunavox build libs`
-
-Fetch platform-specific ONNX Runtime + llama.cpp binaries.
-
-```bash
-lunavox build libs
+lunavox build libs                          # fetch default runtime libs
 lunavox build libs --platform win_cuda12
-# win_cuda13 / win_vulkan / win_cpu / linux_cuda / mac_arm64
+# also: win_cuda13 / win_vulkan / win_cpu / linux_cuda / mac_arm64
 ```
 
 ## 5. `synth` — In-Process Synthesis
 
-Run the Python `Engine` directly and write a WAV. This is the
-canonical smoke test and the same code path used by the GUI.
+Runs the Python `Engine` directly and writes a WAV — the same code
+path used by the GUI.
 
 ```bash
 # Default speaker
@@ -130,24 +97,19 @@ lunavox synth "It's in the top drawer… wait, it's empty?" \
 ```
 
 Tunable flags: `--model`, `--temperature`, `--top-p`, `--top-k`.
-Anything not overridden on the command line falls through to the
-active profile, then environment variables, then defaults.
+Anything not set on the command line falls through to the active
+profile, then environment variables, then defaults.
 
 ## 6. `serve` — HTTP / WebSocket Server
 
 ```bash
-pip install "lunavox[serve]"
 lunavox serve --host 127.0.0.1 --port 8000 --batch-size 4
 ```
 
-Starts a FastAPI app with `POST /v1/synth`, `WS /v1/stream`, `GET
-/health`, and `GET /v1/models`. Under the hood a `BatchEngine` pool
-of `N` independent engines handles concurrent requests — the
-`--batch-size` flag sets the pool size (default 4; drop to 1 for
-low-VRAM deployments). Streaming supports every voice mode
-(`base` / `clone` / `custom` / `design`).
-
-Full endpoint reference and protocol details: **[Serve guide](serve.md)**.
+FastAPI app with `POST /v1/synth`, `WS /v1/stream`,
+`WS /v1/stream/text`, `GET /health`, `GET /v1/models`, `GET /metrics`.
+A `BatchEngine` pool of N engines handles concurrent requests. See
+**[Serve guide](serve.md)** for full endpoint / protocol reference.
 
 ## 7. `gui` — Desktop App
 
@@ -155,9 +117,8 @@ Full endpoint reference and protocol details: **[Serve guide](serve.md)**.
 lunavox gui
 ```
 
-Requires `pip install "lunavox[gui]"`. The GUI is a three-view
-sidebar layout (Synthesize / Library / Settings) that shares the
-same `Engine` API as `lunavox synth`.
+Three-view sidebar layout (Synthesize / Library / Settings) sharing
+the same `Engine` API as `lunavox synth`.
 
 ## 8. Model ID Reference
 
@@ -171,17 +132,11 @@ same `Engine` API as `lunavox synth`.
 
 ## 9. Profiles and Config
 
-LunaVox reads `~/.lunavox/config.toml` on every invocation. The file
-has a `[default]` table plus any number of `[profile.<name>]`
-overrides. Precedence, highest wins:
-
-1. CLI flags (`--temperature 0.9`, `--model base`)
-2. Environment variables (`LUNAVOX_MODEL`, `LUNAVOX_BACKEND`, …)
-3. The `[profile.NAME]` table selected with `--profile NAME`
-4. The `[default]` table
-5. Hardcoded defaults
-
-Example `config.toml`:
+LunaVox reads `~/.lunavox/config.toml` on every invocation —
+a `[default]` table plus any number of `[profile.<name>]` overrides.
+Precedence (highest wins): CLI flags → env vars (`LUNAVOX_MODEL`,
+`LUNAVOX_BACKEND`, …) → `[profile.NAME]` (selected via
+`--profile NAME`) → `[default]` → hardcoded defaults.
 
 ```toml
 [default]
@@ -205,9 +160,9 @@ lunavox --profile quality synth "High fidelity please." -o out.wav
 
 ## 10. Global Flags
 
-Apply to every `lunavox` subcommand:
+Apply to every subcommand:
 
-- `--profile <NAME>` — pick a `[profile.<NAME>]` table from `config.toml`
+- `--profile <NAME>` — pick a `[profile.<NAME>]` table
 - `--project-root <PATH>` — explicit project root (development)
 - `--yes` — auto-confirm all prompts (CI)
 - `--no-install` — disable automatic Python module fixing
@@ -215,7 +170,4 @@ Apply to every `lunavox` subcommand:
 
 ## See also
 
-- [Model profile & runtime contract](../technical/model_profile.md)
-- [Usage tutorial (`lunavox synth` modes)](usage_tutorial.md)
-- [Serve layer (`lunavox serve`)](serve.md)
-- [Runtime API](../api/runtime.md)
+- [Model profile & runtime contract](../technical/model_profile.md) · [Usage tutorial](usage_tutorial.md) · [Serve guide](serve.md) · [Runtime API](../api/runtime.md)

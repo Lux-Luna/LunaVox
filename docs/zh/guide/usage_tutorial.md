@@ -52,8 +52,8 @@ JSON 路径完全跳过 speaker / codec encoder，详情见
 
 ```bash
 # C++ 版等效命令
-./build/lunavox-cli -m models/base_small \
-  -r ref/ref_0.6B.json \
+./build/lunavox-cli -m models/base_small `
+  -r ref/ref_0.6B.json `
   -t "你好世界。" -o out.wav
 ```
 

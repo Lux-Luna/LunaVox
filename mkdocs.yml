@@ -92,6 +92,7 @@ nav:
       - CLI Reference: en/guide/cli_reference.md
       - Usage Tutorial: en/guide/usage_tutorial.md
       - Serve: en/guide/serve.md
+      - Docker: en/guide/docker.md
     - Technical:
       - Model Profile: en/technical/model_profile.md
       - Synthesis Pathway: en/technical/synthesis_pathway.md
@@ -111,6 +112,7 @@ nav:
       - CLI 参考: zh/guide/cli_reference.md
       - 用法教程: zh/guide/usage_tutorial.md
       - 服务层: zh/guide/serve.md
+      - Docker 部署: zh/guide/docker.md
     - 技术细节:
       - 模型 Profile: zh/technical/model_profile.md
       - 合成通路: zh/technical/synthesis_pathway.md

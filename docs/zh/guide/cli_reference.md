@@ -1,13 +1,12 @@
 # LunaVox CLI 指令汇总
 
 `lunavox` 是 LunaVox 的单一入口，覆盖环境配置、模型管理、C++ 引擎构建、
-进程内直接合成以及桌面 GUI。想要一键上手直接用 `bootstrap`，否则按需
-运行各条子命令即可。
+进程内合成以及桌面 GUI。想要一键上手用 `bootstrap`，否则按需运行各条
+子命令即可。
 
 ```powershell
-pip install lunavox            # 核心 CLI
-pip install "lunavox[gui]"     # + 桌面 GUI
-pip install "lunavox[convert]" # + 原始权重 → GGUF 转换工具链
+pip install lunavox             # 核心 CLI + GUI + HTTP/WebSocket 服务层
+pip install "lunavox[convert]"  # + 原始权重 → GGUF 转换工具链（可选）
 ```
 
 ## 命令树
@@ -15,35 +14,28 @@ pip install "lunavox[convert]" # + 原始权重 → GGUF 转换工具链
 ```
 lunavox
 ├── bootstrap            一键安装：拉模型 → 下运行库 → 构建 → 冒烟合成
-├── model
-│   ├── pull             拉取预转换好的 GGUF/ONNX 产物
-│   ├── convert          把原始 HF 权重转成 LunaVox 产物
-│   └── list             查看目录 + 哪些模型已安装
-├── build                构建 C++ 引擎（cmake 封装）
-│   └── libs             下载 ONNX Runtime / llama.cpp 二进制
+├── model {pull|convert|list}
+├── build [libs]         C++ 引擎构建，或拉取运行库
 ├── synth 文本           走 Python Engine 的进程内合成
-├── serve                HTTP + WebSocket 服务层（需要 [serve] extra）
-├── gui                  启动桌面 GUI（需要 [gui] extra）
+├── serve                HTTP + WebSocket 服务层
+├── gui                  启动桌面 GUI
 └── doctor               环境 + 依赖健康检查
 ```
 
 ## 1. `doctor` —— 系统健康检查
 
-检查项目结构、工具链、运行库及当前 profile。任何问题反馈前先跑一下。
+检查项目结构（`src` / `lib` / `models`）、`cmake` 是否在 `PATH`、
+ONNX Runtime SDK 头文件、llama.cpp 运行库、`[convert]` extra 以及
+当前 profile。反馈问题前先跑一下。
 
 ```bash
 lunavox doctor
 ```
 
-检查：项目根目录下 `src` / `lib` / `models`、`cmake` 是否在 `PATH`、
-ONNX Runtime SDK 头文件、llama.cpp 运行库、`[convert]` extra 是否装齐、
-当前生效的 profile。
-
 ## 2. `bootstrap` —— 一键安装
 
-依次执行 **pull → libs → build → 进程内冒烟合成**。冒烟合成走的是 Python
-侧原生 `Engine` + `Voice.base()`，不经过子进程，校验的正是真实调用
-路径。
+依次执行 **pull → libs → build → 进程内冒烟合成**。冒烟合成走 Python
+原生 `Engine` + `Voice.base()` —— 就是真实调用路径。
 
 ```bash
 lunavox bootstrap
@@ -53,59 +45,32 @@ lunavox bootstrap --skip-test          # 只构建，不跑合成冒烟
 
 ## 3. `model` —— 目录管理
 
-### `lunavox model pull`（推荐）
-
-从社区镜像拉取已转换的 GGUF / ONNX 产物。
-
 ```bash
-lunavox model pull
-lunavox model pull --model base_small
-```
-
-### `lunavox model convert`
-
-本地把原始 `.safetensors` 权重转成 LunaVox 产物。需要 `[convert]` extra，
-过程需要几分钟。
-
-```bash
-lunavox model convert --model base_small --force
+lunavox model pull                                    # 拉默认模型
+lunavox model pull --model base_small                 # 指定模型
+lunavox model convert --model base_small --force      # 需要 [convert] extra
 lunavox model convert --all
+lunavox model list                                    # 查看已安装
 ```
 
-### `lunavox model list`
-
-展示目录里所有条目以及本地是否已安装。
-
-```bash
-lunavox model list
-```
+`pull` 从社区镜像拉取已转换的 GGUF / ONNX 产物。`convert` 本地把原始
+`.safetensors` 权重转成 LunaVox 产物，需要 `[convert]` extra，耗时
+几分钟。
 
 ## 4. `build` —— 本地引擎
 
-### `lunavox build`
-
-CMake 构建 C++ 引擎和 C ABI 共享库。
-
 ```bash
-lunavox build
+lunavox build                               # cmake 构建
 lunavox build --clean --j 8
 lunavox build --toolchain msvc
-```
-
-### `lunavox build libs`
-
-拉取特定平台的 ONNX Runtime + llama.cpp 二进制。
-
-```bash
-lunavox build libs
+lunavox build libs                          # 拉默认运行库
 lunavox build libs --platform win_cuda12
-# win_cuda13 / win_vulkan / win_cpu / linux_cuda / mac_arm64
+# 其他: win_cuda13 / win_vulkan / win_cpu / linux_cuda / mac_arm64
 ```
 
 ## 5. `synth` —— 进程内合成
 
-直接调用 Python `Engine` 并写出 WAV。既是冒烟测试的官方入口，也是
-桌面 GUI 使用的同一条代码路径。
+直接调用 Python `Engine` 并写出 WAV —— 与桌面 GUI 完全相同的代码路径。
 
 ```bash
 # 默认音色
@@ -128,22 +93,18 @@ lunavox synth "就在最上面的抽屉里，不对，怎么是空的？" \
 ```
 
 可覆盖参数：`--model`、`--temperature`、`--top-p`、`--top-k`。命令行
-没显式指定的参数会依次回落到当前 profile → 环境变量 → 默认值。
+没显式指定的参数依次回落到当前 profile → 环境变量 → 默认值。
 
 ## 6. `serve` —— HTTP / WebSocket 服务器
 
 ```bash
-pip install "lunavox[serve]"
 lunavox serve --host 127.0.0.1 --port 8000 --batch-size 4
 ```
 
-启动一个 FastAPI 应用，提供 `POST /v1/synth`、`WS /v1/stream`、
-`GET /health`、`GET /v1/models`。底层是 `BatchEngine` 构成的 N 槽
-并发请求池，`--batch-size` 控制池大小（默认 4；低 VRAM 部署可设为
-1）。流式支持全部四种 voice 模式（`base` / `clone` / `custom` /
-`design`）。
-
-完整接口与协议细节请参阅：**[服务层指南](serve.md)**。
+FastAPI 应用，提供 `POST /v1/synth`、`WS /v1/stream`、
+`WS /v1/stream/text`、`GET /health`、`GET /v1/models`、`GET /metrics`。
+`BatchEngine` 构成的 N 槽并发请求池。完整接口与协议细节请参阅
+**[服务层指南](serve.md)**。
 
 ## 7. `gui` —— 桌面应用
 
@@ -151,9 +112,8 @@ lunavox serve --host 127.0.0.1 --port 8000 --batch-size 4
 lunavox gui
 ```
 
-需先执行 `pip install "lunavox[gui]"`。新版 GUI 是左侧栏 + 三视图布局
-（合成 / 素材库 / 设置），底层调用与 `lunavox synth` 完全相同的
-`Engine` API。
+左侧栏 + 三视图布局（合成 / 素材库 / 设置），底层调用与 `lunavox synth`
+完全相同的 `Engine` API。
 
 ## 8. 模型 ID 对照表
 
@@ -167,16 +127,10 @@ lunavox gui
 
 ## 9. Profile 与配置文件
 
-LunaVox 在每次执行时都会读取 `~/.lunavox/config.toml`。文件结构是一个
+LunaVox 每次执行都会读取 `~/.lunavox/config.toml` —— 一个
 `[default]` 表 + 任意多个 `[profile.<name>]` 覆盖。优先级从高到低：
-
-1. 命令行开关（`--temperature 0.9`、`--model base`）
-2. 环境变量（`LUNAVOX_MODEL`、`LUNAVOX_BACKEND` 等）
-3. 通过 `--profile NAME` 选中的 `[profile.NAME]` 表
-4. `[default]` 表
-5. 硬编码默认值
-
-示例 `config.toml`：
+命令行开关 → 环境变量（`LUNAVOX_MODEL`、`LUNAVOX_BACKEND` 等）→
+`[profile.NAME]`（`--profile NAME` 选中）→ `[default]` → 硬编码默认值。
 
 ```toml
 [default]
@@ -200,9 +154,9 @@ lunavox --profile quality synth "请用高保真合成。" -o out.wav
 
 ## 10. 全局开关
 
-对每一条 `lunavox` 子命令都生效：
+对每一条子命令都生效：
 
-- `--profile <NAME>` —— 从 `config.toml` 选择 `[profile.<NAME>]`
+- `--profile <NAME>` —— 选择 `[profile.<NAME>]`
 - `--project-root <PATH>` —— 显式指定项目根（开发时）
 - `--yes` —— 自动确认所有提示（CI）
 - `--no-install` —— 禁止自动修复 Python 依赖
@@ -210,7 +164,4 @@ lunavox --profile quality synth "请用高保真合成。" -o out.wav
 
 ## 相关文档
 
-- [模型 Profile 与运行时契约](../technical/model_profile.md)
-- [使用教程（`lunavox synth` 各模式）](usage_tutorial.md)
-- [服务层指南（`lunavox serve`）](serve.md)
-- [Runtime API](../api/runtime.md)
+- [模型 Profile 与运行时契约](../technical/model_profile.md) · [使用教程](usage_tutorial.md) · [服务层指南](serve.md) · [Runtime API](../api/runtime.md)

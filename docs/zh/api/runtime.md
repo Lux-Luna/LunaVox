@@ -49,7 +49,9 @@ with Engine(Path("models/base_small")) as eng:
     )
 
     print(f"RTF: {result.stats.rtf:.3f}")
-    print(f"Peak RSS: {result.stats.rss_peak_bytes / 1024**2:.1f} MB")
+    print(f"Peak RSS delta: {result.stats.mem.rss_peak_delta_bytes / 1024**2:.1f} MB")
+    if result.stats.mem.vram_measured:
+        print(f"Peak VRAM delta: {result.stats.mem.vram_peak_delta_bytes / 1024**2:.1f} MB")
     # result.audio 是 numpy.float32 数组，单通道，范围 [-1, 1]
 ```
 
