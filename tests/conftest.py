@@ -44,7 +44,13 @@ def gui_root() -> Iterator[Any]:
         reason="GUI tests need the [gui] extra (customtkinter)",
         exc_type=ImportError,
     )
-    root = ctk.CTk()
+    # Headless CI runners (Linux without xvfb) can import customtkinter
+    # but fail at root creation with `TclError: no display name`. Skip
+    # rather than erroring so the rest of the suite keeps running.
+    try:
+        root = ctk.CTk()
+    except Exception as err:  # noqa: BLE001 — tkinter raises a stdlib TclError subclass
+        pytest.skip(f"GUI tests need a display ($DISPLAY): {err}")
     try:
         yield root
     finally:
