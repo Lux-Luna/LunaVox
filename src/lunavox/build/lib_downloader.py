@@ -160,12 +160,28 @@ def install_local_archive(lib_name, archive_path, root_dir, *, label=None, versi
             except Exception:
                 pass
 
-        all_metadata[lib_name] = {
-            "provider" if lib_name == "onnx" else "backend": label or archive_path.stem,
-            "version": version,
-            "platform": platform.system().lower(),
-            "installed_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        }
+        resolved_label = label or archive_path.stem
+        if lib_name == "onnx":
+            # Locally-staged archives don't carry a structured capability list;
+            # treat the single label as the primary EP and universally keep
+            # CPU as the guaranteed fallback.
+            caps = [resolved_label]
+            if resolved_label != "CPUExecutionProvider":
+                caps.append("CPUExecutionProvider")
+            all_metadata[lib_name] = {
+                "provider": caps[0],
+                "build_capabilities": caps,
+                "version": version,
+                "platform": platform.system().lower(),
+                "installed_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        else:
+            all_metadata[lib_name] = {
+                "backend": resolved_label,
+                "version": version,
+                "platform": platform.system().lower(),
+                "installed_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
         with open(metadata_file, "w", encoding="utf-8") as f:
             json.dump(all_metadata, f, indent=2)
 
@@ -246,20 +262,31 @@ def update_library(lib_name, backend, root_dir):
             except Exception:
                 pass
         
-        # Determine explicit provider/backend for C++ engine
-        provider_name = "unknown"
+        # Determine explicit provider/backend for C++ engine.
+        # For ONNX we now emit an ordered capability list: the primary EP
+        # plus a CPU fallback so the runtime can gracefully degrade when
+        # an accelerated EP fails to initialize (e.g. CoreML partitioner
+        # bug on certain fp16 attention graphs). GUI code still reads the
+        # single "provider" field, so we preserve it as the list's head.
         if lib_name == "onnx":
-            onnx_mapping = {
-                "win_cpu": "CPUExecutionProvider",
-                "win_cuda12": "CUDAExecutionProvider",
-                "win_cuda13": "CUDAExecutionProvider",
-                "win_directml": "DmlExecutionProvider",
-                "linux_cpu": "CPUExecutionProvider",
-                "linux_cuda12": "CUDAExecutionProvider",
-                "macos_arm64": "CoreMLExecutionProvider",
+            onnx_caps_mapping = {
+                "win_cpu":       ["CPUExecutionProvider"],
+                "win_cuda12":    ["CUDAExecutionProvider", "CPUExecutionProvider"],
+                "win_cuda13":    ["CUDAExecutionProvider", "CPUExecutionProvider"],
+                "win_directml":  ["DmlExecutionProvider", "CPUExecutionProvider"],
+                "linux_cpu":     ["CPUExecutionProvider"],
+                "linux_cuda12":  ["CUDAExecutionProvider", "CPUExecutionProvider"],
+                "macos_arm64":   ["CoreMLExecutionProvider", "CPUExecutionProvider"],
             }
-            provider_name = onnx_mapping.get(backend, "CPUExecutionProvider")
-        elif lib_name == "llama":
+            caps = onnx_caps_mapping.get(backend, ["CPUExecutionProvider"])
+            all_metadata[lib_name] = {
+                "provider": caps[0],
+                "build_capabilities": caps,
+                "version": LIB_URLS[lib_name].get("version", "unknown"),
+                "platform": platform.system().lower(),
+                "installed_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        else:
             llama_mapping = {
                 "win_cpu": "cpu",
                 "win_cuda12": "cuda",
@@ -269,14 +296,13 @@ def update_library(lib_name, backend, root_dir):
                 "linux_cuda12": "cuda",
                 "macos_arm64": "metal",
             }
-            provider_name = llama_mapping.get(backend, "cpu")
-
-        all_metadata[lib_name] = {
-            "provider" if lib_name == "onnx" else "backend": provider_name,
-            "version": LIB_URLS[lib_name].get("version", "unknown"),
-            "platform": platform.system().lower(),
-            "installed_at": time.strftime("%Y-%m-%d %H:%M:%S")
-        }
+            backend_name = llama_mapping.get(backend, "cpu")
+            all_metadata[lib_name] = {
+                "backend": backend_name,
+                "version": LIB_URLS[lib_name].get("version", "unknown"),
+                "platform": platform.system().lower(),
+                "installed_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
         
         with open(metadata_file, "w", encoding="utf-8") as f:
             json.dump(all_metadata, f, indent=2)

@@ -71,65 +71,101 @@ bool create_session_impl(
     std::vector<std::string> & input_names,
     std::vector<std::string> & output_names,
     std::string & provider_summary) {
-    try {
-        Ort::SessionOptions opts;
-        opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-        if (role == ort_session_role::decoder) {
-            // Decoder memory footprint dominates end-to-end peak RSS.
-            // Disable allocator arenas/pattern caching to reduce peak memory.
-            opts.DisableCpuMemArena();
-            opts.DisableMemPattern();
-            opts.AddConfigEntry("session.intra_op.allow_spinning", "0");
-            opts.AddConfigEntry("session.inter_op.allow_spinning", "0");
-        }
-        if (intra_threads > 0) {
-            opts.SetIntraOpNumThreads((int) intra_threads);
-        }
-        opts.SetInterOpNumThreads(1);
+    out_ptr = nullptr;
+    error_msg.clear();
+    provider_summary.clear();
 
-        std::string provider_policy_summary;
-        if (!apply_ort_provider_policy(opts, get_ort_env(), role, error_msg, provider_policy_summary)) {
-            out_ptr = nullptr;
-            return false;
-        }
-
-        auto * impl = new ort_session_data();
-        // fs::path::c_str() returns const wchar_t* on Windows and const char*
-        // on POSIX, which matches ORTCHAR_T — so a single line covers both
-        // narrow and wide ORT entry points with no platform branch.
-        const std::filesystem::path model_fs_path = std::filesystem::u8path(model_path);
-        impl->session = Ort::Session(get_ort_env(), model_fs_path.c_str(), opts);
-
-        Ort::AllocatorWithDefaultOptions allocator;
-        size_t n_inputs = impl->session.GetInputCount();
-        size_t n_outputs = impl->session.GetOutputCount();
-
-        input_names.clear();
-        output_names.clear();
-        input_names.reserve(n_inputs);
-        output_names.reserve(n_outputs);
-
-        for (size_t i = 0; i < n_inputs; ++i) {
-            auto name = impl->session.GetInputNameAllocated(i, allocator);
-            input_names.emplace_back(name.get() ? name.get() : "");
-        }
-        for (size_t i = 0; i < n_outputs; ++i) {
-            auto name = impl->session.GetOutputNameAllocated(i, allocator);
-            output_names.emplace_back(name.get() ? name.get() : "");
-        }
-
-        impl->provider_summary = provider_policy_summary.empty()
-            ? std::string("unknown")
-            : provider_policy_summary;
-        provider_summary = impl->provider_summary;
-
-        out_ptr = impl;
-        return true;
-    } catch (const std::exception & e) {
-        error_msg = std::string("Failed to create ONNX session: ") + e.what();
-        out_ptr = nullptr;
+    const std::vector<ProviderCandidate> chain = build_provider_chain(role);
+    if (chain.empty()) {
+        error_msg = "Failed to create ONNX session: no provider candidates for this role";
         return false;
     }
+
+    // fs::path::c_str() returns const wchar_t* on Windows and const char*
+    // on POSIX, which matches ORTCHAR_T — so a single line covers both
+    // narrow and wide ORT entry points with no platform branch.
+    const std::filesystem::path model_fs_path = std::filesystem::u8path(model_path);
+    std::string aggregated_errors;
+    const std::string & primary_name = chain.front().name;
+
+    for (size_t i = 0; i < chain.size(); ++i) {
+        const ProviderCandidate & cand = chain[i];
+        const bool is_primary = (i == 0);
+
+        try {
+            Ort::SessionOptions opts;
+            opts.SetGraphOptimizationLevel(cand.opt_level);
+            if (cand.disable_mem_arena) {
+                opts.DisableCpuMemArena();
+            }
+            if (cand.disable_mem_pattern) {
+                opts.DisableMemPattern();
+            }
+            if (cand.disable_spinning) {
+                opts.AddConfigEntry("session.intra_op.allow_spinning", "0");
+                opts.AddConfigEntry("session.inter_op.allow_spinning", "0");
+            }
+            if (intra_threads > 0) {
+                opts.SetIntraOpNumThreads((int) intra_threads);
+            }
+            opts.SetInterOpNumThreads(1);
+
+            std::string apply_err;
+            if (cand.apply && !cand.apply(opts, apply_err)) {
+                // EP registration itself refused (missing DLL, unsupported
+                // option). Not an Ort::Session exception, but semantically
+                // identical for our purposes — try the next candidate.
+                LOG_WARN("EP %s registration failed: %s; trying next candidate",
+                         cand.name.c_str(), apply_err.c_str());
+                aggregated_errors += cand.name + ": " + apply_err + "; ";
+                continue;
+            }
+
+            auto * impl = new ort_session_data();
+            std::unique_ptr<ort_session_data> guard(impl);
+
+            impl->session = Ort::Session(get_ort_env(), model_fs_path.c_str(), opts);
+
+            Ort::AllocatorWithDefaultOptions allocator;
+            const size_t n_inputs = impl->session.GetInputCount();
+            const size_t n_outputs = impl->session.GetOutputCount();
+
+            input_names.clear();
+            output_names.clear();
+            input_names.reserve(n_inputs);
+            output_names.reserve(n_outputs);
+
+            for (size_t k = 0; k < n_inputs; ++k) {
+                auto name = impl->session.GetInputNameAllocated(k, allocator);
+                input_names.emplace_back(name.get() ? name.get() : "");
+            }
+            for (size_t k = 0; k < n_outputs; ++k) {
+                auto name = impl->session.GetOutputNameAllocated(k, allocator);
+                output_names.emplace_back(name.get() ? name.get() : "");
+            }
+
+            impl->provider_summary = is_primary
+                ? cand.name
+                : (cand.name + " (fallback from " + primary_name + ")");
+            provider_summary = impl->provider_summary;
+
+            out_ptr = guard.release();
+            return true;
+        } catch (const std::exception & e) {
+            // ORT raised during Ort::Session construction (EP partitioner
+            // bug, shape inference error, driver init failure). Log and try
+            // the next candidate; don't let a single broken EP take the
+            // whole process down when a CPU path exists.
+            LOG_WARN("EP %s failed during session init: %s; falling back",
+                     cand.name.c_str(), e.what());
+            aggregated_errors += cand.name + ": " + e.what() + "; ";
+            continue;
+        }
+    }
+
+    error_msg = "Failed to create ONNX session: all providers failed (" +
+                aggregated_errors + ")";
+    return false;
 }
 
 void destroy_session_impl(void *& ptr) {

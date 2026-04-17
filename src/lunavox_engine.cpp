@@ -604,10 +604,16 @@ bool Engine::load_models_new_layout(const std::string & model_dir, int32_t n_thr
     }
 
     last_warmup_ms_ = 0;
-    if (warmup_enabled_ && decoder_loaded_ && profile_.codec_num_codebooks > 0) {
-        // Amortize the decoder's first-run kernel compile (DML shader cache,
-        // CUDA cuDNN search, CoreML MLProgram prep) into load time so the
-        // first user-visible synthesize() call does not pay that cost.
+    // Warmup amortizes the decoder's first-run kernel compile (DML shader
+    // cache, CUDA cuDNN search, CoreML MLProgram prep) into load time. On a
+    // pure CPU provider there's no such compile step, so skip to shave load
+    // time — this matters when an accelerated EP failed init and the
+    // decoder fell back to CPU.
+    const std::string & dec_provider = decoder_.provider_summary();
+    const bool decoder_on_cpu =
+        dec_provider.rfind("CPUExecutionProvider", 0) == 0;
+    if (warmup_enabled_ && decoder_loaded_ && profile_.codec_num_codebooks > 0 &&
+        !decoder_on_cpu) {
         const int32_t warmup_frames = 32;
         const int32_t n_cb = profile_.codec_num_codebooks;
         std::vector<int32_t> dummy_codes((size_t) warmup_frames * (size_t) n_cb,

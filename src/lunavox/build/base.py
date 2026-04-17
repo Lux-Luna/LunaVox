@@ -151,7 +151,17 @@ class Builder:
             console.print(f"[bold red]Error loading configuration: {e}[/]")
             return False
 
-        onnx_prov = meta.get("onnx", {}).get("provider", "CPUExecutionProvider")
+        onnx_meta = meta.get("onnx", {})
+        # build_capabilities is the ordered list of EPs linked into this
+        # build. The first entry is the preferred EP (what we show as the
+        # "Target Provider"); later entries exist as runtime fallbacks.
+        caps = onnx_meta.get("build_capabilities")
+        if isinstance(caps, list) and caps:
+            onnx_prov = str(caps[0])
+            fallback_caps = [str(c) for c in caps[1:]]
+        else:
+            onnx_prov = str(onnx_meta.get("provider", "CPUExecutionProvider"))
+            fallback_caps = []
         llama_back = meta.get("llama", {}).get("backend", "cpu")
 
         # 1. Store details for summary
@@ -159,8 +169,14 @@ class Builder:
         self.target_details["llama"] = f"[bold cyan]{llama_back}[/]"
 
         # 2. Display Intent Panels
+        fallback_line = ""
+        if fallback_caps:
+            fallback_line = (
+                f"\n [bold]Runtime Fallbacks[/] : [cyan]{', '.join(fallback_caps)}[/]"
+            )
         onnx_panel = (
-            f" [bold]Target Provider[/] : [cyan]{onnx_prov}[/]\n"
+            f" [bold]Target Provider[/] : [cyan]{onnx_prov}[/]"
+            f"{fallback_line}\n"
             " [dim]- Intent from metadata.json[/]"
         )
         llama_panel = (
