@@ -9,6 +9,7 @@ import typer
 from rich.table import Table
 
 from lunavox.core.deps import DEPENDENCY_GROUPS, missing_modules
+from lunavox.core.project import DEPLOYMENT_MARKER
 from lunavox.core.ui import console
 
 from ._common import state
@@ -25,13 +26,14 @@ def register(parent: typer.Typer) -> None:
         table.add_column("Result")
         table.add_column("Details")
 
-        root_ok = all(
-            [
-                (st.project_root / "CMakeLists.txt").exists(),
-                (st.project_root / "src").exists(),
-                (st.project_root / "lib").exists(),
-                (st.project_root / "models").exists(),
-            ]
+        dev_layout = (st.project_root / "CMakeLists.txt").exists() and (
+            st.project_root / "src"
+        ).exists()
+        deployment_layout = (st.project_root / DEPLOYMENT_MARKER).exists()
+        root_ok = (
+            (dev_layout or deployment_layout)
+            and (st.project_root / "lib").exists()
+            and (st.project_root / "models").exists()
         )
         table.add_row("Project Root", "OK" if root_ok else "FAIL", str(st.project_root))
 
